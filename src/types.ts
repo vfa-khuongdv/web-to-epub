@@ -45,3 +45,37 @@ export interface ProgressEvent {
   message?: string;
   chapters?: ExtractedChapter[];
 }
+
+export type ChapterStatus = "pending" | "done" | "error";
+
+export interface StoredChapter {
+  order: number; // vị trí trong TOC, bắt đầu từ 1
+  url: string;
+  title: string;
+  status: ChapterStatus;
+  error?: string;
+  blocks?: ContentBlock[];
+}
+
+export interface StoredStory {
+  id: string;
+  storyUrl: string;
+  site: string;
+  title: string;
+  author?: string;
+  coverUrl?: string;
+  chapters: StoredChapter[];
+  createdAt: string; // ISO
+  updatedAt: string; // ISO
+}
+
+export interface StorySummary {
+  id: string;
+  storyUrl: string;
+  site: string;
+  title: string;
+  chapterCount: number;
+  doneCount: number;
+  errorCount: number;
+  updatedAt: string;
+}
