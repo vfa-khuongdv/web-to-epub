@@ -1,6 +1,53 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ExtractedChapter } from "../types";
 import { blocksToHtml } from "../blocksToHtml";
+import { Icon } from "./Icon";
+import { ChipState, StatusChip } from "./StatusChip";
+
+// A chapter the crawl has not reached yet: no content to edit or include, just
+// its place in the list, its state, and a way to look at the source page.
+export function PendingChapterRow({
+  order,
+  title,
+  url,
+  crawling,
+}: {
+  order: number;
+  title: string;
+  url: string;
+  crawling?: boolean;
+}) {
+  return (
+    <tr>
+      <td className="w-9 pr-1">
+        <input type="checkbox" className="checkbox" disabled aria-label={`Chương ${order} chưa crawl`} />
+      </td>
+      <td className="num w-11">
+        <b>{order}</b>
+      </td>
+      <td>
+        <span className="cell-title">
+          <span className="t">{title || url}</span>
+        </span>
+      </td>
+      <td className="w-32">
+        <StatusChip state={crawling ? "running" : "pending"} label={crawling ? "Đang crawl" : undefined} />
+      </td>
+      <td className="w-28">
+        <a
+          className="btn btn-quiet btn-tiny"
+          href={url}
+          target="_blank"
+          rel="noreferrer"
+          title="Mở trang nguồn"
+        >
+          <Icon name="open" size={13} />
+          <span className="visually-hidden">Mở trang nguồn của chương {order}</span>
+        </a>
+      </td>
+    </tr>
+  );
+}
 
 interface ChapterCardProps {
   chapter: ExtractedChapter;
@@ -12,14 +59,26 @@ interface ChapterCardProps {
   onRetry: () => void;
   retrying: boolean;
   retriedOnce: boolean;
-  bodyRef: (el: HTMLDivElement | null) => void;
+  onBodyChange: (html: string) => void;
 }
 
-// The chapter body is intentionally uncontrolled: dangerouslySetInnerHTML is
-// set once from the chapter's extracted blocks (lazy state init) and never
-// updated by React afterwards, so a user's manual contentEditable edits
-// aren't wiped out by re-renders triggered by, say, toggling the checkbox.
-// Its live content is read back via `bodyRef` at export time.
+// Playwright's failure text arrives with the time annotations from its Call
+// log still in it ("[22m", "[2m"); they are noise in a sentence a person reads.
+function tidyError(message: string): string {
+  return message
+    .split("\n")
+    .map((line) => line.replace(/\[\d+m/g, "").trimEnd())
+    .join("\n")
+    .trim();
+}
+
+// A chapter is one collapsed row — number, title, state, action — that expands
+// into its editor. The body is intentionally uncontrolled: React writes the
+// extracted HTML once (lazy state init) and never again, so a user's manual
+// contentEditable edits aren't wiped out by re-renders triggered by, say,
+// the crawl progress updating or the row being collapsed. Its live HTML is
+// handed to the parent on input, and again on collapse before the editor
+// unmounts, so a collapsed chapter still exports what the user typed into it.
 export default function ChapterCard({
   chapter,
   order,
@@ -30,75 +89,159 @@ export default function ChapterCard({
   onRetry,
   retrying,
   retriedOnce,
-  bodyRef,
+  onBodyChange,
 }: ChapterCardProps) {
-  const [initialHtml] = useState(() => blocksToHtml(chapter.blocks));
+  const [html, setHtml] = useState(() => blocksToHtml(chapter.blocks));
   // Lets the user paste in content they viewed and copied themselves from a
   // normal browser (e.g. a chapter gated behind the site's own anti-adblock
   // wall) instead of this tool trying to defeat that gate automatically.
   const [manualMode, setManualMode] = useState(false);
+  const [open, setOpen] = useState(false);
+  const bodyEl = useRef<HTMLDivElement | null>(null);
 
-  if (chapter.error && !manualMode) {
-    return (
-      <div className="chapter chapter-failed">
-        <div className="chapter-head">
-          <span className="chapter-order">#{order}</span>
-          <input type="checkbox" className="chapter-include" checked={false} disabled />
-          <input type="text" className="chapter-title" value={chapter.sourceUrl} disabled />
-        </div>
-        <p className="chapter-source">Nguồn: {chapter.sourceUrl}</p>
-        <div className="chapter-error">
-          <p>⚠️ Lỗi trích xuất: {chapter.error}</p>
-          <div className="chapter-error-actions">
-            <button type="button" className="btn-retry-chapter" disabled={retrying} onClick={onRetry}>
-              {retrying ? "Đang thử lại..." : "Thử lại"}
-            </button>
-            {retriedOnce && (
-              <button
-                type="button"
-                className="btn-manual-entry"
-                onClick={() => {
-                  setManualMode(true);
-                  onIncludedChange(true);
-                }}
-              >
-                Nhập nội dung thủ công
-              </button>
-            )}
-          </div>
-        </div>
-      </div>
-    );
+  const failed = !!chapter.error && !manualMode;
+  const panelId = `chapter-panel-${order}`;
+  const chip: ChipState | null = retrying ? "running" : failed ? "error" : manualMode ? null : "done";
+
+  function toggle() {
+    if (open) {
+      const live = bodyEl.current?.innerHTML;
+      if (live !== undefined) {
+        setHtml(live);
+        onBodyChange(live);
+      }
+    }
+    setOpen((o) => !o);
+  }
+
+  function enterManualMode() {
+    setManualMode(true);
+    setOpen(true);
+    onIncludedChange(true);
   }
 
   return (
-    <div className={`chapter${manualMode ? " chapter-manual" : ""}`}>
-      <div className="chapter-head">
-        <span className="chapter-order">#{order}</span>
-        <input
-          type="checkbox"
-          className="chapter-include"
-          checked={included}
-          onChange={(e) => onIncludedChange(e.target.checked)}
-        />
-        <input
-          type="text"
-          className="chapter-title"
-          value={title}
-          onChange={(e) => onTitleChange(e.target.value)}
-        />
-      </div>
-      <p className="chapter-source">
-        Nguồn: {chapter.sourceUrl}
-        {manualMode && " — nội dung nhập thủ công"}
-      </p>
-      <div
-        className="chapter-body"
-        contentEditable
-        suppressContentEditableWarning
-        ref={bodyRef}
-        dangerouslySetInnerHTML={{ __html: initialHtml }}
-      />
-    </div>
+    <>
+      <tr>
+        <td className="w-9 pr-1">
+          <input
+            type="checkbox"
+            className="checkbox"
+            checked={included}
+            disabled={failed}
+            onChange={(e) => onIncludedChange(e.target.checked)}
+            aria-label={`Đưa chương ${order} vào sách`}
+          />
+        </td>
+        <td className="num w-11">
+          <b>{order}</b>
+        </td>
+        <td>
+          <button
+            type="button"
+            className="row-btn"
+            aria-expanded={open}
+            aria-controls={panelId}
+            onClick={toggle}
+          >
+            <Icon
+              name="chevron"
+              size={13}
+              className={`text-ink-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
+            />
+            <span className="t">{title || chapter.sourceUrl}</span>
+          </button>
+        </td>
+        <td className="w-32">
+          {chip ? (
+            <StatusChip state={chip} label={retrying ? "Đang thử lại" : undefined} />
+          ) : (
+            <span className="chip">
+              <Icon name="edit" size={12} />
+              Nhập thủ công
+            </span>
+          )}
+        </td>
+        <td className="w-28">
+          {failed && (
+            <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
+              <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+              {retrying ? "Đang thử…" : "Thử lại"}
+            </button>
+          )}
+        </td>
+      </tr>
+
+      {open && (
+        <tr className="chapter-open" id={panelId}>
+          <td colSpan={5}>
+            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+              <span className="break-all">
+                Nguồn:{" "}
+                <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
+                  {chapter.sourceUrl}
+                </a>
+              </span>
+            </div>
+
+            {failed ? (
+              <>
+                <div className="banner mt-2">
+                  <Icon name="alert" size={14} />
+                  <div className="min-w-0">
+                    <p className="font-semibold">Không trích xuất được chương này</p>
+                    <p className="mt-0.5 font-mono text-[11.5px] leading-relaxed">{tidyError(chapter.error ?? "")}</p>
+                  </div>
+                </div>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
+                    <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+                    {retrying ? "Đang thử lại…" : "Thử lại"}
+                  </button>
+                  {retriedOnce ? (
+                    <button type="button" className="btn btn-tiny" onClick={enterManualMode}>
+                      <Icon name="edit" size={13} />
+                      Nhập nội dung thủ công
+                    </button>
+                  ) : (
+                    <span className="text-xs text-ink-3">Nhiều lỗi chỉ là tạm thời — thử lại trước đã.</span>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="mt-2">
+                  <label className="visually-hidden" htmlFor={`chapter-title-${order}`}>
+                    Tiêu đề chương {order}
+                  </label>
+                  <input
+                    id={`chapter-title-${order}`}
+                    type="text"
+                    className="input font-semibold"
+                    value={title}
+                    onChange={(e) => onTitleChange(e.target.value)}
+                  />
+                </div>
+                <div
+                  className="chapter-body"
+                  contentEditable
+                  suppressContentEditableWarning
+                  role="textbox"
+                  aria-multiline="true"
+                  aria-label={`Nội dung chương ${order}`}
+                  data-placeholder="Dán nội dung chương vào đây"
+                  ref={bodyEl}
+                  onInput={() => {
+                    const live = bodyEl.current?.innerHTML;
+                    if (live !== undefined) onBodyChange(live);
+                  }}
+                  dangerouslySetInnerHTML={{ __html: html }}
+                />
+              </>
+            )}
+          </td>
+        </tr>
+      )}
+    </>
   );
 }

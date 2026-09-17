@@ -1,4 +1,4 @@
-import { BookMetadata, ExtractedChapter, ProgressEvent, StoredStory, StorySummary, SupportedSite } from "./types";
+import { BookMetadata, ProgressEvent, StoredStory, StorySummary, SupportedSite } from "./types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites");
@@ -81,19 +81,6 @@ export async function fetchStory(id: string): Promise<StoredStory> {
 export async function deleteStory(id: string): Promise<void> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}`, { method: "DELETE" });
   if (!res.ok) throw new Error(await readJsonError(res, "Không xoá được truyện"));
-}
-
-export async function extractOne(url: string): Promise<ExtractedChapter> {
-  const res = await fetch("/api/extract-one", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ url }),
-  });
-  if (!res.ok) {
-    throw new Error(await readJsonError(res, "Thử lại thất bại"));
-  }
-  const data = await res.json();
-  return data.chapter as ExtractedChapter;
 }
 
 export async function uploadCover(file: File): Promise<string> {

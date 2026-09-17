@@ -1,0 +1,169 @@
+{
+  "title": "Chọn thế giới hình ảnh",
+  "question": "Con xúc xắc chỉ định \"Thư viện để bàn\" — hướng thứ 3 trong danh sách của tôi. Giữ nó, chọn một hướng khác, hay đổ lại?",
+  "options": [
+    {
+      "id": "assigned",
+      "label": "Thư viện để bàn",
+      "kicker": "THE ROLL",
+      "lineage": "Bàn làm việc của người lưu trữ sách điện tử (truyền thống Calibre)",
+      "thesis": "Một dụng cụ để bàn cho việc lưu trữ hàng loạt: thư viện là một bảng dày đặc, và mỗi lần crawl là một tiến trình bạn nhìn thấy đang chạy.",
+      "palette": ["#ececec", "#f7f7f7", "#1c1c1c", "#d4d4d4", "#3b6fb6"],
+      "materials": ["đường kẻ cột mảnh", "hàng chương dày 22px", "chữ số mono canh cột", "dải hàng đợi có thanh tiến trình"],
+      "viewport": "Chia đôi: bảng truyện bên trái (tên, site, số chương, đã xong, lỗi, cập nhật), bảng chương + metadata bên phải, dải hàng đợi ở đáy cho thấy crawl đang chạy tới đâu.",
+      "risk": "Kiểu ứng dụng để bàn dễ bị đọc là chrome Qt cũ nếu chữ và đường kẻ không đủ sắc.",
+      "raised": [
+        {"from": "textiles-weave-drape-fashion-sneaker-box-stacks", "raise": "Nhãn ở mép hộp: mỗi hàng chương giữ đủ số, tên và trạng thái đọc được ngay cả khi thu gọn — không phải mở ra mới biết."},
+        {"from": "dream-surreal-impossible-worlds-alphabet-storm", "raise": "Con số tượng đài: mỗi truyện có đúng một con số ở cỡ tiêu đề (số chương hoặc tiến độ) làm điểm rơi của mắt; phần còn lại giữ cỡ chữ làm việc."},
+        {"from": "signals-instruments-phosphor-terminal-midnight", "raise": "Trạng thái tự viết vào dòng: đang crawl / xong / lỗi hiện ngay trong hàng chương và dải hàng đợi, không nấp trong widget riêng; thao tác hàng loạt chạy bằng bàn phím."},
+        {"from": "medium-native-crt-arcade-pixel-glow", "raise": "Màu dành riêng cho trạng thái: đỏ chỉ có nghĩa lỗi, xanh dương chỉ có nghĩa chọn hoặc hành động chính, không bao giờ dùng để trang trí."}
+      ],
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {"label": "thanh lệnh", "x": 0, "y": 0, "w": 12, "h": 1},
+          {"label": "bảng truyện", "x": 0, "y": 1, "w": 7, "h": 6, "accent": true},
+          {"label": "bảng chương", "x": 7, "y": 1, "w": 5, "h": 6},
+          {"label": "hàng đợi crawl", "x": 0, "y": 7, "w": 12, "h": 2},
+          {"label": "metadata + xuất", "x": 0, "y": 9, "w": 12, "h": 1}
+        ]
+      }
+    },
+    {
+      "id": "model-pick",
+      "label": "Mục lục",
+      "kicker": "IMPECCABLE’S PICK",
+      "lineage": "Trang mục lục của các site truyện chữ Việt (truyenfull, xtruyen, metruyenchu)",
+      "thesis": "Công cụ chính là cái mục lục mà nó ăn vào: một bảng số thứ tự dày đặc, mỗi chương một dòng, và cả tiến trình crawl nằm ngay trong những dòng đó.",
+      "palette": ["#fffdf7", "#141210", "#c2410c", "#e7e2d8"],
+      "materials": ["dòng kẻ ngang", "cột số thứ tự", "phân trang kiểu mục lục"],
+      "viewport": "Một mục lục dày đặc chiếm trọn màn hình; đầu trang dính giữ tên truyện, con số tiến độ và nút crawl.",
+      "risk": "Đây là thế giới người đọc thuộc nhất — cũng là hướng gần với cách mọi công cụ cùng loại đang trông như thế nào nhất.",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {"label": "đầu trang dính", "x": 0, "y": 0, "w": 12, "h": 1},
+          {"label": "mục lục chương", "x": 0, "y": 1, "w": 8, "h": 9, "accent": true},
+          {"label": "thông tin sách", "x": 8, "y": 1, "w": 4, "h": 4},
+          {"label": "xuất epub", "x": 8, "y": 5, "w": 4, "h": 5}
+        ]
+      }
+    },
+    {
+      "id": "challenger-gameboy",
+      "label": "Bốn sắc độ e-ink",
+      "verdict": "competitive",
+      "lineage": "Màn hình bốn sắc của máy chơi game cầm tay, dịch sang màn e-ink",
+      "thesis": "Công cụ trông giống nơi đầu ra của nó sống: bốn mức xám, không gradient, không đổ bóng, tiến độ là con số chứ không phải trang trí.",
+      "palette": ["#f4f4f4", "#c9c9c9", "#5a5a5a", "#161616"],
+      "materials": ["bốn mức xám", "lưới ô khoá cỡ", "một đèn báo trạng thái"],
+      "viewport": "Cửa sổ danh sách khoá vào lưới ô, vài hộp menu xếp lớp, một đèn báo duy nhất cho trạng thái.",
+      "case": "Thắng một trục: người đọc đọc trên máy e-ink nên thế giới này đúng là màn hình đích — nhưng ngữ pháp ô vuông và nút bấm không nói được gì về một hàng đợi hàng trăm chương.",
+      "risk": "Dễ trượt sang đồ chơi nếu giữ nguyên sắc xanh Game Boy; bản dịch sang e-ink phải giữ đủ tương phản.",
+      "hero": "https://impeccable.style/worlds/cards/digital-design-canon-gameboy-four-shade-field-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/digital-design-canon-gameboy-four-shade-field.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {"label": "khung khoá 160×144", "x": 1, "y": 0, "w": 10, "h": 10},
+          {"label": "cửa sổ danh sách", "x": 1, "y": 1, "w": 10, "h": 6, "accent": true},
+          {"label": "hộp menu", "x": 1, "y": 7, "w": 6, "h": 2},
+          {"label": "đèn trạng thái", "x": 7, "y": 7, "w": 4, "h": 2}
+        ]
+      }
+    },
+    {
+      "id": "challenger-crouwel",
+      "label": "Lưới dựng hình",
+      "verdict": "competitive",
+      "lineage": "Bản mẫu chữ dựng trên lưới của Wim Crouwel — lưới hiện ra như một phần của thiết kế",
+      "thesis": "Bảng chương phơi trần cái lưới dựng nên nó: đường kẻ cột hiện rõ, hàng khoá vào ô, và có một trạng thái bật/tắt lưới thật.",
+      "palette": ["#ffffff", "#e8ecf2", "#111111", "#1b4fd8"],
+      "materials": ["lưới mảnh xanh nhạt", "ô khoá cỡ chữ", "grotesk nhỏ trung tính"],
+      "viewport": "Một bảng chương khoá ô với lưới hiện rõ, tên truyện được dựng từ chính các ô lưới đó.",
+      "case": "Thắng một trục: lưới dựng làm bảng chương dễ quét hơn hẳn — nhưng người đọc truyện không nhận ra mình trong thế giới bản mẫu chữ Hà Lan.",
+      "risk": "Lưới hiện rõ dễ thành nhiễu nếu mật độ hàng không đủ dày.",
+      "hero": "https://impeccable.style/worlds/cards/crouwel-grid-specimen-hero.webp",
+      "board": "https://impeccable.style/worlds/cards/crouwel-grid-specimen.webp",
+      "wireframe": {
+        "cols": 12,
+        "rows": 10,
+        "regions": [
+          {"label": "tên truyện dựng theo ô", "x": 0, "y": 0, "w": 12, "h": 3, "accent": true},
+          {"label": "bảng chương khoá ô", "x": 0, "y": 3, "w": 12, "h": 6},
+          {"label": "hàng lệnh", "x": 0, "y": 9, "w": 12, "h": 1}
+        ]
+      }
+    },
+    {
+      "id": "challenger-sneaker",
+      "label": "Tường hộp lưu trữ",
+      "verdict": "declined",
+      "lineage": "Tường hộp giày xếp chồng, nhãn ở mép hộp",
+      "thesis": "Thư viện truyện như một bệ xếp: mỗi truyện là một hộp, nhãn ở mép đọc được từ xa.",
+      "case": "Thua cả hai trục: người đọc cuốn tiểu thuyết không nhận ra mình trong thế giới sneaker, và một tường hộp không làm rõ việc crawl hàng trăm chương.",
+      "kept": "Nhãn mép hộp — danh tính đọc được từ mép mà không cần mở.",
+      "hero": "https://impeccable.style/worlds/cards/textiles-weave-drape-fashion-sneaker-box-stacks-hero.webp"
+    },
+    {
+      "id": "challenger-alphabet",
+      "label": "Bão chữ",
+      "verdict": "declined",
+      "lineage": "Thế giới siêu thực nơi chữ cái thành thời tiết",
+      "thesis": "Chữ là vật chất: gõ vào thì chữ tụ thành mây, đổ thành mưa, chảy thành sông.",
+      "case": "Thua cả hai trục: đẹp nhưng không phải thế giới của người đọc truyện, và thời tiết chữ thì đối nghịch với một bảng trạng thái cần đọc chính xác.",
+      "kept": "Can đảm về cỡ chữ — cho phép đúng một yếu tố chữ đạt cỡ tượng đài.",
+      "hero": "https://impeccable.style/worlds/cards/dream-surreal-impossible-worlds-alphabet-storm-hero.webp"
+    },
+    {
+      "id": "challenger-phosphor",
+      "label": "Terminal lân quang",
+      "verdict": "declined",
+      "lineage": "Màn hình phosphor xanh trong phòng máy lúc nửa đêm",
+      "thesis": "Cả mặt phẳng là một bản ghi cuộn: trạng thái tự in ra thành dòng thay vì hiện thành chrome.",
+      "case": "Bị loại vì ràng buộc bạn đã tự chốt — bạn nói không muốn mô phỏng terminal — chứ không phải thua trên hai trục: ngữ pháp bản ghi rất đúng cho một hàng đợi crawl dài.",
+      "kept": "Trạng thái tự in vào dòng, thao tác bằng bàn phím.",
+      "hero": "https://impeccable.style/worlds/cards/signals-instruments-phosphor-terminal-midnight-hero.webp"
+    },
+    {
+      "id": "challenger-arcade",
+      "label": "Màn hình arcade",
+      "verdict": "declined",
+      "lineage": "Màn hình máy arcade với điểm ảnh phát sáng",
+      "thesis": "Thế giới điểm ảnh 16 màu trên nền đen phosphor, mọi trạng thái là một luật bảng màu.",
+      "case": "Thua cả hai trục: người chơi arcade không phải người đọc tiểu thuyết, và luật chơi điện tử thì lệch với một công cụ lưu trữ.",
+      "kept": "Luật bảng màu — mỗi màu giữ đúng một nghĩa trạng thái, không bao giờ trang trí.",
+      "hero": "https://impeccable.style/worlds/cards/medium-native-crt-arcade-pixel-glow-hero.webp"
+    }
+  ],
+  "reroll": {
+    "registers": ["safer", "bolder"]
+  },
+  "buildPath": {
+    "value": "code"
+  },
+  "canon": true,
+  "canonCard": {
+    "label": "Chuẩn ngành",
+    "lineage": "Trang công cụ chuyển đổi tiêu chuẩn",
+    "thesis": "Đúng cái mọi công cụ cùng loại đang làm, làm thật chỉn chu: một thẻ giữa trang, ô dán URL, nút xanh, thanh tiến trình.",
+    "palette": ["#ffffff", "#111827", "#2563eb"],
+    "materials": ["lưới sạch", "bo góc đều", "bóng đổ nhẹ"],
+    "viewport": "Thẻ căn giữa với ô nhập, nút chính, và danh sách kết quả bên dưới.",
+    "risk": "Không phân biệt được với công cụ khác — đúng theo thiết kế.",
+    "wireframe": {
+      "cols": 12,
+      "rows": 10,
+      "regions": [
+        {"label": "thẻ giữa trang", "x": 3, "y": 1, "w": 6, "h": 7, "accent": true},
+        {"label": "ô dán URL", "x": 4, "y": 3, "w": 4, "h": 2},
+        {"label": "nút chính", "x": 4, "y": 5, "w": 2, "h": 1},
+        {"label": "danh sách kết quả", "x": 3, "y": 8, "w": 6, "h": 2}
+      ]
+    }
+  },
+  "steer": true
+}

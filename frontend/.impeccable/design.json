@@ -1,0 +1,667 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-17T15:35:34Z",
+  "title": "Design System: Web → EPUB cho Kindle",
+  "extensions": {
+    "colorMeta": {
+      "chrome": {
+        "role": "neutral",
+        "displayName": "Desk Chrome",
+        "dark": "#262626",
+        "note": "Application field: command bar and jobs strip.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "chrome-2": {
+        "role": "neutral",
+        "displayName": "Chrome Shade",
+        "dark": "#303030",
+        "note": "Pressed state of a neutral button.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "raised": {
+        "role": "neutral",
+        "displayName": "Raised Plane",
+        "dark": "#2c2c2c",
+        "note": "Pane heads, column headers, chips.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "content": {
+        "role": "neutral",
+        "displayName": "Content Plane",
+        "dark": "#1b1b1b",
+        "note": "Panes, table bodies, inputs, chapter editor.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "sunken": {
+        "role": "neutral",
+        "displayName": "Sunken Plane",
+        "dark": "#141414",
+        "note": "Segmented trough, log surface, scrollbar rails.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "segment-on": {
+        "role": "neutral",
+        "displayName": "Segment On",
+        "dark": "#383838",
+        "note": "Coincides with Content Plane in light; deliberately separate in dark.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "row-hover": {
+        "role": "neutral",
+        "displayName": "Row Hover",
+        "dark": "#232323",
+        "note": "Table row hover; expanded chapter panel fill.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Ink",
+        "dark": "#ededed",
+        "note": "Primary text, caret, good-state figures.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "ink-2": {
+        "role": "neutral",
+        "displayName": "Ink 2",
+        "dark": "#b9b9b9",
+        "note": "Secondary text, labels, neutral figures.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "ink-3": {
+        "role": "neutral",
+        "displayName": "Ink 3",
+        "dark": "#979797",
+        "note": "Tertiary: placeholders, sources, timestamps.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "rule": {
+        "role": "neutral",
+        "displayName": "Hairline",
+        "dark": "#3a3a3a",
+        "note": "Interior rule: row bottoms, editor box, detail divider.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "rule-2": {
+        "role": "neutral",
+        "displayName": "Hairline Strong",
+        "dark": "#4c4c4c",
+        "note": "Structural rule: command bar, pane divider, pane head, column header, input and chip borders.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "select": {
+        "role": "primary",
+        "displayName": "Instrument Blue",
+        "dark": "#7fb0f5",
+        "note": "Reserved: selection and live work only.",
+        "tonalRamp": [
+          "#000a21",
+          "#002351",
+          "#084082",
+          "#2d61a7",
+          "#4e83cc",
+          "#70a7f2",
+          "#a7ccff",
+          "#e4f0ff"
+        ]
+      },
+      "select-deep": {
+        "role": "primary",
+        "displayName": "Instrument Blue Deep",
+        "dark": "#6ea8fe",
+        "note": "Primary button hover and pressed.",
+        "tonalRamp": [
+          "#000a21",
+          "#002351",
+          "#13417b",
+          "#34629f",
+          "#5584c4",
+          "#77a7ea",
+          "#a7ccff",
+          "#e4f0ff"
+        ]
+      },
+      "select-soft": {
+        "role": "primary",
+        "displayName": "Instrument Blue Wash",
+        "dark": "#1e2a38",
+        "note": "Selected row fill; running chip fill.",
+        "tonalRamp": [
+          "#070c12",
+          "#20262d",
+          "#3c434b",
+          "#5b626a",
+          "#7c838c",
+          "#9ea6af",
+          "#c2cad4",
+          "#e7eff9"
+        ]
+      },
+      "on-select": {
+        "role": "neutral",
+        "displayName": "On Instrument Blue",
+        "dark": "#10161f",
+        "note": "Text on the primary button; follows the accent's luminance, not a fixed white.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "error": {
+        "role": "secondary",
+        "displayName": "Failure Red",
+        "dark": "#ff8a80",
+        "note": "Reserved: failure only.",
+        "tonalRamp": [
+          "#1f0000",
+          "#4d0001",
+          "#810002",
+          "#b0231b",
+          "#d84c3f",
+          "#ff7363",
+          "#ffb3a7",
+          "#ffe9e5"
+        ]
+      },
+      "error-soft": {
+        "role": "secondary",
+        "displayName": "Failure Wash",
+        "dark": "#2e1b1a",
+        "note": "Error banner and error chip fills.",
+        "tonalRamp": [
+          "#110809",
+          "#2d2222",
+          "#4a3f3f",
+          "#6a5e5e",
+          "#8c7f7f",
+          "#afa1a1",
+          "#d4c5c5",
+          "#f9eaea"
+        ]
+      },
+      "error-rule": {
+        "role": "secondary",
+        "displayName": "Failure Rule",
+        "dark": "#5c2f2c",
+        "note": "Border of every error surface.",
+        "tonalRamp": [
+          "#1e0102",
+          "#3d1818",
+          "#5d3534",
+          "#7f5452",
+          "#a27572",
+          "#c79795",
+          "#edbbb8",
+          "#ffe8e7"
+        ]
+      },
+      "btn": {
+        "role": "neutral",
+        "displayName": "Button Face",
+        "dark": "#2f2f2f",
+        "note": "Neutral button fill.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "btn-hover": {
+        "role": "neutral",
+        "displayName": "Button Face Hover",
+        "dark": "#383838",
+        "note": "Neutral button and quiet-button hover fill.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      },
+      "btn-rule": {
+        "role": "neutral",
+        "displayName": "Button Rule",
+        "dark": "#4a4a4a",
+        "note": "Coincides with Hairline Strong in light and separates in dark.",
+        "tonalRamp": [
+          "#0b0b0b",
+          "#252525",
+          "#424242",
+          "#616161",
+          "#828282",
+          "#a5a5a5",
+          "#c9c9c9",
+          "#eeeeee"
+        ]
+      }
+    },
+    "rampNote": "All 15 neutral tokens carry zero chroma, so their ramps are the same achromatic 8-step ladder by construction; select-soft, error-soft, and error-rule carry trace chroma and differ slightly.",
+    "typographyMeta": {
+      "display": {
+        "displayName": "Monumental Numeral",
+        "purpose": "The pane's single landmark figure — chapters crawled or extracted, with its denominator and caption.",
+        "note": "Responsive: 42px at ≤700px. Always mono, 600, tabular figures."
+      },
+      "display-compact": {
+        "displayName": "Monumental Numeral (≤700px)",
+        "purpose": "The same landmark figure at the narrow breakpoint, where 52px would crowd the pane.",
+        "note": "Mono, 600, tabular figures; same tracking and line-height as display."
+      },
+      "display-denominator": {
+        "displayName": "Numeral Denominator",
+        "purpose": "The chapter total beside the monumental numeral, and the figure it is read against.",
+        "note": "The only 17px step in the system; mono with tabular figures, Ink 2."
+      },
+      "title": {
+        "displayName": "Story Title",
+        "purpose": "The selected story's name in the detail pane; the only non-table title in the app."
+      },
+      "body": {
+        "displayName": "Working Text",
+        "purpose": "Table titles, pane copy, banners (12.5px), secondary lines (12px).",
+        "note": "Secondary steps in use: 12px (sources, sites line, hints), 12.5px (banners, textarea), 14px/1.65 at 72ch (chapter reading body)."
+      },
+      "control": {
+        "displayName": "Control Text",
+        "purpose": "Buttons, tabs, inputs, selects."
+      },
+      "label": {
+        "displayName": "Edge Label",
+        "purpose": "Uppercase micro-labels on columns, fields, and pane heads.",
+        "note": "Scale in use: 10.5px (column header, field label), 11px (numeral caption), 11.5px (chips, brand qualifier), 12px (pane head)."
+      },
+      "micro": {
+        "displayName": "Chip Text",
+        "purpose": "Status chips and the product-name qualifier."
+      },
+      "figure": {
+        "displayName": "Table Figure",
+        "purpose": "Every comparable number in a table; job counts at 12px.",
+        "note": "Always `font-variant-numeric: tabular-nums`."
+      }
+    },
+    "shadows": [
+      {
+        "name": "press-cue",
+        "value": "inset 0 1px 2px rgb(0 0 0 / 0.07)",
+        "purpose": "The only shadow in the system. Appears on :active of a neutral button to confirm the press; never at rest, never for depth."
+      }
+    ],
+    "motion": [
+      {
+        "name": "ease-tool",
+        "value": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "The system's only named easing; used by the progress fill."
+      },
+      {
+        "name": "progress-fill",
+        "value": "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)",
+        "purpose": "Progress is a full-width fill scaled with transform: scaleX(), never an animated width, so updates stay on the compositor."
+      },
+      {
+        "name": "disclosure-chevron",
+        "value": "transform 200ms ease",
+        "purpose": "Rotates 90deg when a chapter row expands."
+      },
+      {
+        "name": "running-pulse",
+        "value": "opacity 2s cubic-bezier(0.4, 0, 0.6, 1) infinite (1 → 0.5 → 1)",
+        "purpose": "The live-job indicator: the dot in the running chip, the state dot in the jobs strip, the play icon while crawling, the loading skeleton."
+      },
+      {
+        "name": "retry-spin",
+        "value": "rotate 1s linear infinite",
+        "purpose": "The retry icon while a single chapter is being re-crawled."
+      },
+      {
+        "name": "no-decorative-motion",
+        "value": "none",
+        "purpose": "Every transition in the system is a response to state (hover, press, disclosure, progress). There is no scroll animation, no entrance animation, no parallax."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "stack",
+        "value": "1100px"
+      },
+      {
+        "name": "narrow",
+        "value": "700px"
+      }
+    ],
+    "layout": {
+      "appGrid": "grid-template-rows: auto minmax(0, 1fr) auto (command bar / workbench / jobs strip), full viewport height",
+      "workbench": "grid-template-columns: minmax(0, 29fr) minmax(0, 21fr) — library ~58%, detail ~42%, panes separated by a 1px Hairline Strong border",
+      "workbenchStacked": "≤1100px: one column, rows minmax(0, 44fr) / minmax(0, 56fr); ≤700px: 42fr / 58fr",
+      "tableFloor": "42rem minimum table width below 700px; the pane body scrolls sideways",
+      "scrolling": "Pane bodies scroll (overflow: auto); the page never scrolls; the table header is sticky at z-index 2",
+      "tableLayout": "table-layout: fixed on every table, with ellipsized cells",
+      "scrollbar": "11px rail in the Sunken plane, Hairline Strong thumb inset by a 3px Sunken border, 6px radius, Ink 3 on hover"
+    },
+    "schemeSwap": {
+      "mechanism": "@media (prefers-color-scheme: dark) inside @layer base of frontend/src/styles.css reassigns the same custom properties declared in @theme; :root carries color-scheme: light dark.",
+      "swappedProperties": 22,
+      "componentOverrides": 0,
+      "note": "The dark scheme is a token swap, not a parallel stylesheet: no component rule in the build is dark-specific. 22 colors are reassigned in place and every role keeps its meaning; only luminance inverts (and On Instrument Blue becomes near-black on a light accent).",
+      "browserChrome": {
+        "themeColor": {
+          "light": "#ececec",
+          "dark": "#262626"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "name": "Command Bar",
+      "kind": "nav",
+      "refersTo": "command-bar",
+      "description": "The app's only navigation: 44px Desk Chrome strip with the product name, the segmented tabs, and a live status slot pushed right.",
+      "html": "<header class='ds-cmdbar'><span class='ds-brand'>Web → EPUB <small>CHO KINDLE</small></span><nav class='ds-tabs' role='tablist' aria-label='Khu vực làm việc'><button type='button' class='ds-tab' role='tab' aria-selected='true'>Truyện của tôi</button><button type='button' class='ds-tab' role='tab' aria-selected='false'>Crawl thủ công</button></nav><span class='ds-flag'><svg width='12' height='12' viewBox='0 0 20 20' fill='currentColor' aria-hidden='true'><circle cx='10' cy='10' r='3.2'/></svg>Đang crawl 12/233</span></header>",
+      "css": ".ds-cmdbar { display: flex; align-items: center; gap: 18px; height: 44px; padding: 0 14px; background: var(--color-chrome); border-bottom: 1px solid var(--color-rule-2); font-family: var(--font-ui); color: var(--color-ink); } .ds-brand { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; white-space: nowrap; } .ds-brand small { font-size: 11.5px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; color: var(--color-ink-2); } .ds-tabs { display: flex; gap: 2px; padding: 2px; background: var(--color-sunken); border: 1px solid var(--color-rule); border-radius: var(--radius-tool); } .ds-tab { display: flex; align-items: center; gap: 6px; padding: 4px 12px; border: 0; border-radius: 2px; background: transparent; color: var(--color-ink-2); font: inherit; font-size: 13px; cursor: pointer; } .ds-tab:hover { color: var(--color-ink); } .ds-tab[aria-selected='true'] { background: var(--color-segment-on); color: var(--color-ink); font-weight: 600; } .ds-tab:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } .ds-flag { display: inline-flex; align-items: center; gap: 5px; margin-left: auto; padding: 1px 7px; border: 1px solid var(--color-select); border-radius: 2px; background: var(--color-select-soft); color: var(--color-select); font-size: 11.5px; font-weight: 600; white-space: nowrap; } .ds-flag svg { flex: none; animation: ds-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } @keyframes ds-pulse { 50% { opacity: 0.5; } }"
+    },
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Instrument Blue fill for the one forward action in a pane — Crawl tiếp, or load a story's chapter list.",
+      "html": "<button type='button' class='ds-btn-primary'>Crawl tiếp (1 chương)</button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--color-select-deep); border-radius: var(--radius-tool); background: var(--color-select); color: var(--color-on-select); font-family: var(--font-ui); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; } .ds-btn-primary:hover, .ds-btn-primary:active { background: var(--color-select-deep); } .ds-btn-primary:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } .ds-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }"
+    },
+    {
+      "name": "Quiet Button (with Tiny modifier)",
+      "kind": "button",
+      "refersTo": "button-quiet",
+      "description": "Row-level and strip-level actions (open source, retry, toggle the log) that must not compete with the primary action.",
+      "html": "<span class='ds-actions'><button type='button' class='ds-btn-quiet'>Thử lại</button><button type='button' class='ds-btn-quiet ds-btn-tiny'>Nhật ký (13)</button></span>",
+      "css": ".ds-actions { display: inline-flex; align-items: center; gap: 6px; } .ds-btn-quiet { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid transparent; border-radius: var(--radius-tool); background: transparent; color: var(--color-ink-2); font-family: var(--font-ui); font-size: 13px; white-space: nowrap; cursor: pointer; } .ds-btn-quiet:hover { background: var(--color-btn-hover); color: var(--color-ink); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } .ds-btn-tiny { padding: 2px 8px; font-size: 12px; }"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "The destructive confirmation inside a library row (Xoá); the only component allowed to carry Failure Red as a fill.",
+      "html": "<button type='button' class='ds-btn-danger'>Xoá</button>",
+      "css": ".ds-btn-danger { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid var(--color-error-rule); border-radius: var(--radius-tool); background: var(--color-error-soft); color: var(--color-error); font-family: var(--font-ui); font-size: 13px; font-weight: 600; white-space: nowrap; cursor: pointer; } .ds-btn-danger:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } /* Intentionally no hover rule: in the shipped build the base button hover outranks this variant and the error tint is lost. Reported drift, not canonized. */"
+    },
+    {
+      "name": "Status Chips",
+      "kind": "chip",
+      "refersTo": "chip",
+      "description": "A chapter's or a job's state, written into the row. Pending and done stay neutral; running is the only blue; error the only red.",
+      "html": "<span class='ds-chips'><span class='ds-chip'><svg width='12' height='12' viewBox='0 0 20 20' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M10 3.4a6.6 6.6 0 1 1 0 13.2 6.6 6.6 0 0 1 0-13.2z'/><path d='M10 6.6V10l2.5 1.6'/></svg>Chờ crawl</span><span class='ds-chip ds-chip-running'><svg width='12' height='12' viewBox='0 0 20 20' fill='currentColor' aria-hidden='true'><circle cx='10' cy='10' r='3.2'/></svg>Đang crawl</span><span class='ds-chip'><svg width='12' height='12' viewBox='0 0 20 20' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M4.6 10.6 8 14l7.4-8'/></svg>Xong</span><span class='ds-chip ds-chip-error'><svg width='12' height='12' viewBox='0 0 20 20' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M10 3.4 17.1 15.6H2.9z'/><path d='M10 8.1v3.3'/></svg>Lỗi</span></span>",
+      "css": ".ds-chips { display: inline-flex; align-items: center; gap: 6px; font-family: var(--font-ui); } .ds-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; border: 1px solid var(--color-rule-2); border-radius: 2px; background: var(--color-raised); color: var(--color-ink-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; } .ds-chip svg { flex: none; } .ds-chip-running { border-color: var(--color-select); background: var(--color-select-soft); color: var(--color-select); } .ds-chip-error { border-color: var(--color-error-rule); background: var(--color-error-soft); color: var(--color-error); } .ds-chip-running svg { animation: ds-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } @keyframes ds-pulse { 50% { opacity: 0.5; } }"
+    },
+    {
+      "name": "Text Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "Book metadata fields; uppercase 10.5px label above a Content-plane input whose border turns Instrument Blue on focus.",
+      "html": "<div class='ds-field'><label for='ds-title'>Tên sách</label><input id='ds-title' class='ds-input' type='text' value='Đầu Xuân Tươi Sáng' /></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; font-family: var(--font-ui); } .ds-field label { font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-ink-2); } .ds-input { width: 100%; padding: 5px 8px; border: 1px solid var(--color-rule-2); border-radius: var(--radius-tool); background: var(--color-content); color: var(--color-ink); font-family: var(--font-ui); font-size: 13px; caret-color: var(--color-ink); } .ds-input::placeholder { color: var(--color-ink-3); } .ds-input:hover { border-color: var(--color-ink-3); } .ds-input:focus { border-color: var(--color-select); } .ds-input:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; }"
+    },
+    {
+      "name": "Data Table",
+      "kind": "card",
+      "refersTo": "table-row",
+      "description": "The library: fixed-layout 30px rows under a sticky uppercase header, right-aligned tabular figures, a wash-selected row. The table that defines the world.",
+      "html": "<section class='ds-pane'><div class='ds-pane-head'>Truyện của tôi</div><table class='ds-tbl'><thead><tr><th>Truyện</th><th class='ds-num' style='width:80px'>Chương</th><th class='ds-num' style='width:56px'>Xong</th><th class='ds-num' style='width:56px'>Lỗi</th></tr></thead><tbody><tr><td class='ds-title-cell' title='Đầu Xuân Tươi Sáng'>Đầu Xuân Tươi Sáng</td><td class='ds-num'>149</td><td class='ds-num'><b>148</b></td><td class='ds-num ds-bad'><b>1</b></td></tr><tr class='ds-selected'><td class='ds-title-cell' title='HÀN PHU'>HÀN PHU</td><td class='ds-num'>233</td><td class='ds-num'><b>0</b></td><td class='ds-num'><b>0</b></td></tr><tr><td class='ds-title-cell' title='PHẠM NHÂN TU TIÊN'>PHẠM NHÂN TU TIÊN</td><td class='ds-num'>2468</td><td class='ds-num'><b>0</b></td><td class='ds-num'><b>0</b></td></tr></tbody></table></section>",
+      "css": ".ds-pane { background: var(--color-content); color: var(--color-ink); font-family: var(--font-ui); } .ds-pane-head { display: flex; align-items: center; gap: 10px; min-height: 40px; padding: 6px 12px; background: var(--color-raised); border-bottom: 1px solid var(--color-rule-2); font-size: 12px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-ink-2); } .ds-tbl { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-size: 13.5px; font-variant-numeric: tabular-nums; } .ds-tbl thead th { padding: 6px 10px; background: var(--color-raised); border-bottom: 1px solid var(--color-rule-2); color: var(--color-ink-2); font-size: 10.5px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; text-align: left; white-space: nowrap; } .ds-tbl td { height: 30px; padding: 4px 10px; border-bottom: 1px solid var(--color-rule); vertical-align: middle; } .ds-tbl tbody tr:hover { background: var(--color-row-hover); } .ds-tbl tbody tr.ds-selected, .ds-tbl tbody tr.ds-selected:hover { background: var(--color-select-soft); } .ds-tbl tbody tr.ds-selected .ds-title-cell { color: var(--color-select); } .ds-tbl .ds-title-cell { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; } .ds-tbl .ds-num { text-align: right; font-family: var(--font-mono); font-size: 12.5px; color: var(--color-ink-2); } .ds-tbl .ds-num b { color: var(--color-ink); font-weight: 600; } .ds-tbl .ds-num.ds-bad b { color: var(--color-error); }"
+    },
+    {
+      "name": "Chapter Row (row is the editor)",
+      "kind": "custom",
+      "refersTo": "editor",
+      "description": "One 30px row per chapter that expands into a second full-width row holding the title field and the contentEditable body — never a modal, never 150 open cards.",
+      "html": "<table class='ds-rowtbl'><tbody><tr><td class='ds-c'><input type='checkbox' class='ds-cb' checked aria-label='Đưa chương 1 vào sách' /></td><td class='ds-n'><b>1</b></td><td><button type='button' class='ds-rowbtn' aria-expanded='true'><svg width='13' height='13' viewBox='0 0 20 20' fill='none' stroke='currentColor' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'><path d='M8 5.5 12.5 10 8 14.5'/></svg><span>Đầu Xuân Tươi Sáng : Chương 1: Quyển 1: Nắm bắt đầu</span></button></td><td class='ds-c'><span class='ds-chip'>Xong</span></td><td class='ds-c'></td></tr><tr class='ds-open'><td colspan='5'><div class='ds-src'>Nguồn: <a href='#'>https://truyenfull.live/dau-xuan-tuoi-sang/chuong-1/</a></div><input class='ds-input ds-input-title' type='text' value='Đầu Xuân Tươi Sáng : Chương 1: Quyển 1: Nắm bắt đầu' aria-label='Tiêu đề chương 1' /><div class='ds-editor' contenteditable='true' role='textbox' aria-multiline='true' aria-label='Nội dung chương 1'>Năm ấy lượng mưa ở Bắc Kinh nhiều hơn trước đây, thậm chí còn nhiều hơn miền Nam, nơi mà Thượng Chi Đảo vừa rời khỏi.</div></td></tr></tbody></table>",
+      "css": ".ds-rowtbl { width: 100%; table-layout: fixed; border-collapse: separate; border-spacing: 0; font-family: var(--font-ui); font-size: 13.5px; color: var(--color-ink); } .ds-rowtbl td { height: 30px; padding: 4px 10px; border-bottom: 1px solid var(--color-rule); vertical-align: middle; } .ds-rowtbl .ds-open td { height: auto; padding: 0 10px 13px; background: var(--color-row-hover); } .ds-rowtbl .ds-n { width: 44px; text-align: right; font-family: var(--font-mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--color-ink-2); } .ds-rowtbl .ds-n b { color: var(--color-ink); font-weight: 600; } .ds-rowtbl .ds-c { width: 40px; } .ds-rowtbl .ds-chip { display: inline-flex; align-items: center; gap: 5px; padding: 1px 7px; border: 1px solid var(--color-rule-2); border-radius: 2px; background: var(--color-raised); color: var(--color-ink-2); font-size: 11.5px; font-weight: 600; white-space: nowrap; } .ds-rowbtn { display: flex; align-items: center; gap: 8px; width: 100%; min-width: 0; padding: 0; border: 0; background: none; color: inherit; font: inherit; font-weight: 600; text-align: left; cursor: pointer; } .ds-rowbtn span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; } .ds-rowbtn svg { flex: none; color: var(--color-ink-3); transition: transform 200ms ease; } .ds-rowbtn[aria-expanded='true'] svg { transform: rotate(90deg); } .ds-rowbtn:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } .ds-cb { width: 14px; height: 14px; margin: 0; accent-color: var(--color-select); cursor: pointer; } .ds-src { margin-top: 6px; font-size: 12px; color: var(--color-ink-2); } .ds-src a { color: var(--color-select); text-underline-offset: 2px; } .ds-input { width: 100%; padding: 5px 8px; border: 1px solid var(--color-rule-2); border-radius: var(--radius-tool); background: var(--color-content); color: var(--color-ink); font-family: var(--font-ui); font-size: 13px; caret-color: var(--color-ink); } .ds-input:focus { border-color: var(--color-select); } .ds-input:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } .ds-input-title { margin-top: 8px; font-weight: 600; } .ds-editor { max-width: 72ch; margin-top: 9px; padding: 11px 13px; border: 1px solid var(--color-rule); border-radius: var(--radius-tool); background: var(--color-content); font-size: 14px; line-height: 1.65; overflow-wrap: anywhere; }"
+    },
+    {
+      "name": "Readout Numeral",
+      "kind": "custom",
+      "refersTo": "readout-numeral",
+      "description": "The pane's single landmark: the crawled count at 52px platform mono with tabular figures, its denominator, and an uppercase caption.",
+      "html": "<div class='ds-readout'><span class='ds-readout-n'>148</span><span class='ds-readout-of'>/149</span><span class='ds-readout-what'>chương đã crawl</span></div>",
+      "css": ".ds-readout { display: flex; align-items: baseline; gap: 9px; font-family: var(--font-ui); } .ds-readout-n { font-family: var(--font-mono); font-size: 52px; font-weight: 600; line-height: 0.95; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; color: var(--color-ink); } .ds-readout-of { font-family: var(--font-mono); font-size: 17px; color: var(--color-ink-2); font-variant-numeric: tabular-nums; } .ds-readout-what { font-size: 11px; font-weight: 650; letter-spacing: 0.07em; text-transform: uppercase; color: var(--color-ink-2); } @media (max-width: 700px) { .ds-readout-n { font-size: 42px; } }"
+    },
+    {
+      "name": "Jobs Strip",
+      "kind": "custom",
+      "refersTo": "jobs-strip",
+      "description": "The docked job: 36px idle, 58px while a crawl runs, with a transform-driven progress bar, mono counts, and a collapsible raw log above it.",
+      "html": "<footer class='ds-jobs'><div class='ds-log'><p><span>22:28:43</span>[12/233] https://xtruyen.vn/truyen/han-phu/chuong-12/ — Đang tải &amp; trích xuất…</p><p class='ds-err'><span>22:28:40</span>[6/233] https://xtruyen.vn/truyen/han-phu/chuong-6/ — page.goto: net::ERR_INTERNET_DISCONNECTED</p></div><div class='ds-jobs-bar ds-jobs-active'><span class='ds-state'><svg width='12' height='12' viewBox='0 0 20 20' fill='currentColor' aria-hidden='true'><circle cx='10' cy='10' r='3.2'/></svg>HÀN PHU</span><span class='ds-counts'>12/233 chương<b class='ds-bad'>1 lỗi</b></span><span class='ds-end'><button type='button' class='ds-btn-quiet ds-btn-tiny'>Nhật ký (13)</button></span><div class='ds-track'><i style='transform: scaleX(0.052)'></i></div></div></footer>",
+      "css": ".ds-jobs { background: var(--color-chrome); border-top: 1px solid var(--color-rule-2); font-family: var(--font-ui); } .ds-jobs-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; min-height: 36px; padding: 5px 14px; font-size: 12.5px; color: var(--color-ink-2); } .ds-jobs-bar.ds-jobs-active { min-height: 58px; padding: 9px 14px 11px; } .ds-state { display: flex; align-items: center; gap: 7px; min-width: 0; color: var(--color-ink); font-weight: 600; } .ds-state svg { flex: none; color: var(--color-select); animation: ds-pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite; } .ds-counts { display: flex; align-items: center; gap: 10px; font-family: var(--font-mono); font-size: 12px; font-variant-numeric: tabular-nums; } .ds-counts .ds-bad { color: var(--color-error); font-weight: 600; } .ds-end { display: flex; align-items: center; gap: 8px; margin-left: auto; } .ds-track { order: 3; flex: 1 1 100%; height: 6px; border: 1px solid var(--color-rule); border-radius: 2px; background: var(--color-sunken); overflow: hidden; } .ds-track > i { display: block; width: 100%; height: 100%; transform-origin: left center; background: var(--color-select); transition: transform 240ms cubic-bezier(0.22, 1, 0.36, 1); } .ds-log { max-height: 190px; overflow: auto; padding: 8px 14px 10px; border-top: 1px solid var(--color-rule); background: var(--color-sunken); font-family: var(--font-mono); font-size: 11.5px; line-height: 1.6; color: var(--color-ink-2); } .ds-log p { margin: 0; word-break: break-word; } .ds-log p span { margin-right: 8px; color: var(--color-ink-3); } .ds-log p.ds-err { color: var(--color-error); } .ds-btn-quiet { display: inline-flex; align-items: center; gap: 6px; padding: 5px 11px; border: 1px solid transparent; border-radius: var(--radius-tool); background: transparent; color: var(--color-ink-2); font: inherit; font-size: 13px; white-space: nowrap; cursor: pointer; } .ds-btn-quiet:hover { background: var(--color-btn-hover); color: var(--color-ink); } .ds-btn-quiet:focus-visible { outline: 2px solid var(--color-select); outline-offset: 1px; } .ds-btn-tiny { padding: 2px 8px; font-size: 12px; } @keyframes ds-pulse { 50% { opacity: 0.5; } }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Thư viện để bàn — the archivist's desktop instrument",
+    "overview": "This is a tool for one person archiving Vietnamese serial novels onto a Kindle. The world it lives in is a desk instrument in the tradition of a professional ebook library manager: the library is a dense hairline table, and a crawl is a job you watch run. It refuses two category defaults at once — the converter page (centered card, URL box, blue button, spinner) and the cream-paper-plus-serif rendition of anything bookish. Precision of state over warmth of subject: a crawl is not romantic, it is 148 of 149 chapters done with one failure, and the interface says exactly that.\n\nThe system is one stylesheet of 22 custom properties and no component variants for the dark scheme. Light desktop chrome (#ececec) surrounds raised work surfaces (#f7f7f7) on white content (#ffffff), separated only by hairlines. Two reserved colors exist and nothing else is colored: blue is selection and live work, red is failure. Every figure a person compares — chapter counts, cursors, timestamps — is set in a mono face with tabular numerals, and exactly one numeral per pane is allowed to be monumental. Rows are 30px, the command bar is 44px, pane heads are 40px, and the jobs strip grows from 36px to 58px when a job is in flight.\n\nThe interface rides the operating system's own faces and carries no webfont pipeline, because the tool runs locally with no network dependency. All copy is Vietnamese and stays Vietnamese; the vocabulary in use (\"chương\", \"crawl\", \"xuất EPUB\", \"Nhật ký\", \"Crawl tiếp\", \"Chờ crawl\", \"Đang crawl\") is part of the visual system, not a translation layer over it. PRODUCT.md's fourth principle — the deliverable is the EPUB on the Kindle, not time spent in the tool — is what justifies the density: nothing here is decorative, everything is a state or a control.",
+    "keyCharacteristics": [
+      "Dense hairline data tables on light desktop chrome; 30px rows; separation by 1px rules, never by shadow or fill.",
+      "Two reserved colors only — selection/work blue and failure red — never decorative; all other color is neutral gray.",
+      "One display-scale numeral per pane (52px mono, tabular, 600, −0.03em) as the eye's landing point.",
+      "Flat: no cast shadows anywhere; the only shadow in the system is the 1px inset press on an active button.",
+      "A docked jobs strip that carries a live crawl: state, progress bar, cursor/total, error count, collapsible raw log.",
+      "One dark scheme, produced by swapping the same 22 custom properties — no parallel dark stylesheet.",
+      "Vietnamese UI copy, OS faces, no webfonts, no network dependency."
+    ],
+    "rules": [
+      {
+        "name": "The Two Reserved Colors Rule",
+        "section": "colors",
+        "body": "Blue means selection or work in flight; red means failure. Nothing else in the interface may be blue or red, and neither may be used decoratively, for emphasis, or for warning. Every remaining surface is a neutral gray."
+      },
+      {
+        "name": "The One Reserved Color Per State Rule",
+        "section": "colors",
+        "body": "A chapter's state wears at most one reserved color: running is blue, error is red, and pending and done wear no color at all — they are distinguished by ink weight and by the chip's border. There is no yellow, green, or amber state anywhere."
+      },
+      {
+        "name": "The Browser Surface Rule",
+        "section": "colors",
+        "body": "The browser's own surfaces are themed with the same tokens: selection is Instrument Blue with white text, focus is a 2px Instrument Blue outline at 1px offset, the text caret is Ink, and the HTML theme-color is Desk Chrome (#ececec light, #262626 dark) so the window frame matches the app."
+      },
+      {
+        "name": "The Monumental Numeral Rule",
+        "section": "typography",
+        "body": "A pane contains at most one numeral at display scale, and it must be the pane's most important figure — chapters crawled, or chapters extracted. It is never decorative, never repeated, and never larger than 52px. Everything else is set at working sizes."
+      },
+      {
+        "name": "The Tabular Figures Rule",
+        "section": "typography",
+        "body": "Every number a person compares across rows or across time is mono and font-variant-numeric: tabular-nums: table figures, the chapter number, the monumental numeral and its denominator, a job's cursor/total. Proportional figures appear nowhere in the interface."
+      },
+      {
+        "name": "The Edge Label Rule",
+        "section": "typography",
+        "body": "Uppercase micro-labels exist only where they label something real — a table column, a form field, a region name in a pane head. A label is never a decorative kicker above a heading, and it never carries information the heading already gives."
+      },
+      {
+        "name": "The OS Faces Rule",
+        "section": "typography",
+        "body": "The interface uses the operating system's UI stack and mono stack, with no webfont and no network request. This is a product constraint (the tool runs locally and must work offline), not a typographic preference; a webfont would be a functional regression."
+      },
+      {
+        "name": "The Fixed Table Rule",
+        "section": "layout",
+        "body": "Every data table is table-layout: fixed with ellipsizing cells. If a value does not fit, it is truncated with the full value in a title attribute — a table is never widened by its content, and a row is never wrapped to two lines."
+      },
+      {
+        "name": "The 30px Row Rule",
+        "section": "layout",
+        "body": "Data rows are 30px and never grow; an expanded chapter's editor opens into a separate full-width row below the collapsed one, so the collapsed row keeps its 30px and its place in the scan. Command bar 44px, pane heads 40px, jobs strip 36px idle / 58px active — these four heights are the system's skeleton."
+      },
+      {
+        "name": "The 42rem Floor Rule",
+        "section": "layout",
+        "body": "Below 700px a data table keeps a 42rem minimum width and its pane scrolls horizontally. Crushing columns is never the responsive answer; scrolling a table is."
+      },
+      {
+        "name": "The Drawn-Not-Cast Rule",
+        "section": "elevation",
+        "body": "Separation is a hairline, not a shadow. A new surface is introduced with a 1px rule and a fill from the plane family; if a design needs a cast shadow to read, the plane hierarchy — not the shadow — is wrong."
+      },
+      {
+        "name": "The Scroll Chrome Rule",
+        "section": "elevation",
+        "body": "Scrollbars are part of the surface: an 11px rail in the Sunken plane with a Hairline Strong thumb inset by a 3px Sunken border and rounded 6px, darkening to Ink 3 on hover. Both axes match, and the corner is filled with the rail."
+      },
+      {
+        "name": "The 3px Ceiling Rule",
+        "section": "shapes",
+        "body": "Radius tops out at 3px. If a surface needs to feel softer, the answer is a plane change or a hairline — not a bigger radius."
+      },
+      {
+        "name": "The Hairline Box Rule",
+        "section": "shapes",
+        "body": "Every enclosed region is drawn with a 1px rule: the chapter editor, the banner, the input, the chip, the progress track. A filled box with no border reads as a plane, not as a component."
+      }
+    ],
+    "dos": [
+      "Do keep every figure a person compares in the platform mono with font-variant-numeric: tabular-nums — table cells, cursors, counts, the monumental numeral.",
+      "Do reserve Instrument Blue for selection and live work and Failure Red for failure; leave every other surface neutral.",
+      "Do express state in the row itself — chip, checkbox enablement, row action, and the numeral — so a chapter's condition is readable at 30px without expanding anything.",
+      "Do separate surfaces with 1px Hairline / Hairline Strong rules and a plane change (Chrome → Raised → Content → Sunken); introduce depth with planes, not shadows.",
+      "Do use table-layout: fixed and ellipsize long titles, keeping the full value in a title attribute.",
+      "Do keep the four skeleton heights: 44px command bar, 40px pane heads, 30px rows, 36px/58px jobs strip.",
+      "Do open a chapter editor as a second full-width row under its collapsed 30px row, and keep everything else at 3px radius (2px for chips, segments, and bars).",
+      "Do keep all UI copy in Vietnamese, riding the OS UI and mono stacks with no webfont.",
+      "Do send every long-running crawl into the docked jobs strip with a label, a cursor/total, an error count, and the collapsible raw log — and keep the log's auto-scroll conditional on the user already being at the bottom.",
+      "Do animate progress with transform: scaleX() over 240ms (cubic-bezier(0.22, 1, 0.36, 1)), the chevron with a 200ms rotation, and running indicators with a pulse — state-driven motion only."
+    ],
+    "donts": [
+      "Don't use blue or red decoratively, for emphasis, or for a third meaning; there is no warning color, no success green, and no informational amber.",
+      "Don't add a cast shadow, a glow, or a floating surface; the only permitted shadow is the inset press cue on an active neutral button.",
+      "Don't round anything above 3px — no pills, no capsules, no circular icon buttons, no card corners.",
+      "Don't let content widen a table or wrap a row: truncate with ellipsis, never crush the title column, and let a narrow viewport scroll the table sideways behind its 42rem floor.",
+      "Don't replace the docked jobs strip with a spinner, a toast, or a modal; a running crawl is a job, and it is always visible.",
+      "Don't introduce a second reserved color, a second accent, or a second display numeral in a pane.",
+      "Don't add a webfont, an icon font, an icon library, or an emoji glyph; the interface must work with no network dependency.",
+      "Don't use uppercase micro-labels as decorative kickers above headings; they exist only on real columns, fields, and region names.",
+      "Don't open a chapter editor in a modal, a drawer, or an inline expansion that changes the collapsed row's height — the row is the row.",
+      "Don't translate the UI copy: \"chương\", \"crawl\", \"xuất EPUB\", \"Nhật ký\", \"Crawl tiếp\", \"Chờ crawl\", and \"Đang crawl\" are the system's words, not placeholders."
+    ]
+  }
+}

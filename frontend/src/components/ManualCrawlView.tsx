@@ -1,277 +1,395 @@
 import { useRef, useState } from "react";
-import ChapterCard from "./ChapterCard";
-import { extractChapters, extractOne } from "../api";
+import { extractChapters } from "../api";
+import { blocksToHtml } from "../blocksToHtml";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { ExtractedChapter, SupportedSite } from "../types";
+import { RunCrawl } from "../useCrawlJob";
 import { useEpubExport } from "../useEpubExport";
+import ChapterCard, { PendingChapterRow } from "./ChapterCard";
+import { Icon } from "./Icon";
 
 interface ChapterState {
   id: string;
   order: number;
-  data: ExtractedChapter;
+  url: string;
   title: string;
+  data: ExtractedChapter | null;
   included: boolean;
-  retrying: boolean;
   version: number;
-  // Whether the user has clicked "Thử lại" for this chapter at least once —
-  // the manual-entry fallback only shows up after that, so people try an
-  // actual retry (many failures are transient) before resorting to it.
   retriedOnce: boolean;
 }
 
-interface LogLine {
-  text: string;
-  isError: boolean;
-}
-
-function toChapterState(
-  data: ExtractedChapter,
-  order: number,
-  id: string,
-  version: number,
-  retriedOnce = false
-): ChapterState {
+function toChapterState(data: ExtractedChapter, order: number, version: number, retriedOnce: boolean): ChapterState {
   return {
-    id,
+    id: `chapter-${order}`,
     order,
-    data,
+    url: data.sourceUrl,
     title: data.error ? data.sourceUrl : data.title,
+    data,
     included: !data.error,
-    retrying: false,
     version,
     retriedOnce,
   };
 }
 
-export default function ManualCrawlView({ supportedSites }: { supportedSites: SupportedSite[] }) {
+export default function ManualCrawlView({
+  run,
+  running,
+  supportedSites,
+}: {
+  run: RunCrawl;
+  running: boolean;
+  supportedSites: SupportedSite[];
+}) {
   const [urlsText, setUrlsText] = useState("");
   const [bookTitle, setBookTitle] = useState("");
   const [author, setAuthor] = useState("");
   const [language, setLanguage] = useState("vi");
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
-  const [isCrawling, setIsCrawling] = useState(false);
-  const [progressPct, setProgressPct] = useState(0);
-  const [logLines, setLogLines] = useState<LogLine[]>([]);
-
   const [chapters, setChapters] = useState<ChapterState[]>([]);
-  const [retryAllRunning, setRetryAllRunning] = useState(false);
-  const [retryAllLabel, setRetryAllLabel] = useState("Thử lại tất cả chương lỗi");
+  const [crawlingOrder, setCrawlingOrder] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [badUrls, setBadUrls] = useState<string[]>([]);
   const { isExporting, exportBook } = useEpubExport();
 
-  const bodyRefs = useRef(new Map<string, HTMLDivElement | null>());
+  // Live chapter HTML by chapter id: kept for every chapter the user has
+  // opened, so a collapsed chapter still exports its edited content.
+  const bodies = useRef(new Map<string, string>());
 
-  async function handleExtract() {
-    const urls = urlsText
+  const crawled = chapters.filter((c) => c.data !== null);
+  const failed = crawled.filter((c) => c.data?.error);
+  const ok = crawled.length - failed.length;
+
+  function readUrls(): string[] {
+    return urlsText
       .split("\n")
       .map((u) => u.trim())
       .filter(Boolean);
+  }
+
+  async function handleExtract() {
+    const urls = readUrls();
+    setBadUrls([]);
+    setError(null);
 
     if (urls.length === 0) {
-      alert("Vui lòng nhập ít nhất một URL.");
+      setError("Nhập ít nhất một URL chương.");
       return;
     }
-
     const unsupported = urls.filter((u) => !isSupportedUrl(u, supportedSites));
     if (unsupported.length > 0) {
-      alert(`Các URL sau không thuộc trang được hỗ trợ:\n${unsupported.join("\n")}`);
+      setBadUrls(unsupported);
+      setError(`${unsupported.length} URL không thuộc trang được hỗ trợ.`);
       return;
     }
 
-    setIsCrawling(true);
-    setProgressPct(0);
-    setLogLines([]);
-    setChapters([]);
+    setChapters(
+      urls.map((url, i) => ({
+        id: `chapter-${i + 1}`,
+        order: i + 1,
+        url,
+        title: url,
+        data: null,
+        included: false,
+        version: 0,
+        retriedOnce: false,
+      }))
+    );
 
-    try {
-      await extractChapters(urls, (event) => {
-        if (event.type === "progress" && event.index !== undefined && event.total) {
-          setProgressPct(((event.index + 1) / event.total) * 100);
-          setLogLines((lines) => [
-            ...lines,
-            { text: `[${event.index! + 1}/${event.total}] ${event.url} — ${event.message}`, isError: false },
-          ]);
-        } else if (event.type === "error" && event.index !== undefined && event.total) {
-          setLogLines((lines) => [
-            ...lines,
-            { text: `[${event.index! + 1}/${event.total}] ${event.url} — ${event.message}`, isError: true },
-          ]);
-        } else if (event.type === "done" && event.chapters) {
-          setProgressPct(100);
-          const newChapters = event.chapters.map((data, i) => toChapterState(data, i + 1, `${i}-${data.sourceUrl}`, 0));
-          setChapters(newChapters);
+    await run("Crawl thủ công", (emit) => extractChapters(urls, emit), (event) => {
+      if ((event.type === "progress" || event.type === "error") && event.index !== undefined) {
+        setCrawlingOrder(event.index + 1);
+      }
+      if (event.type === "error" && event.index !== undefined && event.message) {
+        const order = event.index + 1;
+        setChapters((cs) =>
+          cs.map((c) =>
+            c.order === order && !c.data
+              ? { ...c, data: { sourceUrl: c.url, title: c.title, blocks: [], error: event.message } }
+              : c
+          )
+        );
+      }
+      if (event.type === "done" && event.chapters) {
+        const results = event.chapters;
+        setChapters((cs) =>
+          cs.map((c) => {
+            const data = results[c.order - 1];
+            if (!data) return c;
+            // A row that was already marked failed has to remount to pick up the
+            // content this pass extracted, hence the version bump.
+            return toChapterState(data, c.order, c.version + (c.data ? 1 : 0), false);
+          })
+        );
+        const firstOk = results.find((r) => !r.error);
+        if (firstOk) setBookTitle((current) => current || firstOk.title);
+      }
+    });
+    setCrawlingOrder(null);
+  }
 
-          const firstOk = newChapters.find((c) => !c.data.error);
-          if (firstOk) {
-            setBookTitle((current) => current || firstOk.title);
-          }
+  async function retryOrders(orders: number[]) {
+    const targets = chapters.filter((c) => orders.includes(c.order));
+    if (targets.length === 0) return;
+    setError(null);
+
+    await run(
+      targets.length === 1 ? "Thử lại một chương" : `Thử lại ${targets.length} chương lỗi`,
+      (emit) => extractChapters(targets.map((c) => c.url), emit),
+      (event) => {
+        if ((event.type === "progress" || event.type === "error") && event.index !== undefined) {
+          setCrawlingOrder(targets[event.index]?.order ?? null);
         }
-      });
-    } catch (err) {
-      setLogLines((lines) => [...lines, { text: `Lỗi kết nối: ${(err as Error).message}`, isError: true }]);
-    } finally {
-      setIsCrawling(false);
-    }
-  }
-
-  async function retrySingle(id: string): Promise<boolean> {
-    const target = chapters.find((c) => c.id === id);
-    if (!target) return false;
-
-    setChapters((cs) => cs.map((c) => (c.id === id ? { ...c, retrying: true, retriedOnce: true } : c)));
-    try {
-      const data = await extractOne(target.data.sourceUrl);
-      setChapters((cs) =>
-        cs.map((c) => (c.id === id ? toChapterState(data, c.order, c.id, c.version + 1, true) : c))
-      );
-      return !data.error;
-    } catch (err) {
-      setChapters((cs) => cs.map((c) => (c.id === id ? { ...c, retrying: false } : c)));
-      alert((err as Error).message);
-      return false;
-    }
-  }
-
-  async function handleRetryAll() {
-    // Fixed snapshot: a chapter that fails again during this pass isn't
-    // re-queued, so one persistently-failing URL can't loop forever.
-    const failedIds = chapters.filter((c) => c.data.error).map((c) => c.id);
-    setRetryAllRunning(true);
-    for (let i = 0; i < failedIds.length; i++) {
-      setRetryAllLabel(`Đang thử lại ${i + 1}/${failedIds.length}...`);
-      await retrySingle(failedIds[i]);
-    }
-    setRetryAllRunning(false);
-    setRetryAllLabel("Thử lại tất cả chương lỗi");
+        if (event.type === "done" && event.chapters) {
+          const results = event.chapters;
+          targets.forEach((t) => bodies.current.delete(t.id));
+          setChapters((cs) =>
+            cs.map((c) => {
+              const i = targets.findIndex((t) => t.order === c.order);
+              if (i === -1 || !results[i]) return c;
+              return toChapterState(results[i], c.order, c.version + 1, true);
+            })
+          );
+        }
+      }
+    );
+    setCrawlingOrder(null);
   }
 
   async function handleExport() {
+    setError(null);
     try {
-      const payload = chapters.map((c) => ({
-        title: c.title,
-        includeInBook: c.included,
-        contentHtml: bodyRefs.current.get(c.id)?.innerHTML || "",
-      }));
+      const payload = chapters
+        .filter((c) => c.included && c.data && !c.data.error)
+        .map((c) => ({
+          title: c.title,
+          includeInBook: true,
+          contentHtml: bodies.current.get(c.id) ?? blocksToHtml(c.data!.blocks),
+        }));
       await exportBook({ title: bookTitle || "Untitled Book", author: author || "Unknown", language }, payload, coverFile);
     } catch (err) {
-      alert((err as Error).message);
+      setError((err as Error).message);
     }
   }
 
-  const failedCount = chapters.filter((c) => c.data.error).length;
-  const okCount = chapters.length - failedCount;
-
   return (
     <>
-      <section className="card">
-        <h2>1. Nguồn nội dung</h2>
-        <label htmlFor="urls">Danh sách URL (mỗi dòng là một chapter, theo đúng thứ tự)</label>
-        <textarea
-          id="urls"
-          rows={6}
-          placeholder={"https://example.com/chuong-1\nhttps://example.com/chuong-2"}
-          value={urlsText}
-          onChange={(e) => setUrlsText(e.target.value)}
-        />
-        <p className="supported-sites">
-          {supportedSites.length === 0
-            ? "Đang tải danh sách trang được hỗ trợ..."
-            : `Chỉ hỗ trợ các trang: ${supportedSites.map((s) => `${s.name} (${s.domain})`).join(", ")}`}
-        </p>
-
-        <div className="grid">
-          <div>
-            <label htmlFor="title">Tên sách (để trống sẽ lấy từ chapter đầu tiên)</label>
-            <input id="title" type="text" value={bookTitle} onChange={(e) => setBookTitle(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="author">Tác giả</label>
-            <input id="author" type="text" value={author} onChange={(e) => setAuthor(e.target.value)} />
-          </div>
-          <div>
-            <label htmlFor="language">Ngôn ngữ</label>
-            <select id="language" value={language} onChange={(e) => setLanguage(e.target.value)}>
-              <option value="vi">Tiếng Việt</option>
-              <option value="en">English</option>
-            </select>
-          </div>
-          <div>
-            <label htmlFor="cover-file">Ảnh bìa (tùy chọn)</label>
-            <input
-              id="cover-file"
-              type="file"
-              accept="image/*"
-              onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-            />
-          </div>
+      <section className="pane">
+        <div className="pane-head">
+          <h2>Nguồn nội dung</h2>
+          <span className="end text-xs text-ink-2">Không cần tài khoản truyện — chỉ cần URL</span>
         </div>
 
-        <button disabled={isCrawling} onClick={handleExtract}>
-          Crawl & Trích xuất nội dung
-        </button>
+        <div className="pane-body p-3">
+          <div className="field">
+            <label htmlFor="urls">Danh sách URL — mỗi dòng một chương, theo đúng thứ tự</label>
+            <textarea
+              id="urls"
+              className="input"
+              rows={8}
+              placeholder={"https://xtruyen.vn/truyen/ten-truyen/chuong-1/\nhttps://xtruyen.vn/truyen/ten-truyen/chuong-2/"}
+              value={urlsText}
+              onChange={(e) => setUrlsText(e.target.value)}
+            />
+          </div>
 
-        {logLines.length > 0 && (
-          <div className="progress">
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progressPct}%` }} />
+          <div className="sites-line mt-2">
+            <span className="text-xs text-ink-2">Chỉ hỗ trợ:</span>
+            {supportedSites.length === 0 ? (
+              <span className="text-xs text-ink-3">đang tải danh sách trang…</span>
+            ) : (
+              supportedSites.map((s) => (
+                <span className="chip" key={s.domain}>
+                  {s.name}
+                  <span className="text-ink-3">{s.domain}</span>
+                </span>
+              ))
+            )}
+          </div>
+
+          {error && (
+            <div className="banner mt-3">
+              <Icon name="alert" size={14} />
+              <div className="min-w-0">
+                <p>{error}</p>
+                {badUrls.length > 0 && (
+                  <ul>
+                    {badUrls.map((u) => (
+                      <li key={u}>{u}</li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </div>
-            <ul id="progress-log">
-              {logLines.map((line, i) => (
-                <li key={i} className={line.isError ? "error" : undefined}>
-                  {line.text}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </section>
-
-      {chapters.length > 0 && (
-        <section className="card">
-          <h2>2. Preview & chỉnh sửa</h2>
-          <p className="hint">
-            Bạn có thể sửa tiêu đề, nội dung từng chapter, hoặc bỏ chọn chapter không muốn đưa vào sách.
-          </p>
-
-          <div className={`result-summary${failedCount > 0 ? " has-errors" : ""}`}>
-            {failedCount === 0
-              ? `✅ Hoàn tất: ${okCount}/${chapters.length} chapter trích xuất thành công.`
-              : `⚠️ Hoàn tất: ${okCount}/${chapters.length} chapter thành công, ${failedCount} chapter lỗi.`}
-          </div>
-
-          {failedCount > 0 && (
-            <button id="btn-retry-all" disabled={retryAllRunning} onClick={handleRetryAll}>
-              {retryAllLabel}
-            </button>
           )}
 
-          <div id="chapters">
-            {chapters.map((c) => (
-              <ChapterCard
-                key={`${c.id}-${c.version}`}
-                chapter={c.data}
-                order={c.order}
-                title={c.title}
-                included={c.included}
-                retrying={c.retrying}
-                retriedOnce={c.retriedOnce}
-                onTitleChange={(title) =>
-                  setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)))
-                }
-                onIncludedChange={(included) =>
-                  setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, included } : x)))
-                }
-                onRetry={() => retrySingle(c.id)}
-                bodyRef={(el) => bodyRefs.current.set(c.id, el)}
+          <div className="fields mt-4">
+            <div className="field">
+              <label htmlFor="title">Tên sách</label>
+              <input
+                id="title"
+                type="text"
+                className="input"
+                placeholder="Để trống sẽ lấy từ chương đầu tiên"
+                value={bookTitle}
+                onChange={(e) => setBookTitle(e.target.value)}
               />
-            ))}
+            </div>
+            <div className="field">
+              <label htmlFor="author">Tác giả</label>
+              <input
+                id="author"
+                type="text"
+                className="input"
+                value={author}
+                onChange={(e) => setAuthor(e.target.value)}
+              />
+            </div>
+            <div className="field">
+              <label htmlFor="language">Ngôn ngữ</label>
+              <select
+                id="language"
+                className="input"
+                value={language}
+                onChange={(e) => setLanguage(e.target.value)}
+              >
+                <option value="vi">Tiếng Việt</option>
+                <option value="en">English</option>
+              </select>
+            </div>
+            <div className="field">
+              <label htmlFor="cover-file">Ảnh bìa (tùy chọn)</label>
+              <input
+                id="cover-file"
+                type="file"
+                className="file-input"
+                accept="image/*"
+                onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
+              />
+            </div>
           </div>
 
-          <button disabled={isExporting} onClick={handleExport}>
-            {isExporting ? "Đang xuất..." : "Xuất EPUB"}
+          <button type="button" className="btn btn-primary mt-3" disabled={running} onClick={handleExtract}>
+            <Icon name="crawl" size={14} />
+            {running ? "Đang crawl…" : "Crawl & trích xuất nội dung"}
           </button>
-        </section>
-      )}
+        </div>
+      </section>
+
+      <section className="pane">
+        <div className="pane-head">
+          <h2>Kết quả</h2>
+          <span className="end">
+            {failed.length > 0 && (
+              <button
+                type="button"
+                className="btn btn-tiny"
+                disabled={running}
+                onClick={() => retryOrders(failed.map((f) => f.order))}
+              >
+                <Icon name="retry" size={13} />
+                Thử lại {failed.length} chương lỗi
+              </button>
+            )}
+            <button
+              type="button"
+              className="btn btn-tiny"
+              disabled={isExporting || ok === 0}
+              onClick={handleExport}
+            >
+              <Icon name="download" size={13} />
+              {isExporting ? "Đang xuất…" : "Xuất EPUB"}
+            </button>
+          </span>
+        </div>
+
+        {chapters.length === 0 ? (
+          <div className="pane-body">
+            <div className="empty">
+              <h3>Chưa có nội dung nào</h3>
+              <p>
+                Dán danh sách URL chương ở khung bên trái — mỗi dòng một chương, đúng theo thứ tự bạn muốn trong
+                sách — rồi bấm Crawl &amp; trích xuất nội dung.
+              </p>
+              <ol>
+                <li>Tool mở từng trang bằng trình duyệt ẩn, đọc nội dung đã render nên không bị chặn copy.</li>
+                <li>Chương lỗi có nút Thử lại; thử lại không được thì bạn tự dán nội dung vào.</li>
+                <li>Sửa tiêu đề và nội dung ngay trong bảng, rồi xuất EPUB để đọc trên Kindle.</li>
+              </ol>
+              <p>
+                Truyện dài hàng trăm chương nên dùng tab Truyện của tôi: chỉ cần dán URL trang truyện và tiến độ
+                được lưu lại.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
+            <div className="detail">
+              <div className="readout">
+                <span className="readout-n">{ok}</span>
+                <span className="readout-of">/{crawled.length || chapters.length}</span>
+                <span className="readout-what">chương trích xuất được</span>
+              </div>
+              <p className="text-xs text-ink-2">
+                {chapters.length - crawled.length > 0 && (
+                  <span>{chapters.length - crawled.length} chờ crawl</span>
+                )}
+                {chapters.length - crawled.length > 0 && failed.length > 0 && <span> · </span>}
+                {failed.length > 0 && <span className="font-semibold text-error">{failed.length} lỗi</span>}
+                {crawled.length > 0 && failed.length === 0 && chapters.length === crawled.length && (
+                  <span>Tất cả chương đã trích xuất thành công</span>
+                )}
+              </p>
+            </div>
+
+            <div className="pane-body">
+              <table className="tbl">
+                <thead>
+                  <tr>
+                    <th className="w-9" />
+                    <th className="num w-11">#</th>
+                    <th>Chương</th>
+                    <th className="w-32">Trạng thái</th>
+                    <th className="w-28" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {chapters.map((c) =>
+                    c.data === null ? (
+                      <PendingChapterRow
+                        key={`pending-${c.order}-${c.version}`}
+                        order={c.order}
+                        title={c.title}
+                        url={c.url}
+                        crawling={crawlingOrder === c.order}
+                      />
+                    ) : (
+                      <ChapterCard
+                        key={`${c.id}-${c.version}`}
+                        chapter={c.data}
+                        order={c.order}
+                        title={c.title}
+                        included={c.included}
+                        retrying={crawlingOrder === c.order}
+                        retriedOnce={c.retriedOnce}
+                        onTitleChange={(title) =>
+                          setChapters((cs) => cs.map((x) => (x.order === c.order ? { ...x, title } : x)))
+                        }
+                        onIncludedChange={(included) =>
+                          setChapters((cs) => cs.map((x) => (x.order === c.order ? { ...x, included } : x)))
+                        }
+                        onRetry={() => retryOrders([c.order])}
+                        onBodyChange={(html) => bodies.current.set(c.id, html)}
+                      />
+                    )
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </section>
     </>
   );
 }
