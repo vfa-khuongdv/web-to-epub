@@ -11,6 +11,7 @@ declare module "epub-gen" {
     cover?: string;
     lang?: string;
     tocTitle?: string;
+    tempDir?: string;
     content: EpubChapter[];
     css?: string;
     verbose?: boolean;

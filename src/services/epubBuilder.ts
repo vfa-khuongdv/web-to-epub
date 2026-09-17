@@ -55,6 +55,9 @@ export async function buildEpub(metadata: BookMetadata, chapters: ExportChapter[
       lang: metadata.language || "en",
       cover: metadata.coverUrl || undefined,
       tocTitle: "Mục lục",
+      // Mặc định epub-gen giải nén vào node_modules/epub-gen/tempDir — thư mục
+      // này chỉ root ghi được trong ảnh Docker (app chạy bằng user `node`).
+      tempDir: os.tmpdir(),
       css: KINDLE_CSS,
       content: included.map((c) => ({ title: c.title, data: c.contentHtml })),
     },

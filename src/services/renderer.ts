@@ -4,7 +4,10 @@ let browserPromise: Promise<Browser> | null = null;
 
 function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    browserPromise = chromium.launch({ headless: true });
+    // Sandbox của Chromium cần user namespace — không có trong container nên
+    // ảnh Docker bật CHROMIUM_NO_SANDBOX=1; chạy local vẫn giữ sandbox.
+    const args = process.env.CHROMIUM_NO_SANDBOX === "1" ? ["--no-sandbox"] : [];
+    browserPromise = chromium.launch({ headless: true, args });
   }
   return browserPromise;
 }

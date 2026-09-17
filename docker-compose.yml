@@ -1,0 +1,10 @@
+services:
+  web-to-epub:
+    image: vfakhuongdv/web-to-epub:latest
+    container_name: web-to-epub
+    ports:
+      - "3100:3100"
+    volumes:
+      # Thư viện truyện (SQLite + ảnh bìa) lưu ra host để không mất khi xoá container.
+      - ./data:/app/data
+    restart: unless-stopped

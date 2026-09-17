@@ -78,6 +78,9 @@ tool-crawler-/
 │       └── components/
 │           └── ChapterCard.tsx  # Thẻ preview/edit từng chapter (kể cả trạng thái lỗi + nút thử lại)
 ├── public/                       # Build output của frontend (tự sinh, không sửa tay)
+├── data/                         # Thư viện truyện: stories.db (SQLite) + covers/ (không commit)
+├── Dockerfile                    # Image multi-stage: build tsc+vite → runtime Node 22 + Chromium
+├── docker-compose.yml            # Chạy image từ Docker Hub, mount ./data
 ├── package.json                  # npm workspaces: root (backend) + frontend
 └── tsconfig.json
 ```
@@ -216,7 +219,54 @@ npm run dev:frontend   # frontend: Vite dev server (proxy /api -> localhost:3100
 Lưu ý: `public/` là thư mục **sinh ra** bởi `npm run build` (Vite build vào
 thẳng đó) — không sửa tay file trong `public/`, sửa trong `frontend/src/`.
 
-## 8. Giới hạn hiện tại (MVP)
+## 8. Chạy bằng Docker
+
+Image đã build sẵn trên Docker Hub: **`vfakhuongdv/web-to-epub`** (multi-arch:
+`linux/amd64` + `linux/arm64`). Người dùng chỉ cần Docker, không cần cài
+Node/Chromium.
+
+```bash
+docker run -d --name web-to-epub -p 3100:3100 -v "$PWD/data:/app/data" \
+  vfakhuongdv/web-to-epub:latest
+```
+
+Hoặc dùng `docker-compose.yml` có sẵn trong repo:
+
+```bash
+docker compose up -d
+```
+
+Mở `http://localhost:3100`. Đổi cổng host bằng cách sửa `-p 8080:3100`
+(cổng **bên trong** container luôn là 3100 trừ khi đặt thêm `-e PORT=...`).
+
+**Volume `/app/data` là bắt buộc nếu muốn giữ thư viện**: SQLite (`stories.db`)
+và ảnh bìa (`covers/`) nằm ở đó; không mount thì xoá container là mất sạch.
+
+Biến môi trường:
+
+| Biến | Mặc định trong image | Ý nghĩa |
+| --- | --- | --- |
+| `PORT` | `3100` | Cổng HTTP bên trong container |
+| `CHROMIUM_NO_SANDBOX` | `1` | Tắt sandbox của Chromium (container không có user namespace). Chạy ngoài Docker thì bỏ biến này để giữ sandbox. |
+
+### Tự build và push image
+
+```bash
+docker build -t vfakhuongdv/web-to-epub:latest .          # build 1 kiến trúc, để test local
+
+# build multi-arch rồi push thẳng lên Docker Hub
+docker login
+docker buildx create --name multiarch --driver docker-container --use   # chỉ cần 1 lần
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -t vfakhuongdv/web-to-epub:latest -t vfakhuongdv/web-to-epub:1.0.0 --push .
+```
+
+Dockerfile dùng multi-stage: stage `builder` chạy `npm run build`
+(tsc + vite → `public/`), stage `runtime` chỉ cài dependency production kèm
+Chromium của Playwright rồi chạy `node dist/server.js` bằng user `node`
+(không phải root).
+
+## 9. Giới hạn hiện tại (MVP)
 
 - Chỉ crawl được domain nằm trong whitelist ở `src/config/supportedSites.ts`
   (hiện tại: xtruyen.vn, truyenfull.vn/.live, metruyenchu.com, truyencom.com,
