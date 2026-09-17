@@ -141,7 +141,33 @@ tool-crawler-/
 Toàn bộ xử lý nặng (render trình duyệt, trích xuất) chạy ở **backend**, nên
 tab trình duyệt của người dùng không bị treo dù crawl nhiều chapter/nội dung dài.
 
-## 6. Cài đặt và chạy
+## 6. Quản lý truyện (tab "Truyện của tôi")
+
+Bên cạnh tab "Crawl thủ công" (nhập tay danh sách URL chương), UI có tab
+**"Truyện của tôi"** để crawl và theo dõi tiến độ theo từng truyện:
+
+- **Tự động load danh sách chương**: dán URL trang truyện (ví dụ
+  `https://truyenfull.live/dau-xuan-tuoi-sang/`) rồi bấm "Tải danh sách
+  chương" — backend tự nhận diện site, chạy adapter TOC tương ứng và nạp
+  **toàn bộ** danh sách chương vào truyện (trạng thái ban đầu `pending`).
+  Hiện hỗ trợ `truyenfull.live`, `truyenfull.vn`, `truyencom.com`
+  (server-rendered: fetch HTML trực tiếp và ghép các trang TOC) và
+  `xtruyen.vn` (gọi API JSON của site). `metruyenchu.com` chưa có adapter
+  TOC — nhập URL chương thủ công ở tab "Crawl thủ công".
+- **Lưu tiến độ vào `data/stories/*.json`**: mỗi truyện là một file JSON
+  (`id = sha1(URL truyện)`), ghi atomic (file tạm rồi rename) sau **từng
+  chương** — không đợi crawl hết mới lưu. Mỗi chương có trạng thái
+  `pending | done | error`; chương `done` kèm nội dung đã trích xuất, được
+  dùng lại khi export hoặc crawl tiếp. Vì vậy **đóng tab giữa chừng không
+  mất tiến độ**: mở lại thấy đúng `done/total`, nút "Crawl tiếp (N chương)"
+  chỉ chạy các chương còn chờ/lỗi (kể cả khi client ngắt kết nối, vòng lặp
+  phía server vẫn tiếp tục và lưu từng chương khi xong).
+- **Chi tiết & export**: mở truyện để xem toàn bộ chương (chương đã crawl
+  hiển thị nội dung, chương lỗi có nút "Thử lại", chương còn lại là dòng
+  "Chờ crawl"), xem tiến độ `done/total` + số lỗi, và export EPUB với
+  metadata prefill từ TOC.
+
+## 7. Cài đặt và chạy
 
 Yêu cầu: Node.js ≥ 18. Project dùng **npm workspaces** — `frontend/` là một
 workspace con, `npm install` ở thư mục gốc cài luôn dependency cho cả hai.
@@ -165,7 +191,7 @@ npm run dev:frontend   # frontend: Vite dev server (proxy /api -> localhost:3100
 Lưu ý: `public/` là thư mục **sinh ra** bởi `npm run build` (Vite build vào
 thẳng đó) — không sửa tay file trong `public/`, sửa trong `frontend/src/`.
 
-## 7. Giới hạn hiện tại (MVP)
+## 8. Giới hạn hiện tại (MVP)
 
 - Chỉ crawl được domain nằm trong whitelist ở `src/config/supportedSites.ts`
   (hiện tại: xtruyen.vn, truyenfull.vn/.live, metruyenchu.com, truyencom.com —
@@ -203,3 +229,13 @@ thẳng đó) — không sửa tay file trong `public/`, sửa trong `frontend/s
 - `epub-gen` là thư viện khá cũ (kéo theo vài dependency có cảnh báo audit từ
   npm) — chấp nhận được cho công cụ chạy local/cá nhân; nếu cần dùng lâu dài
   có thể thay bằng một EPUB writer mới hơn.
+- Tab "Truyện của tôi" tự động load danh sách chương cho truyenfull.live,
+  truyenfull.vn, truyencom.com và xtruyen.vn. metruyenchu.com phải nhập URL
+  chương thủ công ở tab "Crawl thủ công".
+- Tiến độ crawl lưu ở `data/stories/*.json` (không commit). Chỉnh sửa chương
+  và thông tin sách trên UI **không** được lưu — chỉ dùng cho lần export hiện
+  tại. Kết quả crawl thô thì được lưu và dùng lại khi crawl tiếp.
+- Truyện rất dài (hàng nghìn chương) có thể làm UI nặng khi mở chi tiết vì
+  tải toàn bộ nội dung đã crawl.
+- Site đổi cấu trúc HTML/API có thể làm hỏng TOC adapter (báo lỗi rõ ràng,
+  không tạo record rác).
