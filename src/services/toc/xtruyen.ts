@@ -56,7 +56,7 @@ export function buildChapterUrl(storyUrl: string, slug: string): string {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
   return res.text();
 }
@@ -72,6 +72,7 @@ async function postForm(url: string, body: string, referer: string): Promise<str
       Referer: referer,
     },
     body,
+    signal: AbortSignal.timeout(15_000),
   });
   if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
   return res.text();

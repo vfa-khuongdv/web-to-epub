@@ -62,7 +62,7 @@ export function parseTotalPages(html: string): number | undefined {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
+  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(15_000) });
   if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
   return res.text();
 }

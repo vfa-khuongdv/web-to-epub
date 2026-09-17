@@ -12,6 +12,7 @@ export function mergeStory(params: {
   const now = params.now || new Date().toISOString();
   const existingByUrl = new Map((params.existing?.chapters ?? []).map((c) => [c.url, c]));
 
+  // Chapters absent from the refreshed TOC are intentionally dropped, so upstream-renamed chapters lose their crawled progress — revisit if that becomes a real case.
   const chapters: StoredChapter[] = params.toc.chapters.map((c, i) => {
     const old = existingByUrl.get(c.url);
     if (old && old.status !== "pending") {

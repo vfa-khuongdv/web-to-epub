@@ -133,6 +133,10 @@ router.post("/stories", async (req, res) => {
 
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
+  if (crawlingStoryIds.has(id)) {
+    res.status(409).json({ message: "Truyện đang được crawl, không thể cập nhật danh sách chương" });
+    return;
+  }
   const existing = await storyStore.get(id);
   try {
     const toc = await adapter.fetchToc(storyUrl);
@@ -192,14 +196,12 @@ router.post("/stories/:id/crawl", async (req, res) => {
     "Cache-Control": "no-cache",
     "Transfer-Encoding": "chunked",
   });
-  // Nếu client ngắt kết nối giữa chừng, res.write sẽ ném lỗi — bỏ qua và
-  // tiếp tục crawl, vì mỗi chương vẫn được lưu vào store ngay khi xong.
+  // Nếu client ngắt kết nối, ghi vào socket đã huỷ không ném lỗi (chỉ rơi vào
+  // hư không) — bỏ qua và tiếp tục crawl, vì mỗi chương vẫn được lưu vào store
+  // ngay khi xong.
   const send = (event: ProgressEvent) => {
-    try {
-      res.write(JSON.stringify(event) + "\n");
-    } catch {
-      /* client đã ngắt kết nối */
-    }
+    if (res.destroyed) return;
+    res.write(JSON.stringify(event) + "\n");
   };
 
   crawlingStoryIds.add(id);
@@ -226,9 +228,18 @@ router.post("/stories/:id/crawl", async (req, res) => {
       }
     }
     send({ type: "done", chapters: story.chapters.map(toExtractedChapter) });
+  } catch (err) {
+    // Express 4 không bắt các promise rejection trong async handler — tự xử lý
+    // để một lỗi giữa chừng (vd. save thất bại) không giết process.
+    const message = err instanceof Error ? err.message : "Lỗi không xác định khi crawl";
+    if (res.headersSent) {
+      send({ type: "error", message });
+    } else {
+      res.status(500).json({ message });
+    }
   } finally {
     crawlingStoryIds.delete(id);
-    res.end();
+    if (res.headersSent) res.end();
   }
 });
 

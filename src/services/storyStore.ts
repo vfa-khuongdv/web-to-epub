@@ -27,6 +27,8 @@ export interface StoryStore {
   remove(id: string): Promise<boolean>;
 }
 
+const STORY_ID_RE = /^[0-9a-f]{16}$/;
+
 export function createStoryStore(baseDir: string): StoryStore {
   const filePath = (id: string) => path.join(baseDir, `${id}.json`);
 
@@ -52,6 +54,7 @@ export function createStoryStore(baseDir: string): StoryStore {
     },
 
     async get(id: string): Promise<StoredStory | undefined> {
+      if (!STORY_ID_RE.test(id)) return undefined;
       try {
         return JSON.parse(await fs.readFile(filePath(id), "utf8")) as StoredStory;
       } catch {
@@ -60,13 +63,17 @@ export function createStoryStore(baseDir: string): StoryStore {
     },
 
     async save(story: StoredStory): Promise<void> {
+      if (!STORY_ID_RE.test(story.id)) {
+        throw new Error(`Mã truyện không hợp lệ: ${story.id}`);
+      }
       await fs.mkdir(baseDir, { recursive: true });
-      const tmp = `${filePath(story.id)}.tmp`;
+      const tmp = `${filePath(story.id)}.${crypto.randomUUID()}.tmp`;
       await fs.writeFile(tmp, JSON.stringify(story, null, 2), "utf8");
       await fs.rename(tmp, filePath(story.id));
     },
 
     async remove(id: string): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
       try {
         await fs.unlink(filePath(id));
         return true;

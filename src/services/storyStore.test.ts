@@ -108,6 +108,18 @@ describe("createStoryStore", () => {
     expect(await store.remove(storyId("https://example.com/khong-co/"))).toBe(false);
   });
 
+  it("get từ chối id path traversal", async () => {
+    expect(await store.get("../../x")).toBeUndefined();
+  });
+
+  it("remove từ chối id path traversal", async () => {
+    expect(await store.remove("../../x")).toBe(false);
+  });
+
+  it("save từ chối id path traversal", async () => {
+    await expect(store.save(makeStory({ id: "../../evil" }))).rejects.toThrow("Mã truyện không hợp lệ");
+  });
+
   it("remove xoá file", async () => {
     const story = makeStory();
     await store.save(story);
