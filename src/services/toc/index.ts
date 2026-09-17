@@ -1,10 +1,11 @@
 import { truyenfullTemplateAdapter } from "./truyenfullTemplate";
 import { TocAdapter } from "./types";
+import { wattpadAdapter } from "./wattpad";
 import { xtruyenAdapter } from "./xtruyen";
 
 export type { TocAdapter, TocChapter, TocResult } from "./types";
 
-const ADAPTERS: TocAdapter[] = [truyenfullTemplateAdapter, xtruyenAdapter];
+const ADAPTERS: TocAdapter[] = [truyenfullTemplateAdapter, xtruyenAdapter, wattpadAdapter];
 
 export function getTocAdapter(url: string): TocAdapter | undefined {
   let hostname: string;

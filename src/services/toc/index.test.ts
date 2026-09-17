@@ -7,6 +7,7 @@ describe("getTocAdapter", () => {
     expect(getTocAdapter("https://truyenfull.vn/a/")?.domains).toContain("truyenfull.vn");
     expect(getTocAdapter("https://www.truyencom.com/de-ba.27/")?.domains).toContain("truyencom.com");
     expect(getTocAdapter("https://xtruyen.vn/truyen/han-phu/")?.domains).toContain("xtruyen.vn");
+    expect(getTocAdapter("https://www.wattpad.com/story/44634431-pumpkin-patch-princess")?.domains).toContain("wattpad.com");
   });
 
   it("trả undefined cho site không có adapter (metruyenchu, site lạ)", () => {

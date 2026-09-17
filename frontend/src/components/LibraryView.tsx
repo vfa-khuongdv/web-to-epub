@@ -78,7 +78,7 @@ export default function LibraryView({ supportedSites }: { supportedSites: Suppor
   return (
     <section className="card">
       <h2>Truyện của tôi</h2>
-      <p className="hint">Dán URL trang truyện (ví dụ https://truyenfull.live/dau-xuan-tuoi-sang/) để load toàn bộ danh sách chương.</p>
+      <p className="hint">Dán URL trang truyện (ví dụ https://truyenfull.live/dau-xuan-tuoi-sang/ hoặc https://www.wattpad.com/story/44634431-pumpkin-patch-princess) để load toàn bộ danh sách chương.</p>
       <div className="story-add">
         <input
           type="text"
