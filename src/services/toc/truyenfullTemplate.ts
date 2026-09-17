@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import { fetchText } from "./http";
 import { normalizeStoryUrl } from "./normalizeUrl";
 import { TocAdapter, TocChapter, TocResult } from "./types";
 
@@ -62,9 +63,7 @@ export function parseTotalPages(html: string): number | undefined {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
-  return res.text();
+  return fetchText(url, { headers: { "User-Agent": USER_AGENT } });
 }
 
 export async function fetchToc(storyUrl: string): Promise<TocResult> {

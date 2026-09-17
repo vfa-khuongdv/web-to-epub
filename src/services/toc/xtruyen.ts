@@ -1,4 +1,5 @@
 import { JSDOM } from "jsdom";
+import { fetchText, sleep } from "./http";
 import { normalizeStoryUrl } from "./normalizeUrl";
 import { TocAdapter, TocChapter, TocResult } from "./types";
 
@@ -9,7 +10,11 @@ const USER_AGENT =
 // Endpoint AJAX nội bộ của xtruyen.vn yêu cầu header tĩnh này (xem manga-single.js
 // + request thật của trang); không phải thông tin đăng nhập của người dùng.
 const CUSTOM_AUTH = "abC0000011111";
-const CHAPTER_WINDOW = 100;
+// API trả tối đa 200 chương mỗi request (đã kiểm chứng từ=1&to=200 → 200 item);
+// window 100 trước đây làm gấp đôi số request và bị 429 với truyện dài.
+const CHAPTER_WINDOW = 200;
+// Nghỉ giữa các window để không dồn dập vượt ngưỡng rate-limit của site.
+const WINDOW_DELAY_MS = 400;
 
 export function parseMangaId(html: string): string | undefined {
   const doc = new JSDOM(html).window.document;
@@ -56,13 +61,11 @@ export function buildChapterUrl(storyUrl: string, slug: string): string {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-  const res = await fetch(url, { headers: { "User-Agent": USER_AGENT }, signal: AbortSignal.timeout(15_000) });
-  if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
-  return res.text();
+  return fetchText(url, { headers: { "User-Agent": USER_AGENT } });
 }
 
 async function postForm(url: string, body: string, referer: string): Promise<string> {
-  const res = await fetch(url, {
+  return fetchText(url, {
     method: "POST",
     headers: {
       "Content-Type": "application/x-www-form-urlencoded",
@@ -72,10 +75,7 @@ async function postForm(url: string, body: string, referer: string): Promise<str
       Referer: referer,
     },
     body,
-    signal: AbortSignal.timeout(15_000),
   });
-  if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
-  return res.text();
 }
 
 export async function fetchToc(storyUrl: string): Promise<TocResult> {
@@ -91,6 +91,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   const seen = new Set<string>();
 
   for (let from = 1; ; from += CHAPTER_WINDOW) {
+    if (from > 1) await sleep(WINDOW_DELAY_MS);
     const items = parseChaptersResponse(
       await postForm(
         apiUrl,
