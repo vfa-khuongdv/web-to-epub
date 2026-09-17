@@ -1,0 +1,77 @@
+import { describe, expect, it } from "vitest";
+import { StoredStory } from "../types";
+import { TocResult } from "./toc/types";
+import { chaptersToCrawl, mergeStory, toExtractedChapter } from "./storyService";
+
+const toc: TocResult = {
+  title: "Truyện A",
+  author: "Tác giả",
+  coverUrl: "https://example.com/cover.jpg",
+  chapters: [
+    { url: "https://example.com/a/chuong-1/", title: "Chương 1" },
+    { url: "https://example.com/a/chuong-2/", title: "Chương 2" },
+    { url: "https://example.com/a/chuong-3/", title: "Chương 3" },
+  ],
+};
+
+function existingStory(): StoredStory {
+  return {
+    id: "abc",
+    storyUrl: "https://example.com/a/",
+    site: "example.com",
+    title: "Truyện A",
+    chapters: [
+      { order: 1, url: "https://example.com/a/chuong-1/", title: "Chương 1 (sửa)", status: "done", blocks: [{ type: "paragraph", text: "x" }] },
+      { order: 2, url: "https://example.com/a/chuong-2/", title: "Chương 2", status: "error", error: "timeout" },
+    ],
+    createdAt: "2026-09-01T00:00:00.000Z",
+    updatedAt: "2026-09-01T00:00:00.000Z",
+  };
+}
+
+describe("mergeStory", () => {
+  it("tạo mới khi chưa có: mọi chương pending, giữ createdAt mới", () => {
+    const merged = mergeStory({ site: "example.com", storyUrl: "https://example.com/a/", toc, now: "2026-09-17T00:00:00.000Z" });
+    expect(merged.chapters.map((c) => c.status)).toEqual(["pending", "pending", "pending"]);
+    expect(merged.chapters.map((c) => c.order)).toEqual([1, 2, 3]);
+    expect(merged.createdAt).toBe("2026-09-17T00:00:00.000Z");
+    expect(merged.author).toBe("Tác giả");
+  });
+
+  it("giữ status/blocks/error/title của chương cũ theo URL, thêm chương mới là pending", () => {
+    const merged = mergeStory({ existing: existingStory(), site: "example.com", storyUrl: "https://example.com/a/", toc });
+    expect(merged.chapters[0]).toMatchObject({ status: "done", title: "Chương 1 (sửa)" });
+    expect(merged.chapters[1]).toMatchObject({ status: "error", error: "timeout" });
+    expect(merged.chapters[2]).toMatchObject({ status: "pending" });
+    expect(merged.createdAt).toBe("2026-09-01T00:00:00.000Z");
+  });
+});
+
+describe("chaptersToCrawl", () => {
+  it("mặc định chỉ chương chưa done (pending + error), giữ thứ tự", () => {
+    const story = existingStory();
+    story.chapters.push({ order: 3, url: "https://example.com/a/chuong-3/", title: "Chương 3", status: "pending" });
+    expect(chaptersToCrawl(story).map((c) => c.order)).toEqual([2, 3]);
+  });
+
+  it("có orders thì trả đúng các order đó, kể cả chương done", () => {
+    const story = existingStory();
+    expect(chaptersToCrawl(story, [1]).map((c) => c.order)).toEqual([1]);
+  });
+
+  it("bỏ qua order không tồn tại", () => {
+    expect(chaptersToCrawl(existingStory(), [99])).toEqual([]);
+  });
+});
+
+describe("toExtractedChapter", () => {
+  it("chương done: trả blocks; chương error: trả error", () => {
+    expect(toExtractedChapter({ order: 1, url: "u", title: "t", status: "done", blocks: [] })).toEqual({
+      sourceUrl: "u",
+      title: "t",
+      blocks: [],
+    });
+    const failed = toExtractedChapter({ order: 2, url: "u2", title: "t2", status: "error", error: "lỗi" });
+    expect(failed.error).toBe("lỗi");
+  });
+});
