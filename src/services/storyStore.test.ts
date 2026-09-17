@@ -1,9 +1,10 @@
-import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { StoredStory } from "../types";
-import { createStoryStore, storyId, summarize, type StoryStore } from "./storyStore";
+import { createStoryStore, storyId, type StoryStore } from "./storyStore";
 
 function makeStory(overrides: Partial<StoredStory> = {}): StoredStory {
   return {
@@ -41,22 +42,6 @@ describe("storyId", () => {
   });
 });
 
-describe("summarize", () => {
-  it("đếm đúng done/error/total", () => {
-    const summary = summarize(makeStory());
-    expect(summary).toEqual({
-      id: storyId("https://example.com/truyen-a/"),
-      storyUrl: "https://example.com/truyen-a/",
-      site: "example.com",
-      title: "Truyện A",
-      chapterCount: 3,
-      doneCount: 1,
-      errorCount: 1,
-      updatedAt: "2026-09-17T00:00:00.000Z",
-    });
-  });
-});
-
 describe("createStoryStore", () => {
   let dir: string;
   let store: StoryStore;
@@ -70,37 +55,57 @@ describe("createStoryStore", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
+  it("tạo file SQLite trong thư mục dữ liệu", () => {
+    expect(existsSync(path.join(dir, "stories.db"))).toBe(true);
+  });
+
   it("save rồi get trả về đúng dữ liệu (round-trip)", async () => {
     const story = makeStory();
     await store.save(story);
     expect(await store.get(story.id)).toEqual(story);
   });
 
-  it("save lần sau ghi đè bản cũ", async () => {
+  it("save lần sau cập nhật chapter cũ, không nhân bản", async () => {
     const story = makeStory();
     await store.save(story);
     story.chapters[1].status = "done";
+    story.chapters[1].blocks = [{ type: "paragraph", text: "Nội dung chương 2" }];
     story.updatedAt = "2026-09-18T00:00:00.000Z";
     await store.save(story);
 
     const loaded = await store.get(story.id);
+    expect(loaded?.chapters).toHaveLength(3);
     expect(loaded?.chapters[1].status).toBe("done");
+    expect(loaded?.chapters[1].blocks).toEqual([{ type: "paragraph", text: "Nội dung chương 2" }]);
     expect(loaded?.updatedAt).toBe("2026-09-18T00:00:00.000Z");
-    expect((await readdir(dir)).filter((n) => n.endsWith(".tmp"))).toHaveLength(0);
   });
 
-  it("list sắp xếp theo updatedAt giảm dần, bỏ qua file hỏng", async () => {
+  it("save đồng bộ danh sách chapter: chapter bị bỏ khỏi TOC sẽ bị xoá", async () => {
+    const story = makeStory();
+    await store.save(story);
+    story.chapters = story.chapters.slice(0, 2);
+    await store.save(story);
+
+    const loaded = await store.get(story.id);
+    expect(loaded?.chapters.map((c) => c.order)).toEqual([1, 2]);
+  });
+
+  it("list sắp xếp theo updatedAt giảm dần kèm số đếm done/error/total", async () => {
     await store.save(makeStory({ updatedAt: "2026-09-17T00:00:00.000Z" }));
     await store.save(
       makeStory({ id: storyId("https://example.com/truyen-b/"), storyUrl: "https://example.com/truyen-b/", updatedAt: "2026-09-18T00:00:00.000Z" })
     );
-    await writeFile(path.join(dir, "broken.json"), "{ khong phai json", "utf8");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const stories = await store.list();
     expect(stories.map((s) => s.id)).toHaveLength(2);
     expect(stories[0].updatedAt).toBe("2026-09-18T00:00:00.000Z");
-    warn.mockRestore();
+    expect(stories[1]).toMatchObject({
+      chapterCount: 3,
+      doneCount: 1,
+      errorCount: 1,
+      title: "Truyện A",
+      site: "example.com",
+    });
   });
 
   it("get/remove trả undefined/false khi không tồn tại", async () => {
@@ -120,10 +125,39 @@ describe("createStoryStore", () => {
     await expect(store.save(makeStory({ id: "../../evil" }))).rejects.toThrow("Mã truyện không hợp lệ");
   });
 
-  it("remove xoá file", async () => {
+  it("remove xoá truyện cùng toàn bộ chapter", async () => {
     const story = makeStory();
     await store.save(story);
     expect(await store.remove(story.id)).toBe(true);
     expect(await store.get(story.id)).toBeUndefined();
+
+    const fresh = makeStory({ chapters: [{ order: 1, url: "https://example.com/truyen-a/chuong-1/", title: "Chương 1", status: "pending" }] });
+    await store.save(fresh);
+    expect((await store.get(story.id))?.chapters).toHaveLength(1);
+  });
+
+  it("saveChapter cập nhật một chapter và bump updatedAt", async () => {
+    const story = makeStory({ updatedAt: "2020-01-01T00:00:00.000Z" });
+    await store.save(story);
+
+    const chapter = story.chapters[1];
+    chapter.status = "done";
+    chapter.blocks = [{ type: "heading", level: 1, text: "Chương 2" }];
+    await store.saveChapter(story.id, chapter);
+
+    const loaded = await store.get(story.id);
+    expect(loaded?.chapters[1]).toEqual(chapter);
+    expect(loaded?.chapters[0]).toEqual(story.chapters[0]);
+    expect((loaded?.updatedAt ?? "").localeCompare("2020-01-01T00:00:00.000Z")).toBeGreaterThan(0);
+  });
+
+  it("saveChapter báo lỗi khi truyện không tồn tại", async () => {
+    const chapter = { order: 1, url: "https://example.com/x/1/", title: "Chương 1", status: "pending" as const };
+    await expect(store.saveChapter(storyId("https://example.com/khong-co/"), chapter)).rejects.toThrow("Không tìm thấy truyện");
+  });
+
+  it("saveChapter từ chối id path traversal", async () => {
+    const chapter = { order: 1, url: "https://example.com/x/1/", title: "Chương 1", status: "pending" as const };
+    await expect(store.saveChapter("../../evil", chapter)).rejects.toThrow("Mã truyện không hợp lệ");
   });
 });

@@ -45,6 +45,7 @@ trong trình duyệt**, không ảnh hưởng gì tới việc đọc DOM bằng
 | Phân loại cấu trúc | Bộ duyệt DOM tự viết (`extractor.ts`) | Map heading/paragraph/image thành block có kiểu dữ liệu rõ ràng |
 | Sinh EPUB | **epub-gen** | Tạo EPUB hợp lệ với TOC (NCX + nav), metadata, cover, tự tải ảnh remote |
 | Backend server | **Node.js + TypeScript + Express** | Một process duy nhất phục vụ cả API và frontend đã build |
+| Lưu tiến độ truyện | **node:sqlite** (SQLite built-in của Node) | Hai bảng `stories`/`chapters`, ghi từng chương ngay khi xong, không thêm dependency native |
 | Frontend | **React + TypeScript + Vite** | UI dạng component (form nhập liệu, danh sách chapter, thẻ preview/edit) |
 | Progress | NDJSON streaming qua `fetch` | Không cần WebSocket, vẫn stream được tiến trình crawl nhiều chapter |
 | Site whitelist | `supportedSites.ts` | Chỉ cho phép crawl các domain đã duyệt, chặn cứng ở cả frontend lẫn backend |
@@ -154,14 +155,14 @@ Bên cạnh tab "Crawl thủ công" (nhập tay danh sách URL chương), UI có
   (server-rendered: fetch HTML trực tiếp và ghép các trang TOC) và
   `xtruyen.vn` (gọi API JSON của site). `metruyenchu.com` chưa có adapter
   TOC — nhập URL chương thủ công ở tab "Crawl thủ công".
-- **Lưu tiến độ vào `data/stories/*.json`**: mỗi truyện là một file JSON
-  (`id = sha1(URL truyện)`), ghi atomic (file tạm rồi rename) sau **từng
-  chương** — không đợi crawl hết mới lưu. Mỗi chương có trạng thái
-  `pending | done | error`; chương `done` kèm nội dung đã trích xuất, được
-  dùng lại khi export hoặc crawl tiếp. Vì vậy **đóng tab giữa chừng không
-  mất tiến độ**: mở lại thấy đúng `done/total`, nút "Crawl tiếp (N chương)"
-  chỉ chạy các chương còn chờ/lỗi (kể cả khi client ngắt kết nối, vòng lặp
-  phía server vẫn tiếp tục và lưu từng chương khi xong).
+- **Lưu tiến độ vào `data/stories.db` (SQLite)**: hai bảng `stories` và
+  `chapters` (`id = sha1(URL truyện)`); mỗi chương được ghi xuống DB ngay khi
+  crawl xong bằng một transaction riêng — không đợi crawl hết mới lưu. Mỗi
+  chương có trạng thái `pending | done | error`; chương `done` kèm nội dung
+  đã trích xuất, được dùng lại khi export hoặc crawl tiếp. Vì vậy **đóng tab
+  giữa chừng không mất tiến độ**: mở lại thấy đúng `done/total`, nút "Crawl
+  tiếp (N chương)" chỉ chạy các chương còn chờ/lỗi (kể cả khi client ngắt kết
+  nối, vòng lặp phía server vẫn tiếp tục và lưu từng chương khi xong).
 - **Chi tiết & export**: mở truyện để xem toàn bộ chương (chương đã crawl
   hiển thị nội dung, chương lỗi có nút "Thử lại", chương còn lại là dòng
   "Chờ crawl"), xem tiến độ `done/total` + số lỗi, và export EPUB với
@@ -232,7 +233,7 @@ thẳng đó) — không sửa tay file trong `public/`, sửa trong `frontend/s
 - Tab "Truyện của tôi" tự động load danh sách chương cho truyenfull.live,
   truyenfull.vn, truyencom.com và xtruyen.vn. metruyenchu.com phải nhập URL
   chương thủ công ở tab "Crawl thủ công".
-- Tiến độ crawl lưu ở `data/stories/*.json` (không commit). Chỉnh sửa chương
+- Tiến độ crawl lưu ở `data/stories.db` (SQLite, không commit). Chỉnh sửa chương
   và thông tin sách trên UI **không** được lưu — chỉ dùng cho lần export hiện
   tại. Kết quả crawl thô thì được lưu và dùng lại khi crawl tiếp.
 - Truyện rất dài (hàng nghìn chương) có thể làm UI nặng khi mở chi tiết vì

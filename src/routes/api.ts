@@ -219,9 +219,8 @@ router.post("/stories/:id/crawl", async (req, res) => {
         stored.error = extracted.error;
         stored.blocks = extracted.error ? undefined : extracted.blocks;
         if (!extracted.error) stored.title = extracted.title;
+        await storyStore.saveChapter(story.id, stored);
       }
-      story.updatedAt = new Date().toISOString();
-      await storyStore.save(story);
 
       if (extracted.error) {
         send({ type: "error", index: i, total: plan.length, url: chapter.url, message: extracted.error });
