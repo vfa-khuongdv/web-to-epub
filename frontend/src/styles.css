@@ -133,3 +133,89 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-manual-entry { background: #6b7280; }
 
 .chapter-manual { border-color: #d9c46a; background: rgba(217, 196, 106, 0.06); }
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tabs button {
+  background: transparent;
+  border: 1px solid #444;
+  color: inherit;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tabs button.active {
+  background: #2f6fed;
+  border-color: #2f6fed;
+  color: #fff;
+}
+
+.story-add {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.story-add input {
+  flex: 1;
+}
+
+.story-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.story-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 10px 12px;
+}
+
+.story-item-main {
+  flex: 1;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.story-site,
+.story-progress {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
+.story-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.badge {
+  display: inline-block;
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  margin-bottom: 6px;
+}
+
+.badge-pending {
+  background: #444;
+  color: #ddd;
+}
+
+.chapter-pending {
+  opacity: 0.7;
+}
