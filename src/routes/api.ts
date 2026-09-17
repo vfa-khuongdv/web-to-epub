@@ -4,7 +4,10 @@ import os from "os";
 import { MAX_ATTEMPTS, extractWithRetry } from "../services/crawl";
 import { buildEpub } from "../services/epubBuilder";
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
-import { ExportRequest, ExtractedChapter, ExtractRequest, ProgressEvent } from "../types";
+import { storyId, storyStore } from "../services/storyStore";
+import { chaptersToCrawl, mergeStory, toExtractedChapter } from "../services/storyService";
+import { getTocAdapter } from "../services/toc";
+import { ExportRequest, ExtractedChapter, ExtractRequest, ProgressEvent, StoredStory } from "../types";
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -104,6 +107,128 @@ router.post("/export", async (req, res) => {
     res.end(buffer);
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "Lỗi export EPUB" });
+  }
+});
+
+const crawlingStoryIds = new Set<string>();
+
+router.post("/stories", async (req, res) => {
+  const { url } = req.body as { url?: string };
+  if (!url) {
+    res.status(400).json({ message: "url là bắt buộc" });
+    return;
+  }
+  const site = findSupportedSite(url);
+  if (!site) {
+    res.status(400).json({ message: `Trang này chưa được hỗ trợ: ${url}` });
+    return;
+  }
+  const adapter = getTocAdapter(url);
+  if (!adapter) {
+    res.status(400).json({
+      message: `${site.name} chưa hỗ trợ tự động load danh sách chương — hãy nhập URL từng chương ở tab "Crawl thủ công"`,
+    });
+    return;
+  }
+
+  const storyUrl = adapter.normalizeStoryUrl(url);
+  const id = storyId(storyUrl);
+  const existing = await storyStore.get(id);
+  try {
+    const toc = await adapter.fetchToc(storyUrl);
+    const story = mergeStory({ existing, site: site.domain, storyUrl, toc });
+    await storyStore.save(story);
+    res.json({ story });
+  } catch (err) {
+    res.status(502).json({ message: err instanceof Error ? err.message : "Không tải được danh sách chương" });
+  }
+});
+
+router.get("/stories", async (_req, res) => {
+  res.json({ stories: await storyStore.list() });
+});
+
+router.get("/stories/:id", async (req, res) => {
+  const story = await storyStore.get(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  res.json({ story });
+});
+
+router.delete("/stories/:id", async (req, res) => {
+  if (crawlingStoryIds.has(req.params.id)) {
+    res.status(409).json({ message: "Truyện đang được crawl, không thể xoá" });
+    return;
+  }
+  const removed = await storyStore.remove(req.params.id);
+  if (!removed) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+router.post("/stories/:id/crawl", async (req, res) => {
+  const { id } = req.params;
+  const story: StoredStory | undefined = await storyStore.get(id);
+  if (!story) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  if (crawlingStoryIds.has(id)) {
+    res.status(409).json({ message: "Truyện đang được crawl" });
+    return;
+  }
+
+  const orders = Array.isArray((req.body as { orders?: number[] })?.orders)
+    ? (req.body as { orders: number[] }).orders
+    : undefined;
+  const plan = chaptersToCrawl(story, orders);
+
+  res.writeHead(200, {
+    "Content-Type": "application/x-ndjson",
+    "Cache-Control": "no-cache",
+    "Transfer-Encoding": "chunked",
+  });
+  // Nếu client ngắt kết nối giữa chừng, res.write sẽ ném lỗi — bỏ qua và
+  // tiếp tục crawl, vì mỗi chương vẫn được lưu vào store ngay khi xong.
+  const send = (event: ProgressEvent) => {
+    try {
+      res.write(JSON.stringify(event) + "\n");
+    } catch {
+      /* client đã ngắt kết nối */
+    }
+  };
+
+  crawlingStoryIds.add(id);
+  try {
+    for (let i = 0; i < plan.length; i++) {
+      const chapter = plan[i];
+      const extracted = await extractWithRetry(chapter.url, (attempt) => {
+        const attemptSuffix = attempt > 1 ? ` (lần thử ${attempt}/${MAX_ATTEMPTS})` : "";
+        send({ type: "progress", index: i, total: plan.length, url: chapter.url, message: `Đang tải & trích xuất...${attemptSuffix}` });
+      });
+
+      const stored = story.chapters.find((c) => c.order === chapter.order);
+      if (stored) {
+        stored.status = extracted.error ? "error" : "done";
+        stored.error = extracted.error;
+        stored.blocks = extracted.error ? undefined : extracted.blocks;
+        if (!extracted.error) stored.title = extracted.title;
+      }
+      story.updatedAt = new Date().toISOString();
+      await storyStore.save(story);
+
+      if (extracted.error) {
+        send({ type: "error", index: i, total: plan.length, url: chapter.url, message: extracted.error });
+      }
+    }
+    send({ type: "done", chapters: story.chapters.map(toExtractedChapter) });
+  } finally {
+    crawlingStoryIds.delete(id);
+    res.end();
   }
 });
 
