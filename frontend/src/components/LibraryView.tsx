@@ -135,7 +135,8 @@ export default function LibraryView({
             </button>
           </div>
           <p className="mt-1.5 text-xs text-ink-3">
-            Dán URL trang truyện để nạp toàn bộ mục lục. Tự động load được:{" "}
+            Dán URL trang truyện để nạp toàn bộ mục lục — ví dụ truyenfull.live/dau-xuan-tuoi-sang/ hoặc
+            wattpad.com/story/44634431-pumpkin-patch-princess. Tự động load được:{" "}
             {[...new Set(supportedSites.map((s) => s.name))].join(", ") || "đang tải…"}
           </p>
         </div>

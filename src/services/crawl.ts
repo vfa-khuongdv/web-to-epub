@@ -1,4 +1,5 @@
 import { ExtractedChapter } from "../types";
+import { getChapterFetcher } from "./chapters";
 import { extractChapter, LockedContentError } from "./extractor";
 import { renderPageHtml } from "./renderer";
 
@@ -23,9 +24,13 @@ export async function extractWithRetry(
   onAttempt?: (attempt: number) => void
 ): Promise<ExtractedChapter> {
   let lastError = "Lỗi không xác định";
+  const siteFetcher = getChapterFetcher(url);
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     onAttempt?.(attempt);
     try {
+      // Site đã server-render sẵn nội dung (vd. Wattpad) có fetcher riêng:
+      // tải HTML trực tiếp, nhanh hơn nhiều so với mở trình duyệt từng chương.
+      if (siteFetcher) return await siteFetcher.fetchChapter(url);
       const html = await renderPageHtml(url);
       return extractChapter(url, html);
     } catch (err) {

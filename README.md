@@ -152,8 +152,11 @@ Bên cạnh tab "Crawl thủ công" (nhập tay danh sách URL chương), UI có
   chương" — backend tự nhận diện site, chạy adapter TOC tương ứng và nạp
   **toàn bộ** danh sách chương vào truyện (trạng thái ban đầu `pending`).
   Hiện hỗ trợ `truyenfull.live`, `truyenfull.vn`, `truyencom.com`
-  (server-rendered: fetch HTML trực tiếp và ghép các trang TOC) và
-  `xtruyen.vn` (gọi API JSON của site). `metruyenchu.com` chưa có adapter
+  (server-rendered: fetch HTML trực tiếp và ghép các trang TOC),
+  `xtruyen.vn` (gọi API JSON của site) và `wattpad.com` (trang truyện là SPA
+  nên dùng API nội bộ `/api/v3/stories/<id>` — API trả toàn bộ parts trong
+  một request, không cần phân trang; URL dạng
+  `https://www.wattpad.com/story/<id>`). `metruyenchu.com` chưa có adapter
   TOC — nhập URL chương thủ công ở tab "Crawl thủ công".
 - **Lưu tiến độ vào `data/stories.db` (SQLite)**: hai bảng `stories` và
   `chapters` (`id = sha1(URL truyện)`); mỗi chương được ghi xuống DB ngay khi
@@ -195,11 +198,12 @@ thẳng đó) — không sửa tay file trong `public/`, sửa trong `frontend/s
 ## 8. Giới hạn hiện tại (MVP)
 
 - Chỉ crawl được domain nằm trong whitelist ở `src/config/supportedSites.ts`
-  (hiện tại: xtruyen.vn, truyenfull.vn/.live, metruyenchu.com, truyencom.com —
-  đã loại các site chết: tangthuvien.vn, truyenyy.vn, wikidich.com). Đã test
-  thực tế với xtruyen.vn và truyenfull.live; các domain còn lại mới chỉ được
-  thêm theo yêu cầu, cần kiểm tra chất lượng trích xuất trước khi tin tưởng
-  hoàn toàn. Muốn thêm domain mới thì sửa file này (không cần đổi chỗ khác).
+  (hiện tại: xtruyen.vn, truyenfull.vn/.live, metruyenchu.com, truyencom.com,
+  wattpad.com — đã loại các site chết: tangthuvien.vn, truyenyy.vn,
+  wikidich.com). Đã test thực tế với xtruyen.vn và truyenfull.live; các domain
+  còn lại mới chỉ được thêm theo yêu cầu, cần kiểm tra chất lượng trích xuất
+  trước khi tin tưởng hoàn toàn. Muốn thêm domain mới thì sửa file này (không
+  cần đổi chỗ khác).
 - Renderer dùng `waitUntil: "domcontentloaded"` thay vì `"networkidle"` —
   một số trang có traffic nền liên tục (quảng cáo, analytics, chat widget)
   không bao giờ đạt trạng thái network-idle nên sẽ timeout nếu chờ nó. Có độ
@@ -231,8 +235,16 @@ thẳng đó) — không sửa tay file trong `public/`, sửa trong `frontend/s
   npm) — chấp nhận được cho công cụ chạy local/cá nhân; nếu cần dùng lâu dài
   có thể thay bằng một EPUB writer mới hơn.
 - Tab "Truyện của tôi" tự động load danh sách chương cho truyenfull.live,
-  truyenfull.vn, truyencom.com và xtruyen.vn. metruyenchu.com phải nhập URL
-  chương thủ công ở tab "Crawl thủ công".
+  truyenfull.vn, truyencom.com, xtruyen.vn và wattpad.com. metruyenchu.com
+  phải nhập URL chương thủ công ở tab "Crawl thủ công".
+- Wattpad: chương được tải bằng HTTP thường (`chapters/wattpad.ts`) thay vì
+  mở trình duyệt, vì Wattpad server-render sẵn toàn bộ nội dung chương vào
+  HTML — nhanh hơn hẳn khi crawl truyện dài. Chương thuộc chương trình trả phí
+  (Wattpad Originals/Paid Stories) bị báo lỗi rõ ràng và **không** được vượt
+  qua, đúng nguyên tắc không bypass của công cụ; chương như vậy có thể thay
+  bằng "Nhập nội dung thủ công" nếu bạn đã mua/xem hợp lệ. API danh sách
+  chương là API nội bộ, không chính thức — site đổi API sẽ làm adapter báo lỗi
+  rõ ràng (không tạo record rác).
 - Tiến độ crawl lưu ở `data/stories.db` (SQLite, không commit). Chỉnh sửa chương
   và thông tin sách trên UI **không** được lưu — chỉ dùng cho lần export hiện
   tại. Kết quả crawl thô thì được lưu và dùng lại khi crawl tiếp.
