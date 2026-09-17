@@ -1,4 +1,4 @@
-import { BookMetadata, ExtractedChapter, ProgressEvent, SupportedSite } from "./types";
+import { BookMetadata, ExtractedChapter, ProgressEvent, StoredStory, StorySummary, SupportedSite } from "./types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites");
@@ -11,13 +11,11 @@ async function readJsonError(res: Response, fallback: string): Promise<string> {
   return data?.message || fallback;
 }
 
-// Streams NDJSON progress events from POST /api/extract, invoking onEvent
-// for each line as it arrives.
-export async function extractChapters(urls: string[], onEvent: (event: ProgressEvent) => void): Promise<void> {
-  const res = await fetch("/api/extract", {
+async function streamNdjson(path: string, body: unknown, onEvent: (event: ProgressEvent) => void): Promise<void> {
+  const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ urls }),
+    body: JSON.stringify(body),
   });
 
   if (!res.ok || !res.body) {
@@ -39,6 +37,50 @@ export async function extractChapters(urls: string[], onEvent: (event: ProgressE
       onEvent(JSON.parse(line));
     }
   }
+}
+
+// Streams NDJSON progress events from POST /api/extract, invoking onEvent
+// for each line as it arrives.
+export async function extractChapters(urls: string[], onEvent: (event: ProgressEvent) => void): Promise<void> {
+  await streamNdjson("/api/extract", { urls }, onEvent);
+}
+
+export async function crawlStory(
+  id: string,
+  orders: number[] | undefined,
+  onEvent: (event: ProgressEvent) => void
+): Promise<void> {
+  await streamNdjson(`/api/stories/${encodeURIComponent(id)}/crawl`, { orders }, onEvent);
+}
+
+export async function fetchStories(): Promise<StorySummary[]> {
+  const res = await fetch("/api/stories");
+  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được danh sách truyện"));
+  const data = await res.json();
+  return data.stories || [];
+}
+
+export async function createStory(url: string): Promise<StoredStory> {
+  const res = await fetch("/api/stories", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được danh sách chương"));
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
+export async function fetchStory(id: string): Promise<StoredStory> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}`);
+  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được truyện"));
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
+export async function deleteStory(id: string): Promise<void> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}`, { method: "DELETE" });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không xoá được truyện"));
 }
 
 export async function extractOne(url: string): Promise<ExtractedChapter> {

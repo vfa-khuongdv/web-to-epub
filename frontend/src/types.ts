@@ -35,3 +35,37 @@ export interface BookMetadata {
   language: string;
   coverUrl?: string;
 }
+
+export type ChapterStatus = "pending" | "done" | "error";
+
+export interface StoredChapter {
+  order: number;
+  url: string;
+  title: string;
+  status: ChapterStatus;
+  error?: string;
+  blocks?: ContentBlock[];
+}
+
+export interface StoredStory {
+  id: string;
+  storyUrl: string;
+  site: string;
+  title: string;
+  author?: string;
+  coverUrl?: string;
+  chapters: StoredChapter[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StorySummary {
+  id: string;
+  storyUrl: string;
+  site: string;
+  title: string;
+  chapterCount: number;
+  doneCount: number;
+  errorCount: number;
+  updatedAt: string;
+}
