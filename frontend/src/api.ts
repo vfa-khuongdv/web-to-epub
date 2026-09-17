@@ -45,12 +45,16 @@ export async function extractChapters(urls: string[], onEvent: (event: ProgressE
   await streamNdjson("/api/extract", { urls }, onEvent);
 }
 
-export async function crawlStory(
-  id: string,
-  orders: number[] | undefined,
-  onEvent: (event: ProgressEvent) => void
-): Promise<void> {
-  await streamNdjson(`/api/stories/${encodeURIComponent(id)}/crawl`, { orders }, onEvent);
+// Bắt đầu crawl một truyện: server trả về ngay rồi crawl ở hậu trường, tiến
+// trình đến qua kênh realtime /api/stories/:id/live (EventSource).
+export async function startStoryCrawl(id: string, orders?: number[]): Promise<{ total: number }> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/crawl`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ orders }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không bắt đầu được crawl"));
+  return (await res.json()) as { total: number };
 }
 
 export async function fetchStories(): Promise<StorySummary[]> {
@@ -74,6 +78,14 @@ export async function createStory(url: string): Promise<StoredStory> {
 export async function fetchStory(id: string): Promise<StoredStory> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}`);
   if (!res.ok) throw new Error(await readJsonError(res, "Không tải được truyện"));
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
+// Lưu thông tin sách từ khung chi tiết (multipart vì có thể kèm ảnh bìa mới).
+export async function saveStoryMeta(id: string, form: FormData): Promise<StoredStory> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/meta`, { method: "POST", body: form });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không lưu được thông tin truyện"));
   const data = await res.json();
   return data.story as StoredStory;
 }

@@ -127,3 +127,27 @@ figures" — sorting was never built, and no unrequested feature was added to sa
 **Post-verdict micro-fixes (disclosed, not re-reviewed).** `.btn-danger` hover keeps its
 error tint (it was losing to the base hover rule); dead CSS (`.note`, `.bar-thin`) and the
 unused `thin` prop were removed; the skeleton's 4px radius came under the 3px ceiling.
+
+**Later pass (realtime + cover).** The crawl dock now runs on a real channel: a story crawl
+returns `202` and publishes over `GET /api/stories/:id/live` (SSE), so a session that reloads —
+or never started the crawl — sees the same per-chapter state, progress and log; the view
+refetches once the run ends, so new chapter bodies appear without F5. Verifying against a live
+crawl found one defect: a run started *after* attach only emitted `progress`, which never
+flipped the job to running, so the end-of-run refetch never fired (fixed — a progress/error
+event now marks the job running). The detail pane gained the `Ảnh bìa` field: a 96×140 preview
+with a placeholder when no cover is stored, fed by `GET /api/stories/:id/cover`; a chosen file
+still overrides it for a single export, and the library table is untouched. Covers are fetched
+once per story during crawl into `data/covers/`, sniffed by magic bytes after a real CDN
+(`img.xtruyen.vn`) served one as `application/octet-stream`. Detector over the changed files
+returns `[]`.
+
+**Later pass (save + library-wide live state + cover rail).** The detail pane now has a
+"Lưu thông tin" button that persists title/author/language/cover (`POST /api/stories/:id/meta`;
+the cover file is sniffed by magic bytes and replaces the story's stored cover); saved info
+beats the site TOC on re-load. The library reads one shared SSE channel
+(`GET /api/stories/live`) so every crawling row carries its own "Đang crawl N/M" chip with no
+story selected — previously only the selected story could show it. The cover preview became the
+detail block's left rail (96×140, `grid-template-columns: 96px minmax(0,1fr)`), so it adds no
+height at all: the detail block measures 384px and the chapter table starts at y=499 with 663px
+of body, versus y=528 before the rail. Detector over the changed files returns `[]`.
+

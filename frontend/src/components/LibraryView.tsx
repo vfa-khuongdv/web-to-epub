@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createStory, deleteStory, fetchStories, fetchStory } from "../api";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
-import { RunCrawl } from "../useCrawlJob";
+import { CrawlJobState, LiveCrawl, liveCounts } from "../useCrawlJob";
 import { Icon } from "./Icon";
 import StoryDetail from "./StoryDetail";
 
@@ -20,12 +20,16 @@ function timeAgo(iso: string): string {
 }
 
 export default function LibraryView({
-  run,
-  running,
+  job,
+  live,
+  attach,
+  clearChapters,
   supportedSites,
 }: {
-  run: RunCrawl;
-  running: boolean;
+  job: CrawlJobState;
+  live: Record<string, LiveCrawl | undefined>;
+  attach: (label: string, storyId: string) => () => void;
+  clearChapters: () => void;
   supportedSites: SupportedSite[];
 }) {
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -185,7 +189,16 @@ export default function LibraryView({
                 </tr>
               </thead>
               <tbody>
-                {stories.map((s) => (
+                {stories.map((s) => {
+                  // The selected story may be mid-crawl: its stored summary lags
+                  // behind the chapters this run has already finished.
+                  const overlay = selected?.id === s.id ? liveCounts(selected.chapters, job.chapters) : { done: 0, error: 0 };
+                  const done = s.doneCount + overlay.done;
+                  const errors = s.errorCount + overlay.error;
+                  // Trạng thái crawl của MỌI truyện đến từ kênh realtime chung,
+                  // nên dòng đang crawl có chip dù chưa được chọn.
+                  const crawling = live[s.id];
+                  return (
                   <tr
                     key={s.id}
                     className={selected?.id === s.id ? "is-selected" : undefined}
@@ -204,15 +217,21 @@ export default function LibraryView({
                         <span className="t" title={s.title}>
                           {s.title}
                         </span>
+                        {crawling && (
+                          <span className="chip chip-running">
+                            <Icon name="dot" size={12} className="animate-pulse" />
+                            {crawling.total > 0 ? `Đang crawl ${crawling.cursor}/${crawling.total}` : "Đang crawl"}
+                          </span>
+                        )}
                       </button>
                     </td>
                     <td className="dim">{s.site}</td>
                     <td className="num">{s.chapterCount}</td>
                     <td className="num">
-                      <b>{s.doneCount}</b>
+                      <b>{done}</b>
                     </td>
-                    <td className={s.errorCount > 0 ? "num bad" : "num"}>
-                      <b>{s.errorCount}</b>
+                    <td className={errors > 0 ? "num bad" : "num"}>
+                      <b>{errors}</b>
                     </td>
                     <td className="dim">{timeAgo(s.updatedAt)}</td>
                     <td onClick={(e) => e.stopPropagation()}>
@@ -237,8 +256,9 @@ export default function LibraryView({
                         <button
                           type="button"
                           className="btn btn-quiet btn-tiny"
-                          title="Xoá truyện khỏi thư viện"
+                          title={crawling ? "Đang crawl, chưa xoá được" : "Xoá truyện khỏi thư viện"}
                           aria-label={`Xoá ${s.title}`}
+                          disabled={!!crawling}
                           onClick={() => setConfirmDelete(s.id)}
                         >
                           <Icon name="trash" size={13} />
@@ -246,7 +266,8 @@ export default function LibraryView({
                       )}
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
           )}
@@ -257,8 +278,9 @@ export default function LibraryView({
         <StoryDetail
           key={selected.id}
           story={selected}
-          run={run}
-          running={running}
+          job={job}
+          attach={attach}
+          clearChapters={clearChapters}
           onStoryChanged={handleStoryChanged}
           onClear={() => setSelected(null)}
         />

@@ -10,11 +10,14 @@ import { useCrawlJob } from "./useCrawlJob";
 export default function App() {
   const [supportedSites, setSupportedSites] = useState<SupportedSite[]>([]);
   const [tab, setTab] = useState<"library" | "manual">("library");
-  const { job, run } = useCrawlJob();
+  const { job, live, run, attach, subscribe, clearChapters } = useCrawlJob();
 
   useEffect(() => {
     fetchSupportedSites().then(setSupportedSites).catch(() => setSupportedSites([]));
   }, []);
+
+  // Kênh realtime chung: mở một lần cho cả app, đóng khi unmount.
+  useEffect(() => subscribe(), [subscribe]);
 
   return (
     <div className="app">
@@ -62,9 +65,9 @@ export default function App() {
 
       <div className="workbench">
         {tab === "library" ? (
-          <LibraryView run={run} running={job.running} supportedSites={supportedSites} />
+          <LibraryView job={job} live={live} attach={attach} clearChapters={clearChapters} supportedSites={supportedSites} />
         ) : (
-          <ManualCrawlView run={run} running={job.running} supportedSites={supportedSites} />
+          <ManualCrawlView run={run} job={job} clearChapters={clearChapters} supportedSites={supportedSites} />
         )}
       </div>
 

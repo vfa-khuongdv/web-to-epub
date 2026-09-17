@@ -21,8 +21,9 @@ export interface SupportedSite {
 }
 
 export interface ProgressEvent {
-  type: "progress" | "error" | "done";
+  type: "progress" | "error" | "done" | "running" | "idle";
   index?: number;
+  cursor?: number;
   total?: number;
   url?: string;
   message?: string;
@@ -53,6 +54,7 @@ export interface StoredStory {
   site: string;
   title: string;
   author?: string;
+  language?: string;
   coverUrl?: string;
   chapters: StoredChapter[];
   createdAt: string;

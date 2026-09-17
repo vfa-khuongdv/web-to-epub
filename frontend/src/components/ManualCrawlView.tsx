@@ -3,7 +3,7 @@ import { extractChapters } from "../api";
 import { blocksToHtml } from "../blocksToHtml";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { ExtractedChapter, SupportedSite } from "../types";
-import { RunCrawl } from "../useCrawlJob";
+import { CrawlJobState, RunCrawl } from "../useCrawlJob";
 import { useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
@@ -34,11 +34,13 @@ function toChapterState(data: ExtractedChapter, order: number, version: number, 
 
 export default function ManualCrawlView({
   run,
-  running,
+  job,
+  clearChapters,
   supportedSites,
 }: {
   run: RunCrawl;
-  running: boolean;
+  job: CrawlJobState;
+  clearChapters: () => void;
   supportedSites: SupportedSite[];
 }) {
   const [urlsText, setUrlsText] = useState("");
@@ -48,7 +50,6 @@ export default function ManualCrawlView({
   const [coverFile, setCoverFile] = useState<File | null>(null);
 
   const [chapters, setChapters] = useState<ChapterState[]>([]);
-  const [crawlingOrder, setCrawlingOrder] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [badUrls, setBadUrls] = useState<string[]>([]);
   const { isExporting, exportBook } = useEpubExport();
@@ -57,9 +58,17 @@ export default function ManualCrawlView({
   // opened, so a collapsed chapter still exports its edited content.
   const bodies = useRef(new Map<string, string>());
 
+  // Chapters this run has already finished or failed but whose content has not
+  // arrived yet (the stream carries state per chapter, content only at the end).
+  const liveDone = chapters.filter((c) => !c.data && job.chapters[c.url] === "done").length;
+  const liveFailed = chapters.filter((c) => !c.data && job.chapters[c.url] === "error").length;
   const crawled = chapters.filter((c) => c.data !== null);
-  const failed = crawled.filter((c) => c.data?.error);
-  const ok = crawled.length - failed.length;
+  const ok = crawled.filter((c) => !c.data?.error).length + liveDone;
+  const failed = crawled.filter((c) => c.data?.error).length + liveFailed;
+  const waiting = chapters.filter((c) => !c.data).length - liveDone - liveFailed;
+  const failedOrders = [
+    ...crawled.filter((c) => c.data?.error).map((c) => c.order),
+  ];
 
   function readUrls(): string[] {
     return urlsText
@@ -98,9 +107,6 @@ export default function ManualCrawlView({
     );
 
     await run("Crawl thủ công", (emit) => extractChapters(urls, emit), (event) => {
-      if ((event.type === "progress" || event.type === "error") && event.index !== undefined) {
-        setCrawlingOrder(event.index + 1);
-      }
       if (event.type === "error" && event.index !== undefined && event.message) {
         const order = event.index + 1;
         setChapters((cs) =>
@@ -124,9 +130,9 @@ export default function ManualCrawlView({
         );
         const firstOk = results.find((r) => !r.error);
         if (firstOk) setBookTitle((current) => current || firstOk.title);
+        clearChapters();
       }
     });
-    setCrawlingOrder(null);
   }
 
   async function retryOrders(orders: number[]) {
@@ -138,9 +144,6 @@ export default function ManualCrawlView({
       targets.length === 1 ? "Thử lại một chương" : `Thử lại ${targets.length} chương lỗi`,
       (emit) => extractChapters(targets.map((c) => c.url), emit),
       (event) => {
-        if ((event.type === "progress" || event.type === "error") && event.index !== undefined) {
-          setCrawlingOrder(targets[event.index]?.order ?? null);
-        }
         if (event.type === "done" && event.chapters) {
           const results = event.chapters;
           targets.forEach((t) => bodies.current.delete(t.id));
@@ -154,7 +157,6 @@ export default function ManualCrawlView({
         }
       }
     );
-    setCrawlingOrder(null);
   }
 
   async function handleExport() {
@@ -270,9 +272,9 @@ export default function ManualCrawlView({
             </div>
           </div>
 
-          <button type="button" className="btn btn-primary mt-3" disabled={running} onClick={handleExtract}>
+          <button type="button" className="btn btn-primary mt-3" disabled={job.running} onClick={handleExtract}>
             <Icon name="crawl" size={14} />
-            {running ? "Đang crawl…" : "Crawl & trích xuất nội dung"}
+            {job.running ? "Đang crawl…" : "Crawl & trích xuất nội dung"}
           </button>
         </div>
       </section>
@@ -281,15 +283,15 @@ export default function ManualCrawlView({
         <div className="pane-head">
           <h2>Kết quả</h2>
           <span className="end">
-            {failed.length > 0 && (
+            {failedOrders.length > 0 && (
               <button
                 type="button"
                 className="btn btn-tiny"
-                disabled={running}
-                onClick={() => retryOrders(failed.map((f) => f.order))}
+                disabled={job.running}
+                onClick={() => retryOrders(failedOrders)}
               >
                 <Icon name="retry" size={13} />
-                Thử lại {failed.length} chương lỗi
+                Thử lại {failedOrders.length} chương lỗi
               </button>
             )}
             <button
@@ -328,16 +330,14 @@ export default function ManualCrawlView({
             <div className="detail">
               <div className="readout">
                 <span className="readout-n">{ok}</span>
-                <span className="readout-of">/{crawled.length || chapters.length}</span>
+                <span className="readout-of">/{chapters.length}</span>
                 <span className="readout-what">chương trích xuất được</span>
               </div>
               <p className="text-xs text-ink-2">
-                {chapters.length - crawled.length > 0 && (
-                  <span>{chapters.length - crawled.length} chờ crawl</span>
-                )}
-                {chapters.length - crawled.length > 0 && failed.length > 0 && <span> · </span>}
-                {failed.length > 0 && <span className="font-semibold text-error">{failed.length} lỗi</span>}
-                {crawled.length > 0 && failed.length === 0 && chapters.length === crawled.length && (
+                {waiting > 0 && <span>{waiting} chờ crawl</span>}
+                {waiting > 0 && failed > 0 && <span> · </span>}
+                {failed > 0 && <span className="font-semibold text-error">{failed} lỗi</span>}
+                {crawled.length > 0 && failed === 0 && waiting === 0 && (
                   <span>Tất cả chương đã trích xuất thành công</span>
                 )}
               </p>
@@ -362,7 +362,7 @@ export default function ManualCrawlView({
                         order={c.order}
                         title={c.title}
                         url={c.url}
-                        crawling={crawlingOrder === c.order}
+                        state={job.chapters[c.url] ?? "pending"}
                       />
                     ) : (
                       <ChapterCard
@@ -371,7 +371,7 @@ export default function ManualCrawlView({
                         order={c.order}
                         title={c.title}
                         included={c.included}
-                        retrying={crawlingOrder === c.order}
+                        retrying={job.chapters[c.url] === "running"}
                         retriedOnce={c.retriedOnce}
                         onTitleChange={(title) =>
                           setChapters((cs) => cs.map((x) => (x.order === c.order ? { ...x, title } : x)))

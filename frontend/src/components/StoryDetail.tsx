@@ -1,8 +1,8 @@
-import { useRef, useState } from "react";
-import { crawlStory, fetchStory } from "../api";
+import { useEffect, useRef, useState } from "react";
+import { fetchStory, saveStoryMeta, startStoryCrawl } from "../api";
 import { blocksToHtml } from "../blocksToHtml";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
-import { RunCrawl } from "../useCrawlJob";
+import { CrawlJobState, liveCounts } from "../useCrawlJob";
 import { useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
@@ -37,58 +37,82 @@ function toChapterState(chapter: StoredChapter, version: number): ChapterState {
 
 export default function StoryDetail({
   story,
-  run,
-  running,
+  job,
+  attach,
+  clearChapters,
   onStoryChanged,
   onClear,
 }: {
   story: StoredStory;
-  run: RunCrawl;
-  running: boolean;
+  job: CrawlJobState;
+  attach: (label: string, storyId: string) => () => void;
+  clearChapters: () => void;
   onStoryChanged: () => void;
   onClear: () => void;
 }) {
   const [chapters, setChapters] = useState<ChapterState[]>(() =>
     story.chapters.filter((c) => c.status !== "pending").map((c) => toChapterState(c, 0))
   );
-  const [crawlingUrl, setCrawlingUrl] = useState<string | null>(null);
   const [bookTitle, setBookTitle] = useState(story.title);
   const [author, setAuthor] = useState(story.author || "");
-  const [language, setLanguage] = useState("vi");
+  const [language, setLanguage] = useState(story.language || "vi");
   const [coverFile, setCoverFile] = useState<File | null>(null);
+  // Bìa đã lưu (tải từ trang truyện khi crawl hoặc URL còn lại từ TOC); đổi sau
+  // mỗi lần crawl xong vì refreshStory nạp lại từ server.
+  const [coverUrl, setCoverUrl] = useState(story.coverUrl);
+  const [coverBroken, setCoverBroken] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const coverInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const { isExporting, exportBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
   const bodies = useRef(new Map<string, string>());
+  // Chapters the run in flight rewrites (their cached editor HTML goes stale)
+  // and the orders it was asked for, so the refetch after it ends can tell a
+  // single-chapter retry from a batch.
+  const rewrittenIds = useRef<string[]>([]);
+  const runOrders = useRef<number[] | undefined>(undefined);
+  const watchingRun = useRef(false);
 
-  const pendingCount = story.chapters.filter((c) => c.status === "pending").length;
-  const errorCount = story.chapters.filter((c) => c.status === "error").length;
-  const doneCount = story.chapters.length - pendingCount - errorCount;
+  // Live overlay for the run in progress: chapters the server still reports as
+  // pending, but that this crawl has already finished or failed. Once the run
+  // ends and the story is refetched, these come from the server instead.
+  const live = liveCounts(story.chapters, job.chapters);
+  const errorCount = story.chapters.filter((c) => c.status === "error").length + live.error;
+  const doneCount =
+    story.chapters.filter((c) => c.status === "done").length + live.done;
+  const pendingCount = story.chapters.length - doneCount - errorCount;
   const remaining = pendingCount + errorCount;
 
-  async function handleCrawl(orders?: number[]) {
-    setError(null);
-    const single = orders?.length === 1 ? orders[0] : undefined;
-    // Every chapter this run rewrites: the freshly extracted content replaces
-    // whatever was cached for its editor, so the cached HTML goes with it.
-    const rewritten =
-      single !== undefined
-        ? [`stored-${single}`]
-        : story.chapters.filter((c) => c.status !== "done").map((c) => `stored-${c.order}`);
+  // Truyện đang mở được nghe qua kênh realtime: crawl do phiên này hay phiên
+  // khác bắt đầu đều cập nhật trực tiếp vào bảng chương.
+  useEffect(() => attach(`Truyện: ${story.title}`, story.id), [attach, story.id, story.title]);
 
-    if (single !== undefined) {
-      setChapters((cs) => cs.map((c) => (c.order === single ? { ...c, retrying: true, retriedOnce: true } : c)));
+  // Khi một lượt crawl kết thúc, nạp lại nội dung từ server (kênh realtime chỉ
+  // mang trạng thái, không mang nội dung chương).
+  useEffect(() => {
+    if (job.running) {
+      watchingRun.current = true;
+      return;
     }
+    if (!watchingRun.current) return;
+    watchingRun.current = false;
+    void refreshStory(runOrders.current);
+    runOrders.current = undefined;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.running]);
 
-    await run(`Truyện: ${story.title}`, (emit) => crawlStory(story.id, orders, emit), (event) => {
-      if ((event.type === "progress" || event.type === "error") && event.url) setCrawlingUrl(event.url);
-    });
-
+  async function refreshStory(orders?: number[]) {
+    const single = orders?.length === 1 ? orders[0] : undefined;
     try {
       const fresh = await fetchStory(story.id);
-      rewritten.forEach((id) => bodies.current.delete(id));
+      setCoverUrl(fresh.coverUrl);
+      setCoverBroken(false);
+      rewrittenIds.current.forEach((id) => bodies.current.delete(id));
+      rewrittenIds.current = [];
       if (single !== undefined) {
         const updated = fresh.chapters.find((c) => c.order === single);
         if (updated) {
@@ -103,11 +127,64 @@ export default function StoryDetail({
             .map((c) => toChapterState(c, (cs.find((x) => x.order === c.order)?.version ?? -1) + 1))
         );
       }
+      clearChapters();
     } catch (err) {
       setError((err as Error).message);
     }
-    setCrawlingUrl(null);
     onStoryChanged();
+  }
+
+  async function handleCrawl(orders?: number[]) {
+    setError(null);
+    const single = orders?.length === 1 ? orders[0] : undefined;
+
+    if (single !== undefined) {
+      setChapters((cs) => cs.map((c) => (c.order === single ? { ...c, retrying: true, retriedOnce: true } : c)));
+    }
+    rewrittenIds.current =
+      single !== undefined
+        ? [`stored-${single}`]
+        : story.chapters.filter((c) => c.status !== "done").map((c) => `stored-${c.order}`);
+
+    try {
+      await startStoryCrawl(story.id, orders);
+      runOrders.current = orders;
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  // Nhấp nháy "Đã lưu" trên nút sau khi lưu thành công.
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(() => setSaved(false), 2200);
+    return () => clearTimeout(timer);
+  }, [saved]);
+
+  async function handleSave() {
+    setError(null);
+    setSaving(true);
+    try {
+      const form = new FormData();
+      form.append("title", bookTitle);
+      form.append("author", author);
+      form.append("language", language);
+      if (coverFile) form.append("cover", coverFile);
+      const updated = await saveStoryMeta(story.id, form);
+      setBookTitle(updated.title);
+      setAuthor(updated.author ?? "");
+      setLanguage(updated.language || "vi");
+      setCoverUrl(updated.coverUrl);
+      setCoverBroken(false);
+      setCoverFile(null);
+      if (coverInput.current) coverInput.current.value = "";
+      setSaved(true);
+      onStoryChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
   }
 
   async function handleExport() {
@@ -120,7 +197,7 @@ export default function StoryDetail({
           includeInBook: true,
           contentHtml: bodies.current.get(c.id) ?? blocksToHtml(c.data.blocks),
         }));
-      await exportBook({ title: bookTitle || story.title, author: author || "Unknown", language }, payload, coverFile);
+      await exportBook({ title: bookTitle || story.title, author: author || "Unknown", language, coverUrl }, payload, null);
     } catch (err) {
       setError((err as Error).message);
     }
@@ -137,6 +214,30 @@ export default function StoryDetail({
       </div>
 
       <div className="detail">
+        <div className="detail-cover">
+          {coverUrl && !coverBroken ? (
+            <img
+              className="cover-thumb"
+              // Chưa tải về nội bộ (truyện đã crawl xong trước khi có tính năng)
+              // thì xem tạm ảnh từ URL gốc; tải lỗi thì hiện khung trống.
+              src={
+                coverUrl.startsWith("http")
+                  ? coverUrl
+                  : `/api/stories/${encodeURIComponent(story.id)}/cover?v=${encodeURIComponent(coverUrl)}`
+              }
+              alt={`Ảnh bìa ${story.title}`}
+              // Một số CDN (Google Drive) chặn hotlink theo Referer.
+              referrerPolicy="no-referrer"
+              onError={() => setCoverBroken(true)}
+            />
+          ) : (
+            <div className="cover-empty">
+              <Icon name="library" size={20} />
+            </div>
+          )}
+        </div>
+
+        <div className="detail-main">
         <div>
           <h3 className="story-title">{story.title}</h3>
           <div className="story-src mt-1">
@@ -166,15 +267,19 @@ export default function StoryDetail({
           <button
             type="button"
             className="btn btn-primary"
-            disabled={running || remaining === 0}
+            disabled={job.running || remaining === 0}
             onClick={() => handleCrawl()}
           >
-            <Icon name="play" size={12} className={running ? "animate-pulse" : undefined} />
-            {running ? "Đang crawl…" : `Crawl tiếp (${remaining} chương)`}
+            <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
+            {job.running ? "Đang crawl…" : `Crawl tiếp (${remaining} chương)`}
           </button>
           <button type="button" className="btn" disabled={isExporting || doneCount === 0} onClick={handleExport}>
             <Icon name="download" size={14} />
             {isExporting ? "Đang xuất…" : "Xuất EPUB"}
+          </button>
+          <button type="button" className="btn" disabled={saving} onClick={handleSave}>
+            <Icon name={saved ? "check" : "upload"} size={13} />
+            {saving ? "Đang lưu…" : saved ? "Đã lưu" : "Lưu thông tin"}
           </button>
         </div>
 
@@ -219,15 +324,18 @@ export default function StoryDetail({
             </select>
           </div>
           <div className="field">
-            <label htmlFor="story-cover">Ảnh bìa (tùy chọn)</label>
+            <label htmlFor="story-cover">Ảnh bìa</label>
             <input
               id="story-cover"
+              ref={coverInput}
               type="file"
               className="file-input"
               accept="image/*"
               onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
             />
+            <p className="cover-hint">Bìa tự tải về khi crawl. Chọn ảnh mới rồi bấm Lưu thông tin để thay bìa.</p>
           </div>
+        </div>
         </div>
       </div>
 
@@ -252,7 +360,7 @@ export default function StoryDetail({
                     order={sc.order}
                     title={sc.title}
                     url={sc.url}
-                    crawling={crawlingUrl === sc.url}
+                    state={job.chapters[sc.url] ?? "pending"}
                   />
                 );
               }

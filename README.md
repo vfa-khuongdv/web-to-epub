@@ -15,7 +15,7 @@ Trích xuất nội dung **đang thực sự hiển thị** trên một trang we
 │  Frontend   │ ────────▶ │           Backend             │
 │ (HTML/JS)   │           │                                │
 │ - Nhập URL  │           │  ┌─────────┐  ┌─────────────┐  │
-│ - Preview   │◀──NDJSON──│  │Renderer │→│  Extractor   │  │
+│ - Preview   │◀─NDJSON/SSE│  │Renderer │→│  Extractor   │  │
 │ - Edit      │  progress │  │Playwright│  │ Readability  │  │
 │ - Export    │           │  └─────────┘  │  + jsdom     │  │
 └─────────────┘           │               └──────┬──────┘  │
@@ -47,7 +47,7 @@ trong trình duyệt**, không ảnh hưởng gì tới việc đọc DOM bằng
 | Backend server | **Node.js + TypeScript + Express** | Một process duy nhất phục vụ cả API và frontend đã build |
 | Lưu tiến độ truyện | **node:sqlite** (SQLite built-in của Node) | Hai bảng `stories`/`chapters`, ghi từng chương ngay khi xong, không thêm dependency native |
 | Frontend | **React + TypeScript + Vite** | UI dạng component (form nhập liệu, danh sách chapter, thẻ preview/edit) |
-| Progress | NDJSON streaming qua `fetch` | Không cần WebSocket, vẫn stream được tiến trình crawl nhiều chapter |
+| Progress | NDJSON qua `fetch` (crawl thủ công) + **SSE** `GET /api/stories/:id/live` (crawl truyện) | Crawl truyện chạy ở hậu trường và đẩy tiến trình cho mọi phiên đang mở truyện — reload hay mở tab khác vẫn thấy đúng trạng thái, không cần WebSocket |
 | Site whitelist | `supportedSites.ts` | Chỉ cho phép crawl các domain đã duyệt, chặn cứng ở cả frontend lẫn backend |
 
 ## 3. Cấu trúc project
@@ -61,7 +61,7 @@ tool-crawler-/
 │   ├── config/
 │   │   └── supportedSites.ts   # Whitelist domain được hỗ trợ crawl
 │   ├── routes/
-│   │   └── api.ts              # /api/extract (NDJSON), /api/extract-one, /api/cover-upload, /api/export, /api/supported-sites
+│   │   └── api.ts              # /api/extract (NDJSON), /api/stories/live (SSE chung), /api/stories/:id/{cover,meta}, /api/extract-one, /api/cover-upload, /api/export, /api/supported-sites
 │   └── services/
 │       ├── renderer.ts         # Playwright: render trang + auto-scroll
 │       ├── extractor.ts        # Readability + lọc chrome + duyệt DOM → blocks
@@ -170,6 +170,27 @@ Bên cạnh tab "Crawl thủ công" (nhập tay danh sách URL chương), UI có
   hiển thị nội dung, chương lỗi có nút "Thử lại", chương còn lại là dòng
   "Chờ crawl"), xem tiến độ `done/total` + số lỗi, và export EPUB với
   metadata prefill từ TOC.
+- **Ảnh bìa tự động**: URL bìa lấy từ trang truyện (cả 4 adapter đều có) được
+  tải về `data/covers/<id>.<ext>` ngay khi tạo truyện và ở lần crawl kế tiếp
+  của các truyện cũ (mỗi truyện tải một lần). Ảnh được nhận diện bằng magic
+  bytes nên CDN trả `content-type` chung chung vẫn lưu đúng (gặp thật với
+  `img.xtruyen.vn`); không tải được thì giữ URL gốc. Khung chi tiết hiện bìa
+  xem trước (`GET /api/stories/:id/cover`), và khi export mà không chọn file
+  thì bìa này được dùng làm bìa sách — chọn file vẫn ghi đè cho lần xuất đó.
+- **Theo dõi crawl realtime (SSE)**: `POST /api/stories/:id/crawl` trả `202`
+  ngay và crawl chạy ở hậu trường; tiến trình đẩy qua kênh chung
+  `GET /api/stories/live` (Server-Sent Events, mỗi sự kiện kèm `storyId`) —
+  bấm crawl ở tab này thì tab khác (hoặc tab vừa reload) thấy đúng trạng thái
+  từng chương, tiến độ và nhật ký, không cần F5. Bảng thư viện cũng đọc kênh
+  này nên **mọi dòng đang crawl đều có chip "Đang crawl N/M"** dù chưa chọn
+  truyện. Kênh gửi ảnh chụp `{type:"snapshot",crawls:[...]}` khi kết nối và
+  `retry: 2000` để tự kết nối lại. (`GET /api/stories/:id/live` vẫn còn cho
+  một truyện, tiện debug bằng curl.)
+- **Lưu thông tin sách**: khung chi tiết có nút "Lưu thông tin" ghi
+  tên sách/tác giả/ngôn ngữ/ảnh bìa vào thư viện
+  (`POST /api/stories/:id/meta`, multipart khi kèm ảnh). Thông tin đã lưu thắng
+  TOC khi nạp lại danh sách chương; ảnh chọn từ máy được nhận diện bằng magic
+  bytes rồi lưu thành bìa truyện (thay bìa cũ).
 
 ## 7. Cài đặt và chạy
 

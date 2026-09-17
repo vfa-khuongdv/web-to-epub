@@ -14,7 +14,7 @@ const toc: TocResult = {
   ],
 };
 
-function existingStory(): StoredStory {
+function existingStory(overrides: Partial<StoredStory> = {}): StoredStory {
   return {
     id: "abc",
     storyUrl: "https://example.com/a/",
@@ -26,6 +26,7 @@ function existingStory(): StoredStory {
     ],
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -44,6 +45,18 @@ describe("mergeStory", () => {
     expect(merged.chapters[1]).toMatchObject({ status: "error", error: "timeout" });
     expect(merged.chapters[2]).toMatchObject({ status: "pending" });
     expect(merged.createdAt).toBe("2026-09-01T00:00:00.000Z");
+  });
+
+  it("giữ tên/tác giả/ngôn ngữ người dùng đã lưu khi nạp lại TOC", () => {
+    const merged = mergeStory({
+      existing: existingStory({ title: "Tên người dùng sửa", author: "Tác giả sửa", language: "en" }),
+      site: "example.com",
+      storyUrl: "https://example.com/a/",
+      toc,
+    });
+    expect(merged.title).toBe("Tên người dùng sửa");
+    expect(merged.author).toBe("Tác giả sửa");
+    expect(merged.language).toBe("en");
   });
 });
 

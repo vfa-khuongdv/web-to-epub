@@ -8,11 +8,21 @@ export function storyId(storyUrl: string): string {
   return crypto.createHash("sha1").update(storyUrl).digest("hex").slice(0, 16);
 }
 
+export interface StoryMeta {
+  title: string;
+  author?: string;
+  language?: string;
+  coverUrl?: string;
+}
+
 export interface StoryStore {
   list(): Promise<StorySummary[]>;
   get(id: string): Promise<StoredStory | undefined>;
   save(story: StoredStory): Promise<void>;
   saveChapter(storyId: string, chapter: StoredChapter): Promise<void>;
+  // Thay thông tin sách (tên/tác giả/ngôn ngữ/bìa) mà không đụng tới chapter —
+  // dùng cho nút "Lưu thông tin". Trường bỏ trống nghĩa là xoá giá trị cũ.
+  updateMeta(id: string, meta: StoryMeta): Promise<boolean>;
   remove(id: string): Promise<boolean>;
 }
 
@@ -24,6 +34,7 @@ interface StoryRow {
   site: string;
   title: string;
   author: string | null;
+  language: string | null;
   cover_url: string | null;
   created_at: string;
   updated_at: string;
@@ -51,6 +62,7 @@ export function createStoryStore(baseDir: string): StoryStore {
       site TEXT NOT NULL,
       title TEXT NOT NULL,
       author TEXT,
+      language TEXT,
       cover_url TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -67,14 +79,22 @@ export function createStoryStore(baseDir: string): StoryStore {
     );
   `);
 
+  // DB tạo trước khi có cột language vẫn phải mở được (dữ liệu thật của người
+  // dùng), nên thêm cột còn thiếu thay vì bắt tạo lại DB.
+  const storyColumns = db.prepare("PRAGMA table_info(stories)").all() as unknown as { name: string }[];
+  if (!storyColumns.some((column) => column.name === "language")) {
+    db.exec("ALTER TABLE stories ADD COLUMN language TEXT");
+  }
+
   const upsertStory = db.prepare(`
-    INSERT INTO stories (id, story_url, site, title, author, cover_url, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO stories (id, story_url, site, title, author, language, cover_url, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       story_url = excluded.story_url,
       site = excluded.site,
       title = excluded.title,
       author = excluded.author,
+      language = excluded.language,
       cover_url = excluded.cover_url,
       created_at = excluded.created_at,
       updated_at = excluded.updated_at
@@ -104,6 +124,10 @@ export function createStoryStore(baseDir: string): StoryStore {
   `);
   const deleteStory = db.prepare(`DELETE FROM stories WHERE id = ?`);
   const touchStory = db.prepare(`UPDATE stories SET updated_at = ? WHERE id = ?`);
+  const updateStoryMeta = db.prepare(`
+    UPDATE stories SET title = ?, author = ?, language = ?, cover_url = ?, updated_at = ?
+    WHERE id = ?
+  `);
 
   function inTransaction<T>(fn: () => T): T {
     db.exec("BEGIN");
@@ -157,6 +181,7 @@ export function createStoryStore(baseDir: string): StoryStore {
         site: story.site,
         title: story.title,
         author: story.author ?? undefined,
+        language: story.language ?? undefined,
         coverUrl: story.cover_url ?? undefined,
         chapters: rows.map((row) => ({
           order: row.order,
@@ -182,6 +207,7 @@ export function createStoryStore(baseDir: string): StoryStore {
           story.site,
           story.title,
           story.author ?? null,
+          story.language ?? null,
           story.coverUrl ?? null,
           story.createdAt,
           story.updatedAt
@@ -191,6 +217,19 @@ export function createStoryStore(baseDir: string): StoryStore {
           upsertChapter.run(...chapterParams(story.id, chapter));
         }
       });
+    },
+
+    async updateMeta(id: string, meta: StoryMeta): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
+      const result = updateStoryMeta.run(
+        meta.title,
+        meta.author ?? null,
+        meta.language ?? null,
+        meta.coverUrl ?? null,
+        new Date().toISOString(),
+        id
+      );
+      return Number(result.changes) > 0;
     },
 
     async saveChapter(id: string, chapter: StoredChapter): Promise<void> {

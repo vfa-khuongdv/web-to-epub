@@ -25,8 +25,11 @@ export function mergeStory(params: {
     id: storyId(params.storyUrl),
     storyUrl: params.storyUrl,
     site: params.site,
-    title: params.toc.title || params.existing?.title || "Untitled",
-    author: params.toc.author ?? params.existing?.author,
+    // Thông tin người dùng đã sửa (nút "Lưu thông tin") thắng TOC khi nạp lại
+    // danh sách chương; TOC chỉ điền lúc tạo truyện.
+    title: params.existing?.title ?? params.toc.title ?? "Untitled",
+    author: params.existing?.author ?? params.toc.author,
+    language: params.existing?.language,
     coverUrl: params.toc.coverUrl ?? params.existing?.coverUrl,
     chapters,
     createdAt: params.existing?.createdAt || now,

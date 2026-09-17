@@ -62,9 +62,19 @@ truthfully claim.
   access in a normal browser.
 - Local state only: SQLite `stories`/`chapters` tables for the library; manual
   crawls live in browser state. No accounts.
-- Progress streams as NDJSON over `fetch`; no WebSocket.
-- Manual edits (chapter title/body, book metadata) are session-only and are not
-  persisted to the library.
+- Story crawls run server-side and publish progress on one shared SSE channel
+  (`GET /api/stories/live`) tagged with the story id, so every session sees
+  which stories are crawling — and how far along — without selecting one; a
+  session that just reloaded sees the same state. The manual batch crawl still
+  streams NDJSON over `fetch`. Starts return `202` immediately; progress is
+  pushed.
+- No WebSocket.
+- Each story's cover is fetched from its page and kept under `data/covers/`
+  (one file per story, downloaded once) so an export has a cover without a
+  manual upload.
+- Story info (title, author, language, cover) is saved to the library with the
+  "Lưu thông tin" button and beats the site's TOC when the chapter list is
+  re-loaded. Chapter title/body edits stay session-only and are not persisted.
 - Opening a very long story loads all crawled chapters at once — a known
   heaviness limit.
 - Stack: backend Node.js + TypeScript + Express; frontend React 18 + TypeScript

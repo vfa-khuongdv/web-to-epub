@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
+import { DatabaseSync } from "node:sqlite";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { StoredStory } from "../types";
@@ -159,5 +160,79 @@ describe("createStoryStore", () => {
   it("saveChapter từ chối id path traversal", async () => {
     const chapter = { order: 1, url: "https://example.com/x/1/", title: "Chương 1", status: "pending" as const };
     await expect(store.saveChapter("../../evil", chapter)).rejects.toThrow("Mã truyện không hợp lệ");
+  });
+
+  it("updateMeta cập nhật tên/tác giả/ngôn ngữ/bìa và giữ nguyên chương", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    const ok = await store.updateMeta(story.id, {
+      title: "Truyện A (đã sửa)",
+      author: "Tác giả mới",
+      language: "en",
+      coverUrl: `covers/${story.id}.jpg`,
+    });
+
+    expect(ok).toBe(true);
+    const loaded = await store.get(story.id);
+    expect(loaded).toMatchObject({
+      title: "Truyện A (đã sửa)",
+      author: "Tác giả mới",
+      language: "en",
+      coverUrl: `covers/${story.id}.jpg`,
+    });
+    expect(loaded?.chapters).toEqual(story.chapters);
+  });
+
+  it("updateMeta xoá tác giả khi không còn giá trị", async () => {
+    const story = makeStory({ author: "Tác giả cũ" });
+    await store.save(story);
+
+    await store.updateMeta(story.id, { title: story.title, language: "vi", coverUrl: undefined });
+
+    expect((await store.get(story.id))?.author).toBeUndefined();
+  });
+
+  it("updateMeta trả false khi không tìm thấy truyện", async () => {
+    expect(await store.updateMeta(storyId("https://example.com/khong-co/"), { title: "X" })).toBe(false);
+  });
+
+  it("updateMeta từ chối id path traversal", async () => {
+    expect(await store.updateMeta("../../evil", { title: "X" })).toBe(false);
+  });
+
+  it("tự thêm cột language cho DB tạo bởi bản cũ", async () => {
+    const legacyDir = await mkdtemp(path.join(os.tmpdir(), "story-store-legacy-"));
+    const legacyDb = new DatabaseSync(path.join(legacyDir, "stories.db"));
+    legacyDb.exec(`
+      CREATE TABLE stories (
+        id TEXT PRIMARY KEY,
+        story_url TEXT NOT NULL,
+        site TEXT NOT NULL,
+        title TEXT NOT NULL,
+        author TEXT,
+        cover_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE chapters (
+        story_id TEXT NOT NULL,
+        "order" INTEGER NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        blocks TEXT,
+        PRIMARY KEY (story_id, "order")
+      );
+    `);
+    legacyDb.close();
+
+    const legacy = createStoryStore(legacyDir);
+    const story = makeStory({ language: "vi" });
+    await legacy.save(story);
+    expect((await legacy.get(story.id))?.language).toBe("vi");
+
+    await rm(legacyDir, { recursive: true, force: true });
   });
 });

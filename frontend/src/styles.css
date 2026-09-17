@@ -489,12 +489,22 @@
     color: var(--color-ink-2);
   }
 
+  /* Bìa là cột trái của cả khối: cột nội dung vốn đã cao hơn bìa nên bảng
+     chương bên dưới không bị đẩy xuống. */
   .detail {
+    display: grid;
+    grid-template-columns: 96px minmax(0, 1fr);
+    gap: 14px;
+    align-items: start;
+    padding: 14px;
+    border-bottom: 1px solid var(--color-rule);
+  }
+
+  .detail-main {
     display: flex;
     flex-direction: column;
     gap: 13px;
-    padding: 14px;
-    border-bottom: 1px solid var(--color-rule);
+    min-width: 0;
   }
 
   .story-title {
@@ -576,6 +586,36 @@
 
   .file-input::file-selector-button:hover {
     background: var(--color-btn-hover);
+  }
+
+  .cover-thumb {
+    flex: none;
+    width: 96px;
+    height: 140px;
+    object-fit: cover;
+    border: 1px solid var(--color-rule-2);
+    border-radius: var(--radius-tool);
+    background: var(--color-content);
+  }
+
+  .cover-empty {
+    flex: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 96px;
+    height: 140px;
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-tool);
+    background: var(--color-content);
+    color: var(--color-ink-2);
+  }
+
+  .cover-hint {
+    margin-top: 5px;
+    font-size: 11.5px;
+    line-height: 1.45;
+    color: var(--color-ink-2);
   }
 
   .checkbox {

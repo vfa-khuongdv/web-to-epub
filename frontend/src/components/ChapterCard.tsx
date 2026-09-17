@@ -4,18 +4,19 @@ import { blocksToHtml } from "../blocksToHtml";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
 
-// A chapter the crawl has not reached yet: no content to edit or include, just
-// its place in the list, its state, and a way to look at the source page.
+// A chapter the crawl has not reached yet — or has just finished, while the
+// view still holds the pre-crawl snapshot: no content to edit or include, just
+// its place in the list, its live state, and a way to look at the source page.
 export function PendingChapterRow({
   order,
   title,
   url,
-  crawling,
+  state = "pending",
 }: {
   order: number;
   title: string;
   url: string;
-  crawling?: boolean;
+  state?: ChipState;
 }) {
   return (
     <tr>
@@ -31,7 +32,7 @@ export function PendingChapterRow({
         </span>
       </td>
       <td className="w-32">
-        <StatusChip state={crawling ? "running" : "pending"} label={crawling ? "Đang crawl" : undefined} />
+        <StatusChip state={state} />
       </td>
       <td className="w-28">
         <a
