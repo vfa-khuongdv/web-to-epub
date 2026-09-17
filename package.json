@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Extract rendered web page text (bypassing copy-protection) and export to Kindle-ready EPUB",
   "private": true,
-  "main": "dist/server.js",
+  "main": "electron/main.js",
   "workspaces": [
     "frontend"
   ],
@@ -13,7 +13,9 @@
     "start": "node dist/server.js",
     "dev": "tsc --watch & nodemon dist/server.js",
     "dev:frontend": "npm run dev -w frontend",
-    "test": "vitest run"
+    "test": "vitest run",
+    "app:mac": "npm run build && npm run app:browser && electron-builder --mac --arm64",
+    "app:browser": "PLAYWRIGHT_BROWSERS_PATH=\"$PWD/build/ms-playwright\" playwright install --only-shell chromium"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
@@ -28,8 +30,38 @@
     "@types/jsdom": "^21.1.7",
     "@types/multer": "^1.4.11",
     "@types/node": "^22.5.0",
+    "electron": "^44.4.1",
+    "electron-builder": "^26.15.3",
     "nodemon": "^3.1.4",
     "typescript": "^5.5.4",
     "vitest": "^5.0.1"
+  },
+  "build": {
+    "appId": "vn.webtoepub.app",
+    "productName": "Web to EPUB",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**",
+      "public/**",
+      "electron/**",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "build/ms-playwright",
+        "to": "ms-playwright"
+      }
+    ],
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.productivity",
+      "identity": null
+    },
+    "afterPack": "scripts/adhoc-sign.js"
   }
 }

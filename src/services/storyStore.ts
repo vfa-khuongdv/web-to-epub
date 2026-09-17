@@ -3,6 +3,7 @@ import fs from "fs";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
 import { ContentBlock, StoredChapter, StoredStory, StorySummary } from "../types";
+import { DATA_DIR } from "../config/paths";
 
 export function storyId(storyUrl: string): string {
   return crypto.createHash("sha1").update(storyUrl).digest("hex").slice(0, 16);
@@ -252,4 +253,4 @@ export function createStoryStore(baseDir: string): StoryStore {
   };
 }
 
-export const storyStore = createStoryStore(path.resolve("data"));
+export const storyStore = createStoryStore(DATA_DIR);
