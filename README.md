@@ -79,6 +79,7 @@ tool-crawler-/
 │           └── ChapterCard.tsx  # Thẻ preview/edit từng chapter (kể cả trạng thái lỗi + nút thử lại)
 ├── public/                       # Build output của frontend (tự sinh, không sửa tay)
 ├── data/                         # Thư viện truyện: stories.db (SQLite) + covers/ (không commit)
+├── Makefile                      # Gói lệnh hay dùng: make help để xem danh sách
 ├── electron/main.js              # Main process Electron: chạy server + mở cửa sổ (bản app macOS)
 ├── scripts/adhoc-sign.js         # Ký ad-hoc bundle .app sau khi đóng gói
 ├── Dockerfile                    # Image multi-stage: build tsc+vite → runtime Node 22 + Chromium
@@ -218,6 +219,10 @@ npm start
 ```
 
 Mở trình duyệt tại `http://localhost:3100` (đổi cổng bằng `PORT=xxxx npm start`).
+
+Các lệnh trên đều có sẵn trong `Makefile` — gõ `make` (hoặc `make help`) để xem
+danh sách: `make install`, `make build`, `make test`, `make start`,
+`make docker-build` / `docker-run` / `docker-push`, `make app`.
 
 Dev mode:
 
