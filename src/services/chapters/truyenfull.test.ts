@@ -9,13 +9,12 @@ vi.mock("../renderer", () => ({ renderPageHtml: vi.fn() }));
 
 const CHAPTER_URL = "https://truyenfull.live/truyen-thu/chuong-1/";
 
-// Trang truyenfull dựng lại ở dạng tối giản: toàn văn nằm sẵn trong #chapter-c,
-// bị CSS giấu sau lớp phủ quảng cáo.
+// Truyenfull page is minimal: full text is in #chapter-c, hidden by CSS behind ad overlay.
 function page(paragraphs: string[], hidden = true): string {
   const body = paragraphs.map((p) => `<p>${p}</p>`).join("");
   return `<html><head><title>Truyện Thử - Chương 1 - TruyenFull</title></head><body>
     <h1>Truyện Thử</h1>
-    <div class="ads-unlock-container">Bấm vào quảng cáo để mở khoá chương</div>
+    <div class="ads-unlock-container">Click ads to unlock chapter</div>
     <div id="chapter-c"${hidden ? ' style="display:none"' : ""}>${body}</div>
   </body></html>`;
 }
@@ -23,8 +22,8 @@ function page(paragraphs: string[], hidden = true): string {
 const LONG = Array.from(
   { length: 8 },
   (_, i) =>
-    `Đoạn thứ ${i + 1} của chương thử nghiệm, viết dài vừa đủ để bộ trích xuất coi đây là phần nội dung chính ` +
-    `của trang chứ không phải một mẩu điều hướng hay quảng cáo nằm bên lề.`
+    `Section ${i + 1} of test chapter, written long enough for the extractor to consider it main content ` +
+    `not navigation snippet or sidebar ad.`
 );
 
 describe("fetchTruyenfullChapter", () => {
@@ -33,7 +32,7 @@ describe("fetchTruyenfullChapter", () => {
     vi.mocked(renderPageHtml).mockReset();
   });
 
-  it("lấy nội dung thẳng từ HTML phục vụ sẵn, không mở trình duyệt", async () => {
+  it("fetches content directly from pre-served HTML, does not open browser", async () => {
     vi.mocked(fetchText).mockResolvedValue(page(LONG));
 
     const chapter = await fetchTruyenfullChapter(CHAPTER_URL);
@@ -44,7 +43,7 @@ describe("fetchTruyenfullChapter", () => {
     expect(renderPageHtml).not.toHaveBeenCalled();
   });
 
-  it("gỡ lớp phủ quảng cáo nên nội dung không lẫn lời mời bấm quảng cáo", async () => {
+  it("removes ad overlay so content does not mix with ad prompts", async () => {
     vi.mocked(fetchText).mockResolvedValue(page(LONG));
 
     const chapter = await fetchTruyenfullChapter(CHAPTER_URL);
@@ -52,7 +51,7 @@ describe("fetchTruyenfullChapter", () => {
     expect(chapter.blocks.some((b) => (b.text || "").includes("mở khoá"))).toBe(false);
   });
 
-  it("HTML phục vụ sẵn không đủ chữ thì quay về render bằng trình duyệt", async () => {
+  it("if pre-served HTML lacks enough text, falls back to browser rendering", async () => {
     vi.mocked(fetchText).mockResolvedValue(page(["Đang tải..."]));
     vi.mocked(renderPageHtml).mockResolvedValue(page(LONG, false));
 
@@ -62,7 +61,7 @@ describe("fetchTruyenfullChapter", () => {
     expect(chapter.blocks.length).toBeGreaterThanOrEqual(8);
   });
 
-  it("chương bị khoá thì báo ngay, không tốn thêm một lượt render", async () => {
+  it("if chapter is locked, reports immediately, does not waste extra render", async () => {
     vi.mocked(fetchText).mockResolvedValue(
       page([...LONG, "Nội dung chương đang bị khóa, vui lòng tắt quảng cáo rồi tải lại trang."])
     );

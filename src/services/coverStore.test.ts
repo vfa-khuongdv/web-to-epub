@@ -35,7 +35,7 @@ describe("createCoverStore", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("tải ảnh bìa về và trả về đường dẫn lưu trong DB", async () => {
+  it("downloads cover image and returns path saved in DB", async () => {
     const bytes = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 1, 2, 3]);
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse(bytesBody(bytes)));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
@@ -46,14 +46,14 @@ describe("createCoverStore", () => {
     expect(new Uint8Array(await readFile(path.join(dir, "covers", `${STORY_ID}.jpg`)))).toEqual(bytes);
   });
 
-  it("chọn đuôi file theo content-type", async () => {
+  it("chooses file extension by content-type", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse("png-bytes", "image/png"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
     expect(await store.save(STORY_ID, COVER_URL)).toBe(`covers/${STORY_ID}.png`);
   });
 
-  it("không lưu khi phản hồi không phải ảnh", async () => {
+  it("does not save when response is not an image", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse("<html>404</html>", "text/html"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -61,8 +61,8 @@ describe("createCoverStore", () => {
     expect(store.find(STORY_ID)).toBeUndefined();
   });
 
-  it("nhận diện ảnh khi server trả content-type chung chung (octet-stream)", async () => {
-    // img.xtruyen.vn trả bìa .webp với content-type application/octet-stream (gặp thật).
+  it("recognizes image when server returns generic content-type (octet-stream)", async () => {
+    // img.xtruyen.vn returns .webp cover with application/octet-stream content-type (real case).
     const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0x2a, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse(bytesBody(webp), "application/octet-stream"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
@@ -70,7 +70,7 @@ describe("createCoverStore", () => {
     expect(await store.save(STORY_ID, COVER_URL)).toBe(`covers/${STORY_ID}.webp`);
   });
 
-  it("trả undefined khi tải lỗi HTTP", async () => {
+  it("returns undefined when HTTP load fails", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(new Response("not found", { status: 404 }));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -78,7 +78,7 @@ describe("createCoverStore", () => {
     expect(store.find(STORY_ID)).toBeUndefined();
   });
 
-  it("không lưu ảnh vượt dung lượng cho phép (theo content-length)", async () => {
+  it("does not save image exceeding size limit (by content-length)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       imageResponse("x", "image/jpeg", { "content-length": String(MAX_COVER_BYTES + 1) })
     );
@@ -88,7 +88,7 @@ describe("createCoverStore", () => {
     expect(store.find(STORY_ID)).toBeUndefined();
   });
 
-  it("không lưu ảnh vượt dung lượng cho phép (theo dữ liệu thật)", async () => {
+  it("does not save image exceeding size limit (by actual data)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse(bytesBody(new Uint8Array(MAX_COVER_BYTES + 1))));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -96,7 +96,7 @@ describe("createCoverStore", () => {
     expect(store.find(STORY_ID)).toBeUndefined();
   });
 
-  it("bỏ qua khi bìa đã lưu rồi, không tải lại", async () => {
+  it("skips when cover already saved, does not reload", async () => {
     const first = vi.fn().mockResolvedValue(imageResponse("first"));
     const store = createCoverStore(dir, { fetchImpl: first as unknown as typeof fetch });
     await store.save(STORY_ID, COVER_URL);
@@ -107,7 +107,7 @@ describe("createCoverStore", () => {
     expect(second).not.toHaveBeenCalled();
   });
 
-  it("gửi Referer và User-Agent khi tải ảnh", async () => {
+  it("sends Referer and User-Agent when loading image", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse("bytes"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -118,14 +118,14 @@ describe("createCoverStore", () => {
     expect((init.headers as Record<string, string>)["User-Agent"]).toContain("Mozilla");
   });
 
-  it("lỗi kết nối trả undefined thay vì ném (không làm hỏng crawl)", async () => {
+  it("connection error returns undefined instead of throwing (does not break crawl)", async () => {
     const fetchImpl = vi.fn().mockRejectedValue(connectionReset());
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
     expect(await store.save(STORY_ID, COVER_URL)).toBeUndefined();
   });
 
-  it("từ chối mã truyện không hợp lệ (không ghi ra ngoài thư mục)", async () => {
+  it("rejects invalid story id (does not write outside directory)", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse("bytes"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
 
@@ -133,7 +133,7 @@ describe("createCoverStore", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("find trả file đã lưu kèm content-type", async () => {
+  it("find returns saved file with content-type", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse("bytes", "image/webp"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
     await store.save(STORY_ID, COVER_URL);
@@ -143,7 +143,7 @@ describe("createCoverStore", () => {
     expect(found?.contentType).toBe("image/webp");
   });
 
-  it("remove xoá bìa đã lưu", async () => {
+  it("remove deletes saved cover", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(imageResponse("bytes"));
     const store = createCoverStore(dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
     await store.save(STORY_ID, COVER_URL);
@@ -153,7 +153,7 @@ describe("createCoverStore", () => {
     expect(store.find(STORY_ID)).toBeUndefined();
   });
 
-  it("saveUpload lưu file người dùng chọn thành bìa truyện", async () => {
+  it("saveUpload saves user-selected file as story cover", async () => {
     const jpg = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 9, 9]);
     const tmp = path.join(dir, "upload-tmp");
     await writeFile(tmp, jpg);
@@ -164,7 +164,7 @@ describe("createCoverStore", () => {
     expect(existsSync(tmp)).toBe(false);
   });
 
-  it("saveUpload thay bìa cũ khi định dạng đổi", async () => {
+  it("saveUpload replaces old cover when format changes", async () => {
     const store = createCoverStore(dir);
     const jpgTmp = path.join(dir, "upload-1");
     await writeFile(jpgTmp, Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
@@ -178,7 +178,7 @@ describe("createCoverStore", () => {
     expect(existsSync(path.join(dir, "covers", `${STORY_ID}.jpg`))).toBe(false);
   });
 
-  it("saveUpload từ chối file không phải ảnh và dọn file tạm", async () => {
+  it("saveUpload rejects non-image file and cleans temp file", async () => {
     const tmp = path.join(dir, "upload-html");
     await writeFile(tmp, "<html>không phải ảnh</html>");
     const store = createCoverStore(dir);
@@ -188,7 +188,7 @@ describe("createCoverStore", () => {
     expect(existsSync(tmp)).toBe(false);
   });
 
-  it("saveUpload từ chối mã truyện không hợp lệ", async () => {
+  it("saveUpload rejects invalid story id", async () => {
     const tmp = path.join(dir, "upload-x");
     await writeFile(tmp, Buffer.from([0xff, 0xd8, 0xff, 0xe0]));
     const store = createCoverStore(dir);
@@ -198,17 +198,17 @@ describe("createCoverStore", () => {
 });
 
 describe("coverPathForExport", () => {
-  it("giữ nguyên URL ngoài để epub-gen tự tải", () => {
+  it("keeps external URL for epub-gen to load itself", () => {
     expect(coverPathForExport(COVER_URL)).toBe(COVER_URL);
   });
 
-  it("resolve đường dẫn lưu nội bộ theo thư mục data", () => {
+  it("resolves internal saved path by data directory", () => {
     expect(coverPathForExport(`covers/${STORY_ID}.jpg`, "/app/data")).toBe(
       path.join("/app/data", "covers", `${STORY_ID}.jpg`)
     );
   });
 
-  it("giữ nguyên đường dẫn tuyệt đối", () => {
+  it("keeps absolute path unchanged", () => {
     expect(coverPathForExport("/tmp/upload-123.jpg")).toBe("/tmp/upload-123.jpg");
   });
 });

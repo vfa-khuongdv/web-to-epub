@@ -6,7 +6,7 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 
 - `npm install` — installs backend + `frontend/` (npm workspaces). Add `npx playwright install chromium` to actually crawl/render.
 - `npm test` — vitest, all tests in ~2s; tests are hermetic (network and Chromium mocked), no setup needed.
-- `npx vitest run src/services/crawl.test.ts -t "tên test"` — single file / single test.
+- `npx vitest run src/services/crawl.test.ts -t "test name"` — single file / single test.
 - `npm run build` — `tsc` → `dist/` then `vite build` → `public/`. Required before `npm start` (it only runs `dist/server.js`); `make start` builds first.
 - `npm run dev` (backend watch: `tsc --watch` + nodemon) and `npm run dev:frontend` (Vite dev server proxies `/api` → `localhost:3100`).
 - `npx tsc -p frontend --noEmit` — frontend typecheck; `vite build` does NOT typecheck frontend.

@@ -20,8 +20,7 @@ vi.mock("./renderer", async (importOriginal) => {
 });
 
 const WATTPAD_URL = "https://www.wattpad.com/148415654-pumpkin-patch-princess-chapter-two-visiting";
-// xtruyen dựng nội dung bằng JS nên không có fetcher riêng — đây là site đi
-// đường renderer + extractor chung.
+// xtruyen builds content with JS so no dedicated fetcher — this site uses shared renderer + extractor path.
 const OTHER_URL = "https://xtruyen.vn/truyen/a/chuong-1/";
 
 describe("extractWithRetry", () => {
@@ -29,7 +28,7 @@ describe("extractWithRetry", () => {
     vi.clearAllMocks();
   });
 
-  it("dùng chapter fetcher của site khi có (Wattpad), không render trình duyệt", async () => {
+  it("uses site's chapter fetcher when available (Wattpad), does not render browser", async () => {
     vi.mocked(fetchWattpadChapter).mockResolvedValue({
       sourceUrl: WATTPAD_URL,
       title: "CHAPTER TWO: Visiting Valentine",
@@ -43,7 +42,7 @@ describe("extractWithRetry", () => {
     expect(renderPageHtml).not.toHaveBeenCalled();
   });
 
-  it("dùng renderer + extractor chung cho site không có fetcher", async () => {
+  it("uses shared renderer + extractor for site without dedicated fetcher", async () => {
     vi.mocked(renderPageHtml).mockResolvedValue("<html>rendered</html>");
     const { extractChapter } = await import("./extractor");
     vi.mocked(extractChapter).mockReturnValue({ sourceUrl: OTHER_URL, title: "Chương 1", blocks: [] });
@@ -54,7 +53,7 @@ describe("extractWithRetry", () => {
     expect(extractChapter).toHaveBeenCalledWith(OTHER_URL, "<html>rendered</html>");
   });
 
-  it("thử lại khi fetcher lỗi tạm thời", async () => {
+  it("retries when fetcher has temporary error", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(fetchWattpadChapter)
@@ -72,17 +71,17 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("trang bị xoá trắng thì thử lại gần như ngay, không chờ backoff", async () => {
+  it("if page is blanked, retries nearly immediately, does not wait for backoff", async () => {
     vi.useFakeTimers();
     try {
       const { extractChapter } = await import("./extractor");
       vi.mocked(renderPageHtml)
-        .mockRejectedValueOnce(new BlankedPageError("Trang bị xoá trắng"))
+        .mockRejectedValueOnce(new BlankedPageError("Page blanked"))
         .mockResolvedValueOnce("<html>rendered</html>");
       vi.mocked(extractChapter).mockReturnValue({ sourceUrl: OTHER_URL, title: "Chương 1", blocks: [] });
 
       const promise = extractWithRetry(OTHER_URL);
-      // Chỉ nhích 300ms: backoff cũ (1000ms) sẽ khiến lượt thử thứ hai chưa chạy.
+      // Advance only 300ms: old backoff (1000ms) would prevent second attempt from running.
       await vi.advanceTimersByTimeAsync(300);
       const chapter = await promise;
 
@@ -93,8 +92,8 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("locked content dừng ngay, không thử lại", async () => {
-    vi.mocked(fetchWattpadChapter).mockRejectedValue(new LockedContentError("Chương này thuộc chương trình trả phí"));
+  it("locked content stops immediately, does not retry", async () => {
+    vi.mocked(fetchWattpadChapter).mockRejectedValue(new LockedContentError("This chapter is part of paid program"));
 
     const chapter = await extractWithRetry(WATTPAD_URL);
 
@@ -102,7 +101,7 @@ describe("extractWithRetry", () => {
     expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
   });
 
-  it("hết MAX_ATTEMPTS trả chapter có error, không throw", async () => {
+  it("exceeds MAX_ATTEMPTS returns chapter with error, does not throw", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(fetchWattpadChapter).mockRejectedValue(new Error(" lỗi mạng "));
@@ -119,7 +118,7 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("gọi onAttempt với số thứ tự thử từ 1", async () => {
+  it("calls onAttempt with attempt number starting from 1", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(fetchWattpadChapter)
@@ -137,11 +136,11 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("renderer lỗi tạm thời → thử lại rồi thành công", async () => {
+  it("renderer temporary error → retries then succeeds", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(renderPageHtml)
-        .mockRejectedValueOnce(new Error("Trang bị xoá trắng"))
+        .mockRejectedValueOnce(new Error("Page blanked"))
         .mockResolvedValueOnce("<html>rendered</html>");
       const { extractChapter } = await import("./extractor");
       vi.mocked(extractChapter).mockReturnValue({ sourceUrl: OTHER_URL, title: "Chương", blocks: [] });
@@ -157,10 +156,10 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("renderer lỗi liên tục → trả chapter có error sau khi hết retries", async () => {
+  it("renderer continuous error → returns chapter with error after retries exhausted", async () => {
     vi.useFakeTimers();
     try {
-      vi.mocked(renderPageHtml).mockRejectedValue(new Error("Trang tải về rỗng"));
+      vi.mocked(renderPageHtml).mockRejectedValue(new Error("Page downloaded empty"));
 
       const promise = extractWithRetry(OTHER_URL);
       await vi.advanceTimersByTimeAsync(60_000);
@@ -174,7 +173,7 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("onAttempt được gọi đúng số lần cho renderer fallback", async () => {
+  it("onAttempt is called correct times for renderer fallback", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(renderPageHtml).mockRejectedValue(new Error("fail"));
@@ -195,27 +194,27 @@ describe("extractWithRetry", () => {
 describe("estimateRemainingMs", () => {
   const base = { startedAt: 0, total: 10 };
 
-  it("trả undefined khi chưa đủ mẫu (dưới 3 chương)", () => {
+  it("returns undefined when not enough samples (under 3 chapters)", () => {
     expect(estimateRemainingMs({ ...base, completed: 0, now: 10_000 })).toBeUndefined();
     expect(estimateRemainingMs({ ...base, completed: 2, now: 10_000 })).toBeUndefined();
   });
 
-  it("trả undefined khi đã xong hết", () => {
+  it("returns undefined when already done", () => {
     expect(estimateRemainingMs({ ...base, completed: 10, now: 100_000 })).toBeUndefined();
     expect(estimateRemainingMs({ ...base, completed: 11, now: 100_000 })).toBeUndefined();
   });
 
-  it("trả undefined khi chưa trôi qua thời gian nào", () => {
+  it("returns undefined when no time has elapsed", () => {
     expect(estimateRemainingMs({ ...base, completed: 3, now: 0 })).toBeUndefined();
   });
 
-  it("ước lượng theo tốc độ trung bình của các chương đã xong", () => {
-    // 3 chương trong 30 giây → 10 giây/chương, còn 7 chương → 70 giây.
+  it("estimates by average speed of completed chapters", () => {
+    // 3 chapters in 30 seconds → 10 seconds/chapter, 7 chapters left → 70 seconds.
     expect(estimateRemainingMs({ ...base, completed: 3, now: 30_000 })).toBe(70_000);
   });
 
-  it("làm tròn mili giây", () => {
-    // 3 chương trong 20 giây → ~6.67 giây/chương, còn 7 → ~46.67 giây.
+  it("rounds milliseconds", () => {
+    // 3 chapters in 20 seconds → ~6.67 seconds/chapter, 7 left → ~46.67 seconds.
     expect(estimateRemainingMs({ ...base, completed: 3, now: 20_000 })).toBe(46_667);
   });
 });

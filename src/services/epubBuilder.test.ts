@@ -6,25 +6,25 @@ import { unzipSync, zipSync } from "fflate";
 import { contentDisposition, embedImages, embedMedia, epubFileName, packMedia } from "./epubBuilder";
 
 describe("epubFileName", () => {
-  it("giữ nguyên tiếng Việt có dấu", () => {
+  it("preserves Vietnamese with marks", () => {
     expect(epubFileName("Nữ Học Bá Trùng Sinh Thành Nữ Phụ Ở Cổ Đại")).toBe(
       "Nữ Học Bá Trùng Sinh Thành Nữ Phụ Ở Cổ Đại.epub"
     );
   });
 
-  it("thay ký tự không hợp lệ trong tên file bằng khoảng trắng", () => {
+  it("replaces invalid characters in filename with space", () => {
     expect(epubFileName('Truyện: "A/B" <1> | 2?')).toBe("Truyện A B 1 2.epub");
   });
 
-  it("gộp khoảng trắng thừa và cắt hai đầu", () => {
+  it("collapses extra spaces and trims ends", () => {
     expect(epubFileName("  Hãn   Phu  ")).toBe("Hãn Phu.epub");
   });
 
-  it("dùng tên mặc định khi tên rỗng", () => {
+  it("uses default name when name empty", () => {
     expect(epubFileName("   ")).toBe("book.epub");
   });
 
-  it("cắt bớt tên quá dài để không vượt giới hạn tên file", () => {
+  it("truncates too-long name to not exceed filename limit", () => {
     const name = epubFileName("a".repeat(300));
     expect(name.length).toBeLessThanOrEqual(125);
     expect(name.endsWith(".epub")).toBe(true);
@@ -32,13 +32,13 @@ describe("epubFileName", () => {
 });
 
 describe("contentDisposition", () => {
-  it("kèm bản ASCII dự phòng và bản UTF-8 percent-encoded", () => {
+  it("includes ASCII fallback and UTF-8 percent-encoded version", () => {
     expect(contentDisposition("Nữ Học Bá.epub")).toBe(
       "attachment; filename=\"N_ H_c B_.epub\"; filename*=UTF-8''N%E1%BB%AF%20H%E1%BB%8Dc%20B%C3%A1.epub"
     );
   });
 
-  it("không để ký tự đặc biệt phá vỡ header", () => {
+  it("does not let special characters break header", () => {
     const value = contentDisposition(epubFileName('Truyện "A" (b)'));
     expect(value).toContain("filename*=UTF-8''");
     expect(value).toContain('filename="Truy_n A (b).epub"');
@@ -47,7 +47,7 @@ describe("contentDisposition", () => {
 });
 
 describe("embedImages", () => {
-  // PNG 1x1 hợp lệ, đủ magic bytes để nhận ra là ảnh.
+  // Valid 1x1 PNG, has enough magic bytes to recognize as image.
   const PNG_BASE64 =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
   let dir: string;
@@ -59,25 +59,25 @@ describe("embedImages", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("để nguyên chapter không có ảnh", async () => {
+  it("keeps chapter with no images unchanged", async () => {
     const chapters = [{ title: "C1", includeInBook: true, contentHtml: "<p>chữ</p>" }];
     expect(await embedImages(chapters, dir)).toEqual(chapters);
   });
 
-  it("lưu ảnh data URI ra file và trỏ src vào file đó", async () => {
+  it("saves image data URI to file and points src to it", async () => {
     const [chapter] = await embedImages(
       [{ title: "C1", includeInBook: true, contentHtml: `<img src="data:image/png;base64,${PNG_BASE64}" alt="a"/>` }],
       dir
     );
     const src = chapter.contentHtml.match(/src="file:\/\/([^"]+)"/)?.[1];
     expect(src).toBeDefined();
-    // Đuôi file lấy từ magic bytes, không phải từ URL.
+    // File extension taken from magic bytes, not URL.
     expect(src!.endsWith(".png")).toBe(true);
     expect(fs.existsSync(src!)).toBe(true);
     expect(chapter.contentHtml).toContain('alt="a"');
   });
 
-  it("bỏ hẳn thẻ img khi không nhận ra ảnh, giữ nguyên phần chữ", async () => {
+  it("completely removes img tag when image not recognized, keeps text", async () => {
     const [chapter] = await embedImages(
       [
         {
@@ -88,11 +88,11 @@ describe("embedImages", () => {
       ],
       dir
     );
-    // Thà mất ảnh còn hơn để EPUB trỏ tới file không tồn tại.
+    // Better to lose image than have EPUB point to non-existent file.
     expect(chapter.contentHtml).toBe("<p>trước</p><p>sau</p>");
   });
 
-  it("bỏ thẻ img có src không phải http hay data URI", async () => {
+  it("removes img tag with src not http or data URI", async () => {
     const [chapter] = await embedImages(
       [{ title: "C1", includeInBook: true, contentHtml: '<p>x</p><img src="/local/a.jpg" />' }],
       dir
@@ -100,7 +100,7 @@ describe("embedImages", () => {
     expect(chapter.contentHtml).toBe("<p>x</p>");
   });
 
-  it("tải một lần cho nhiều thẻ dùng chung một ảnh", async () => {
+  it("loads once for multiple tags using same image", async () => {
     const tag = `<img src="data:image/png;base64,${PNG_BASE64}" />`;
     const [chapter] = await embedImages([{ title: "C1", includeInBook: true, contentHtml: tag + tag }], dir);
     expect(fs.readdirSync(dir)).toHaveLength(1);
@@ -121,14 +121,14 @@ describe("embedMedia", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  it("để nguyên chapter không có thẻ media", async () => {
+  it("keeps chapter with no media tags unchanged", async () => {
     const chapters = [{ title: "C1", includeInBook: true, contentHtml: "<p>x</p>" }];
     const result = await embedMedia(chapters, dir);
     expect(result.chapters).toBe(chapters);
     expect(result.media).toEqual([]);
   });
 
-  it("lưu file media ra đĩa và trỏ src vào đường dẫn trong sách", async () => {
+  it("saves media file to disk and points src to path in book", async () => {
     const { chapters, media } = await embedMedia(
       [{ title: "C1", includeInBook: true, contentHtml: `<audio controls src="${MP3_DATA_URI}">x</audio>` }],
       dir
@@ -137,21 +137,21 @@ describe("embedMedia", () => {
     expect(media[0].href).toBe("media/0.mp3");
     expect(media[0].mediaType).toBe("audio/mpeg");
     expect(fs.readFileSync(media[0].filePath).toString()).toBe("fake-mp3");
-    expect(chapters[0].contentHtml).toBe('<audio controls src="media/0.mp3">Tệp âm thanh</audio>');
+    expect(chapters[0].contentHtml).toBe('<audio controls src="media/0.mp3">Audio file</audio>');
   });
 
-  it("đổi thẻ không tải được thành link về nguồn thay vì bỏ hẳn", async () => {
+  it("replaces unable-to-load tag with link to source instead of removing", async () => {
     const { chapters, media } = await embedMedia(
       [{ title: "C1", includeInBook: true, contentHtml: '<p>a</p><audio src="https://x.invalid/s.m3u8"></audio>' }],
       dir
     );
     expect(media).toEqual([]);
     expect(chapters[0].contentHtml).toBe(
-      '<p>a</p><p><a href="https://x.invalid/s.m3u8">Tệp âm thanh</a>: https://x.invalid/s.m3u8</p>'
+      '<p>a</p><p><a href="https://x.invalid/s.m3u8">Audio file</a>: https://x.invalid/s.m3u8</p>'
     );
   });
 
-  it("bỏ thẻ media có src không phải http hay data URI", async () => {
+  it("removes media tag with src not http or data URI", async () => {
     const { chapters } = await embedMedia(
       [{ title: "C1", includeInBook: true, contentHtml: '<p>a</p><video src="/local/a.mp4"></video>' }],
       dir
@@ -159,18 +159,17 @@ describe("embedMedia", () => {
     expect(chapters[0].contentHtml).toBe("<p>a</p>");
   });
 
-  it("bỏ file vượt ngưỡng dung lượng dù server không khai content-length", async () => {
-    // Chunk 1MB: readCapped dừng ngay khi vượt ngưỡng nên chỉ đọc ~51 chunk.
-    // Chia nhỏ hơn (65536 chunk 1KB) thì chỉ riêng việc nạp vào stream đã lâu
-    // hơn cả timeout của test.
+  it("discards file exceeding size limit even if server doesn't declare content-length", async () => {
+    // Chunk 1MB: readCapped stops immediately when exceeding limit so reads ~51 chunks.
+    // Smaller chunks (65536 chunks 1KB) then just loading into stream takes longer
+    // than test timeout.
     const chunk = new Uint8Array(1024 * 1024);
     const originalFetch = globalThis.fetch;
     globalThis.fetch = (async () =>
       new Response(
         new ReadableStream({
           pull(controller) {
-            // Nguồn không bao giờ hết và không khai content-length — chỉ ngưỡng
-            // dung lượng mới cắt được nó.
+            // Source never ends and doesn't declare content-length — only size limit can stop it.
             controller.enqueue(chunk);
           },
         }),
@@ -189,7 +188,7 @@ describe("embedMedia", () => {
     }
   });
 
-  it("tải một lần cho nhiều thẻ dùng chung một file", async () => {
+  it("loads once for multiple tags using same file", async () => {
     const tag = `<audio src="${MP3_DATA_URI}"></audio>`;
     const { chapters, media } = await embedMedia(
       [{ title: "C1", includeInBook: true, contentHtml: tag + tag }],
@@ -210,7 +209,7 @@ describe("packMedia", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   });
 
-  // EPUB tối giản đúng cấu trúc epub-gen sinh ra, đủ để kiểm tra phần vá.
+  // Minimal valid EPUB with epub-gen structure, enough to test patching.
   function fakeEpub(chapterHtml: string): Buffer {
     return Buffer.from(
       zipSync({
@@ -223,10 +222,10 @@ describe("packMedia", () => {
     );
   }
 
-  it("thêm file media, khai báo manifest và trả lại controls", async () => {
+  it("adds media file, declares in manifest, and returns controls", async () => {
     const filePath = path.join(dir, "media-0.mp3");
     fs.writeFileSync(filePath, "bytes");
-    const out = await packMedia(fakeEpub('<body><audio src="media/0.mp3">Tệp âm thanh</audio></body>'), [
+    const out = await packMedia(fakeEpub('<body><audio src="media/0.mp3">Audio file</audio></body>'), [
       { href: "media/0.mp3", mediaType: "audio/mpeg", filePath },
     ]);
 
@@ -238,13 +237,13 @@ describe("packMedia", () => {
     expect(Buffer.from(entries["OEBPS/0_c1.xhtml"]).toString()).toContain('<audio controls src="media/0.mp3">');
   });
 
-  it("giữ mimetype là entry đầu tiên và không nén", async () => {
+  it("keeps mimetype as first entry and uncompressed", async () => {
     const filePath = path.join(dir, "media-0.mp3");
     fs.writeFileSync(filePath, "bytes");
     const out = await packMedia(fakeEpub("<body><audio src=\"media/0.mp3\"></audio></body>"), [
       { href: "media/0.mp3", mediaType: "audio/mpeg", filePath },
     ]);
-    // Entry đầu tiên lưu nguyên văn: chuỗi mimetype nằm ngay đầu file zip.
+    // First entry stored raw: mimetype string is at the very start of zip file.
     expect(out.subarray(30, 38).toString()).toBe("mimetype");
     expect(out.subarray(38, 58).toString()).toBe("application/epub+zip");
   });
