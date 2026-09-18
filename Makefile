@@ -6,7 +6,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 
 .DEFAULT_GOAL := help
 .PHONY: help install build dev test start clean \
-        dev-frontend docker-build docker-run docker-stop docker-push \
+        dev-frontend dev-all docker-build docker-run docker-stop docker-push \
         app release-mac
 
 help: ## In danh sách lệnh
@@ -27,6 +27,13 @@ dev: ## Chạy backend ở chế độ watch (tsc --watch + nodemon)
 
 dev-frontend: ## Chạy Vite dev server cho frontend (HMR, proxy /api)
 	npm run dev:frontend
+
+dev-all: ## Chạy cùng lúc backend (watch) + Vite dev server; Ctrl-C tắt cả hai
+	@npm run build:backend
+	@trap 'kill 0' EXIT INT TERM; \
+		npm run dev & \
+		npm run dev:frontend & \
+		wait
 
 test: ## Chạy toàn bộ test
 	npm test
