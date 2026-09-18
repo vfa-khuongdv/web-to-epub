@@ -13,9 +13,9 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Ước lượng thời gian còn lại theo tốc độ trung bình của các chương đã xong
-// trong lần crawl hiện tại. Dưới 3 chương mẫu quá ít (một chương chậm/retry
-// làm sai lệch hẳn) nên trả undefined để giao diện không hiện số nhiễu.
+// Estimate time remaining based on average speed of completed chapters in current
+// crawl. Less than 3 samples is too little (one slow chapter/retry skews heavily),
+// so return undefined to keep the UI from showing noise.
 export function estimateRemainingMs(input: {
   startedAt: number;
   completed: number;
@@ -28,11 +28,10 @@ export function estimateRemainingMs(input: {
   return Math.round((elapsed / input.completed) * (input.total - input.completed));
 }
 
-// Trang bị script chống tool xoá trắng là chuyện ngẫu nhiên của từng lượt tải,
-// không phải site đang chặn mình — đo được khoảng một nửa số lượt tải xtruyen
-// dính, và lượt tải ngay sau đó thường qua. Chờ vài giây rồi mới tải lại gần
-// như là chờ không, nên loại lỗi này thử lại gần như ngay. Các lỗi khác (mạng
-// chập chờn, site trả 429/5xx) vẫn giữ backoff tăng dần.
+// Anti-tool scripts blanking the page happen randomly per load, not site blocking
+// — observed on ~half of xtruyen loads, and next load usually succeeds. Waiting
+// seconds before retrying is almost pointless, so this error retries immediately.
+// Other errors (network hiccups, site returns 429/5xx) still use increasing backoff.
 const BLANKED_RETRY_MS = 300;
 
 function retryDelayMs(err: unknown, attempt: number): number {
@@ -49,21 +48,21 @@ export async function extractWithRetry(
   url: string,
   onAttempt?: (attempt: number) => void
 ): Promise<ExtractedChapter> {
-  let lastError = "Lỗi không xác định";
+  let lastError = "Unknown error";
   const siteFetcher = getChapterFetcher(url);
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     onAttempt?.(attempt);
     try {
-      // Site đã server-render sẵn nội dung (vd. Wattpad) có fetcher riêng:
-      // tải HTML trực tiếp, nhanh hơn nhiều so với mở trình duyệt từng chương.
+      // Sites that server-render content (e.g., Wattpad) have their own fetcher:
+      // load HTML directly, much faster than opening a browser per chapter.
       if (siteFetcher) return await siteFetcher.fetchChapter(url);
       const html = await renderPageHtml(url);
       return extractChapter(url, html);
     } catch (err) {
       lastError = err instanceof Error ? err.message : lastError;
-      // A locked chapter can't be unlocked by rendering again — fail fast
-      // instead of burning the whole retry budget on it. (The preview UI
-      // still offers a manual retry per chapter.)
+      // Locked chapter can't be unlocked by re-rendering — fail fast instead
+      // of wasting the whole retry budget. (The preview UI still offers manual
+      // retry per chapter.)
       if (err instanceof LockedContentError) break;
       if (attempt < MAX_ATTEMPTS) await sleep(retryDelayMs(err, attempt));
     }

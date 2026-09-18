@@ -10,10 +10,9 @@ import { fetchWithRetry } from "./toc/http";
 
 // Simple, Kindle-friendly reading styles: system-safe fonts, no fixed sizes
 // or absolute positioning, so it reflows correctly on any device.
-// `display: block` cho ảnh/media là bắt buộc, không phải trang trí: mỗi block
-// ảnh là một thẻ <img> anh em liền kề, mà <img> mặc định là inline nên nhiều
-// ảnh hẹp sẽ xếp ngang như chữ trong một dòng — trang nguồn xếp dọc thì sách
-// cũng phải xếp dọc.
+// `display: block` for images/media is mandatory, not decoration: each image block is an <img> tag
+// next to its siblings, but <img> defaults to inline, so many narrow images would flow horizontally
+// like text in a line — if the source page stacks them vertically, the book must too.
 const KINDLE_CSS = `
 body { font-family: serif; line-height: 1.5; }
 h1, h2, h3 { font-family: sans-serif; }
@@ -21,9 +20,9 @@ img, audio, video { display: block; margin: 0.6em auto; max-width: 100%; }
 img, video { height: auto; }
 `;
 
-// Tên file EPUB tải về: giữ nguyên tiếng Việt có dấu (người dùng phải đọc được
-// tên truyện) — chỉ thay ký tự không hợp lệ trong tên file và ký tự điều khiển,
-// gộp khoảng trắng, rồi cắt bớt để không vượt giới hạn tên file của hệ điều hành.
+// Downloaded EPUB filename: preserve Vietnamese diacritics (users must be able to read
+// the story name) — only replace invalid filename characters and control characters,
+// collapse whitespace, then trim to not exceed the filesystem's filename length limit.
 const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|\u0000-\u001f\u007f]/g;
 const MAX_FILENAME_LENGTH = 120;
 
@@ -37,8 +36,8 @@ export function epubFileName(title: string): string {
   return `${base || "book"}.epub`;
 }
 
-// RFC 6266: bản ASCII dự phòng cho client cũ, kèm bản UTF-8 percent-encoded để
-// tên file giữ đúng tiếng Việt khi tải trực tiếp từ API.
+// RFC 6266: ASCII fallback for old clients, plus UTF-8 percent-encoded version
+// so the filename preserves Vietnamese diacritics when downloading directly from the API.
 export function contentDisposition(fileName: string): string {
   const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "_");
   const encoded = encodeURIComponent(fileName).replace(
@@ -48,13 +47,12 @@ export function contentDisposition(fileName: string): string {
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encoded}`;
 }
 
-// Ảnh trong chương: epub-gen tự tải URL http trong <img>, nhưng nó đoán đuôi
-// file từ URL (`mime.getType(url)`), nên URL không có đuôi — rất phổ biến với
-// CDN ảnh — cho ra file "<id>.null" và manifest media-type rỗng; còn khi tải
-// hỏng thì nó vẫn ghi <img> trỏ tới file không tồn tại, làm EPUB sai chuẩn.
-// Nên ở đây tự tải trước, nhận đuôi bằng magic bytes như coverStore, rồi đưa
-// cho epub-gen đường dẫn file:// đã chắc chắn tồn tại; ảnh nào tải hỏng thì bỏ
-// hẳn thẻ <img> thay vì để lại tham chiếu gãy.
+// Images in chapters: epub-gen fetches http URLs in <img> itself, but it guesses the file extension
+// from the URL (`mime.getType(url)`), so URLs without extensions — very common with image CDNs —
+// produce "<id>.null" and empty manifest media-type; and when fetching fails, it still writes <img>
+// pointing to a nonexistent file, breaking the EPUB. So fetch them first, identify the extension
+// via magic bytes like coverStore does, then give epub-gen a file:// path guaranteed to exist;
+// failed images are removed from the <img> tag entirely instead of leaving a broken link.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 const IMAGE_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
@@ -62,13 +60,13 @@ const IMG_TAG_RE = /<img\b[^>]*>/gi;
 const SRC_ATTR_RE = /\ssrc\s*=\s*("([^"]*)"|'([^']*)')/i;
 const DATA_URI_RE = /^data:image\/[a-z0-9.+-]+;base64,([\s\S]+)$/i;
 
-// Tải tuần tự làm truyện nhiều ảnh mất hàng phút (651 ảnh của một truyện ảnh
-// Wattpad mất ~90 giây ngay trên mạng nhanh), mà giao diện thì không có gì để
-// hiện trong lúc chờ. Tải song song nhưng có trần: bắn hàng trăm request cùng
-// lúc vào CDN dễ ăn 429, rồi backoff của fetchWithRetry còn làm chậm hơn cũ.
+// Sequential download makes image-heavy stories take minutes (651 images from a Wattpad image story
+// take ~90 seconds even on fast networks), and the UI has nothing to show while waiting. Parallel download
+// with a limit: firing hundreds of requests at a CDN at once risks 429s, and fetchWithRetry's backoff
+// makes it even slower than before.
 const IMAGE_CONCURRENCY = 8;
-// File media lớn hơn ảnh nhiều lần và được giữ nguyên trong RAM tới lúc ghi ra
-// đĩa, nên trần thấp hơn để không phình bộ nhớ (3 × 50MB thay vì 8 × 50MB).
+// Media files are much larger than images and held in RAM until write, so lower the limit to avoid
+// memory bloat (3 × 50MB instead of 8 × 50MB).
 const MEDIA_CONCURRENCY = 3;
 
 async function mapWithConcurrency<T, R>(
@@ -166,21 +164,18 @@ export async function embedImages(
   }));
 }
 
-// Audio/video trong chương: epub-gen không biết gì về chúng — nó chỉ tải và
-// đóng gói thẻ <img>, còn thuộc tính `controls` thì bị bộ lọc thuộc tính của nó
-// xoá (không nằm trong allowlist), làm thẻ media mất nút play. Nên ở đây tự tải
-// file về, trỏ src vào đường dẫn trong sách, rồi sau khi epub-gen đóng gói xong
-// thì mở file EPUB ra vá lại: thêm file media, khai báo trong manifest và trả
-// `controls` về chỗ cũ (xem packMedia).
+// Audio/video in chapters: epub-gen doesn't know about them — it only fetches and packages
+// <img> tags; the `controls` attribute gets stripped by its allowlist filter, leaving media tags
+// with no play button. So we fetch the files ourselves, point src to paths within the book, and
+// after epub-gen finishes, unzip the EPUB and patch it: add media files, declare them in the manifest,
+// and restore `controls` (see packMedia).
 //
-// Lưu ý về trình đọc: audio/mpeg và audio/mp4 là core media type của EPUB3 nên
-// phát được ở mọi trình đọc theo chuẩn (Apple Books, Thorium, Calibre). Video
-// thì không phải core media type — vẫn phát tốt ở các trình đọc trên nhưng
-// epubcheck sẽ báo cảnh báo. Kindle không phát cả hai: ở đó người đọc thấy phần
-// dự phòng bên trong thẻ — link về nguồn khi nguồn là URL mở được, nếu không
-// thì chỉ còn nhãn "Tệp âm thanh"/"Tệp video".
+// Reader note: audio/mpeg and audio/mp4 are EPUB3 core media types, so they play on all standard
+// readers (Apple Books, Thorium, Calibre). Video isn't a core type — still plays fine on those readers
+// but epubcheck will warn. Kindle plays neither: readers see the fallback content inside the tag —
+// a link to the source if the source is an openable URL, otherwise just the label "Audio file"/"Video file".
 const MAX_MEDIA_BYTES = 50 * 1024 * 1024;
-// File media lớn hơn ảnh rất nhiều nên 15s mặc định của fetchWithRetry không đủ.
+// Media files are far larger than images, so fetchWithRetry's 15s default isn't enough.
 const MEDIA_TIMEOUT_MS = 120_000;
 
 const MEDIA_TYPES: Record<string, string> = {
@@ -197,8 +192,8 @@ const MEDIA_TYPES: Record<string, string> = {
   ogv: "video/ogg",
 };
 
-// Nhiều đuôi cùng một media type (m4a/mp4, ogg/oga/opus) — giữ đuôi đầu tiên,
-// đuôi nào cũng được miễn media type khai trong manifest đúng.
+// Multiple extensions for the same media type (m4a/mp4, ogg/oga/opus) — keep the first one;
+// any extension works as long as the media type is declared correctly in the manifest.
 const MEDIA_EXTENSION_BY_TYPE = new Map(
   Object.entries(MEDIA_TYPES)
     .reverse()
@@ -208,9 +203,8 @@ const MEDIA_EXTENSION_BY_TYPE = new Map(
 const MEDIA_TAG_RE = /<(audio|video)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
 const DATA_URI_MEDIA_RE = /^data:((?:audio|video)\/[a-z0-9.+-]+);base64,([\s\S]+)$/i;
 
-// Dựng EPUB cho truyện nhiều ảnh mất hàng chục giây, phần lớn là tải ảnh về.
-// Không báo gì ra ngoài thì người dùng chỉ thấy nút "Đang xuất…" đứng im và
-// tưởng app treo.
+// Building an EPUB for multi-image stories takes tens of seconds, mostly fetching images.
+// Silence would leave the user staring at a frozen "Exporting..." button, thinking the app hung.
 export interface BuildProgress {
   phase: "images" | "media" | "packaging";
   done: number;
@@ -220,14 +214,14 @@ export interface BuildProgress {
 export type OnBuildProgress = (progress: BuildProgress) => void;
 
 export interface EpubMedia {
-  href: string; // đường dẫn trong EPUB, tương đối với OEBPS/
+  href: string; // path within EPUB, relative to OEBPS/
   mediaType: string;
-  filePath: string; // file tạm trên đĩa, đọc lúc đóng gói
+  filePath: string; // temp file on disk, read during packaging
 }
 
-// Khác ảnh: các host media đặt content-type đúng (phải đúng thì trình duyệt mới
-// phát được), nên tin content-type trước, chỉ đoán theo đuôi URL khi header là
-// kiểu chung chung như application/octet-stream.
+// Unlike images: media hosts typically set the content-type correctly (it must be right for browsers
+// to play it), so trust content-type first; only guess by URL extension when the header is generic
+// like application/octet-stream.
 function mediaExtension(src: string, contentType: string): string | undefined {
   const fromType = MEDIA_EXTENSION_BY_TYPE.get(contentType);
   if (fromType) return fromType;
@@ -241,9 +235,9 @@ function mediaExtension(src: string, contentType: string): string | undefined {
   return extension && MEDIA_TYPES[extension] ? extension : undefined;
 }
 
-// content-length là tự khai và rất hay thiếu ở host media; đọc theo luồng và
-// dừng ngay khi vượt ngưỡng để một URL trỏ nhầm vào file nhiều GB không nuốt
-// sạch RAM trước khi kịp kiểm tra dung lượng.
+// Content-length is self-reported and often missing from media hosts; read streams and
+// stop immediately on exceeding the cap so a wrong URL pointing to a multi-GB file won't
+// exhaust RAM before the size check kicks in.
 async function readCapped(res: Response, maxBytes: number): Promise<Buffer | undefined> {
   const reader = res.body?.getReader();
   if (!reader) return undefined;
@@ -304,14 +298,14 @@ function escapeAttribute(value: string): string {
 }
 
 function mediaLabel(name: string): string {
-  return name.toLowerCase() === "audio" ? "Tệp âm thanh" : "Tệp video";
+  return name.toLowerCase() === "audio" ? "Audio file" : "Video file";
 }
 
 /**
- * Đổi mọi thẻ <audio>/<video> trong chương thành thẻ trỏ vào file đã tải về, và
- * trả kèm danh sách file để packMedia nhét vào EPUB. Thẻ nào không tải được
- * (link streaming, host chặn, quá dung lượng) thành một đoạn chứa link về nguồn
- * — mất hẳn thẻ như với ảnh hỏng thì người đọc không biết là đã có gì ở đó.
+ * Replace every <audio>/<video> tag in chapters with one pointing to a fetched file, and
+ * return a list of files for packMedia to add to the EPUB. Tags that fail to fetch
+ * (streaming link, blocked host, too large) become a paragraph with a source link —
+ * complete loss like a broken image so readers know something was there.
  */
 export async function embedMedia(
   chapters: ExportChapter[],
@@ -346,13 +340,13 @@ export async function embedMedia(
       const src = srcOf(`<x${attrs}>`);
       if (!src) return "";
       const label = mediaLabel(name);
-      // Chỉ link về nguồn khi nguồn là URL mở được; data URI thì link vô nghĩa
-      // mà lại kéo cả khối base64 vào sách.
+      // Only link to the source if it's an openable URL; data URIs make pointless links
+      // and would drag the whole base64 block into the book.
       const link = /^https?:/i.test(src) ? `<a href="${escapeAttribute(src)}">${label}</a>` : label;
       const saved = bySource.get(src);
       if (!saved) return /^https?:/i.test(src) ? `<p>${link}: ${escapeAttribute(src)}</p>` : "";
-      // `controls` được trả lại sau khi epub-gen chạy xong; giữ ở đây cho đúng
-      // ý định và để thẻ vẫn dùng được nếu về sau bỏ epub-gen.
+      // `controls` is restored after epub-gen finishes; keep it here for correctness
+      // and so the tag still works if we drop epub-gen in the future.
       return `<${name} controls src="${saved.href}">${link}</${name}>`;
     }),
   }));
@@ -361,9 +355,9 @@ export async function embedMedia(
 }
 
 /**
- * Vá file EPUB do epub-gen tạo ra: thêm file media vào OEBPS/media/, khai báo
- * trong manifest và trả thuộc tính `controls` mà bộ lọc của epub-gen đã xoá.
- * Phải giải nén rồi nén lại vì epub-gen chỉ trả về file zip đã đóng.
+ * Patch the EPUB file created by epub-gen: add media files to OEBPS/media/, declare them
+ * in the manifest, and restore the `controls` attribute that epub-gen's filter stripped.
+ * Must unzip then rezip because epub-gen only returns a closed zip file.
  */
 export async function packMedia(epubBytes: Buffer, media: EpubMedia[]): Promise<Buffer> {
   const entries = unzipSync(epubBytes);
@@ -386,8 +380,8 @@ export async function packMedia(epubBytes: Buffer, media: EpubMedia[]): Promise<
     entries[`OEBPS/${m.href}`] = await fs.readFile(m.filePath);
   }
 
-  // OCF bắt buộc "mimetype" là entry đầu tiên và không nén; media thì nén cũng
-  // không nhỏ đi được (đã là định dạng nén) nên lưu thẳng cho nhanh.
+  // OCF requires "mimetype" to be the first entry and uncompressed; media won't shrink even
+  // if compressed (already a compressed format) so store them uncompressed for speed.
   const stored = new Set(["mimetype", ...media.map((m) => `OEBPS/${m.href}`)]);
   const zippable: Record<string, [Uint8Array, { level: 0 | 6 }]> = {};
   for (const name of ["mimetype", ...Object.keys(entries).filter((n) => n !== "mimetype")]) {
@@ -403,14 +397,14 @@ export async function buildEpub(
 ): Promise<Buffer> {
   const included = chapters.filter((c) => c.includeInBook);
   if (included.length === 0) {
-    throw new Error("Không có chapter nào được chọn để export");
+    throw new Error("No chapters selected for export");
   }
 
   const outputPath = path.join(os.tmpdir(), `epub-${randomUUID()}.epub`);
   const imageDir = await fs.mkdtemp(path.join(os.tmpdir(), "epub-img-"));
   const withImages = await embedImages(included, imageDir, onProgress);
   const { chapters: withMedia, media } = await embedMedia(withImages, imageDir, onProgress);
-  // Đóng gói không chia nhỏ được (epub-gen chạy một mạch) nên chỉ báo vào/ra.
+  // Packaging cannot be split (epub-gen runs in one pass), so only report start/end.
   onProgress?.({ phase: "packaging", done: 0, total: 1 });
 
   const epub = new Epub(
@@ -419,9 +413,9 @@ export async function buildEpub(
       author: metadata.author || "Unknown",
       lang: metadata.language || "en",
       cover: metadata.coverUrl || undefined,
-      tocTitle: "Mục lục",
-      // Mặc định epub-gen giải nén vào node_modules/epub-gen/tempDir — thư mục
-      // này chỉ root ghi được trong ảnh Docker (app chạy bằng user `node`).
+      tocTitle: "Table of Contents",
+      // By default epub-gen extracts to node_modules/epub-gen/tempDir — in Docker images,
+      // only root can write there (app runs as the `node` user).
       tempDir: os.tmpdir(),
       css: KINDLE_CSS,
       content: withMedia.map((c) => ({ title: c.title, data: c.contentHtml })),

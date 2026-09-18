@@ -19,20 +19,20 @@ export interface StoryMeta {
 export interface StoryStore {
   list(): Promise<StorySummary[]>;
   get(id: string): Promise<StoredStory | undefined>;
-  // Như get() nhưng bỏ nội dung chương: truyện vài nghìn chương đã crawl nặng
-  // hàng chục MB, trong khi giao diện chỉ cần danh sách + trạng thái.
+  // Like get() but excludes chapter content: a story with thousands of chapters already
+  // crawled weighs tens of MB, while the UI only needs a list and status.
   getOutline(id: string): Promise<StoredStory | undefined>;
   getChapter(storyId: string, order: number): Promise<StoredChapter | undefined>;
   save(story: StoredStory): Promise<void>;
   saveChapter(storyId: string, chapter: StoredChapter): Promise<void>;
-  // Thay thông tin sách (tên/tác giả/ngôn ngữ/bìa) mà không đụng tới chapter —
-  // dùng cho nút "Lưu thông tin". Trường bỏ trống nghĩa là xoá giá trị cũ.
+  // Update book metadata (title/author/language/cover) without touching chapters —
+  // used for the "Save info" button. An empty field means delete the old value.
   updateMeta(id: string, meta: StoryMeta): Promise<boolean>;
-  // Bật/tắt theo dõi chương mới. Tắt thì xoá số chương mới và lỗi kiểm tra
-  // (giữ lastCheckedAt để hiển thị "kiểm tra lần cuối").
+  // Enable/disable watching for new chapters. Disabling clears the new chapter count
+  // and check error (preserves lastCheckedAt to show "last checked").
   setWatching(id: string, watching: boolean): Promise<boolean>;
-  // Ghi kết quả kiểm tra TOC; trường vắng mặt giữ nguyên giá trị cũ,
-  // `error: null` xoá lỗi.
+  // Record TOC check results; missing fields keep their old values,
+  // `error: null` deletes the error.
   setCheckResult(
     id: string,
     result: { newChapterCount?: number; checkedAt?: string; error?: string | null }
@@ -101,8 +101,8 @@ export function createStoryStore(baseDir: string): StoryStore {
     );
   `);
 
-  // DB tạo trước khi có các cột mới vẫn phải mở được (dữ liệu thật của người
-  // dùng), nên thêm cột còn thiếu thay vì bắt tạo lại DB.
+  // DBs created before the new columns exist must still open (real user data),
+  // so add missing columns instead of forcing a rebuild.
   const storyColumns = db.prepare("PRAGMA table_info(stories)").all() as unknown as { name: string }[];
   const hasColumn = (name: string) => storyColumns.some((column) => column.name === name);
   const addColumnIfMissing: [string, string][] = [
@@ -298,7 +298,7 @@ export function createStoryStore(baseDir: string): StoryStore {
 
     async save(story: StoredStory): Promise<void> {
       if (!STORY_ID_RE.test(story.id)) {
-        throw new Error(`Mã truyện không hợp lệ: ${story.id}`);
+        throw new Error(`Invalid story ID: ${story.id}`);
       }
       inTransaction(() => {
         upsertStory.run(
@@ -343,8 +343,8 @@ export function createStoryStore(baseDir: string): StoryStore {
       result: { newChapterCount?: number; checkedAt?: string; error?: string | null }
     ): Promise<boolean> {
       if (!STORY_ID_RE.test(id)) return false;
-      // `undefined` bind thành NULL + COALESCE để giữ giá trị cũ; riêng error
-      // cần cờ riêng vì `null` là "xoá lỗi" chứ không phải "giữ nguyên".
+      // `undefined` binds to NULL + COALESCE to keep the old value; error needs its own flag
+      // because `null` means "delete error", not "keep the value".
       const setError = result.error !== undefined ? 1 : 0;
       const updated = setStoryCheckResult.run(
         result.newChapterCount ?? null,
@@ -358,12 +358,12 @@ export function createStoryStore(baseDir: string): StoryStore {
 
     async saveChapter(id: string, chapter: StoredChapter): Promise<void> {
       if (!STORY_ID_RE.test(id)) {
-        throw new Error(`Mã truyện không hợp lệ: ${id}`);
+        throw new Error(`Invalid story ID: ${id}`);
       }
       inTransaction(() => {
         const result = touchStory.run(new Date().toISOString(), id);
         if (Number(result.changes) === 0) {
-          throw new Error(`Không tìm thấy truyện: ${id}`);
+          throw new Error(`Story not found: ${id}`);
         }
         upsertChapter.run(...chapterParams(id, chapter));
       });

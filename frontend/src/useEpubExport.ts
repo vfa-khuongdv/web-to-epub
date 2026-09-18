@@ -8,8 +8,8 @@ import {
   uploadCover,
 } from "./api";
 
-// Giữ đồng bộ với epubFileName trong src/services/epubBuilder.ts: giữ tiếng Việt
-// có dấu, chỉ thay ký tự không hợp lệ trong tên file.
+// Keep in sync with epubFileName in src/services/epubBuilder.ts: keep diacritics,
+// only replace invalid filename characters.
 const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|\u0000-\u001f\u007f]/g;
 
 function epubFileName(title: string): string {
@@ -23,12 +23,12 @@ function epubFileName(title: string): string {
 }
 import { BookMetadata } from "./types";
 
-// Câu mô tả cho thanh tiến trình. Tải ảnh là giai đoạn dài nhất nên nói rõ số
-// lượng; đóng gói thì epub-gen chạy một mạch, không chia nhỏ được.
+// Description for progress bar. Image download is longest phase so show count;
+// packaging runs in one batch, cannot be subdivided.
 export function exportProgressLabel(progress: ExportProgress): string {
-  if (progress.phase === "packaging") return "Đang đóng gói EPUB…";
-  const what = progress.phase === "images" ? "ảnh" : "audio/video";
-  return `Đang tải ${what} ${progress.done}/${progress.total}…`;
+  if (progress.phase === "packaging") return "Packaging EPUB…";
+  const what = progress.phase === "images" ? "images" : "audio/video";
+  return `Downloading ${what} ${progress.done}/${progress.total}…`;
 }
 
 export function useEpubExport() {
@@ -46,8 +46,8 @@ export function useEpubExport() {
     URL.revokeObjectURL(url);
   }
 
-  // Truyện trong thư viện: nội dung đã nằm trong DB nên server tự dựng, chỉ
-  // chương đang sửa dở mới gửi kèm HTML.
+  // Library story: content already in DB so server builds it, only send
+  // currently edited chapters with HTML.
   async function exportStoryBook(
     storyId: string,
     metadata: BookMetadata,
@@ -73,8 +73,8 @@ export function useEpubExport() {
     setIsExporting(true);
     setProgress(null);
     try {
-      // Chọn file thì file thắng (chỉ cho lần xuất này); không chọn thì dùng bìa
-      // đã lưu của truyện (tải về khi crawl).
+      // If file chosen, it wins (only for this export); otherwise use story's saved cover
+      // (downloaded during crawl).
       const coverUrl = coverFile ? await uploadCover(coverFile) : metadata.coverUrl;
       download(await exportEpub({ ...metadata, coverUrl }, chapters, setProgress), metadata.title);
     } finally {

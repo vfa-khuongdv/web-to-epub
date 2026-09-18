@@ -7,13 +7,13 @@ export const XTRUYEN_DOMAINS = ["xtruyen.vn"];
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
-// Endpoint AJAX nội bộ của xtruyen.vn yêu cầu header tĩnh này (xem manga-single.js
-// + request thật của trang); không phải thông tin đăng nhập của người dùng.
+// xtruyen.vn's internal AJAX endpoint requires this static header (see manga-single.js
+// and actual page requests); it's not user login info.
 const CUSTOM_AUTH = "abC0000011111";
-// API trả tối đa 200 chương mỗi request (đã kiểm chứng từ=1&to=200 → 200 item);
-// window 100 trước đây làm gấp đôi số request và bị 429 với truyện dài.
+// API returns max 200 chapters per request (verified with from=1&to=200 → 200 items);
+// a 100-item window doubled requests and hit 429 with long stories.
 const CHAPTER_WINDOW = 200;
-// Nghỉ giữa các window để không dồn dập vượt ngưỡng rate-limit của site.
+// Pause between windows to avoid exceeding the site's rate-limit threshold.
 const WINDOW_DELAY_MS = 400;
 
 export function parseMangaId(html: string): string | undefined {
@@ -38,9 +38,9 @@ export function parseStoryMeta(html: string, pageUrl: string): { title: string; 
   return { title, author, coverUrl };
 }
 
-// API trả tên chương ở dạng HTML nên có entity: "Quyển 1 Chương 0&nbsp;".
-// Không giải mã thì chuỗi "&nbsp;" hiện nguyên xi trong bảng chương và trong
-// mục lục EPUB. Giải mã xong gộp khoảng trắng (kể cả U+00A0 vừa sinh ra).
+// The API returns chapter names as HTML entities: "Quyển 1 Chương 0&nbsp;".
+// Without decoding, "&nbsp;" appears literally in the chapter list and EPUB TOC.
+// After decoding, collapse whitespace (including the newly-created U+00A0).
 const NAMED_ENTITIES: Record<string, string> = {
   nbsp: "\u00a0",
   amp: "&",
@@ -67,10 +67,10 @@ export function parseChaptersResponse(text: string): { slug: string; title: stri
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("API danh sách chương của xtruyen trả về không phải JSON");
+    throw new Error("xtruyen's chapter list API did not return JSON");
   }
   if (!Array.isArray(data)) {
-    throw new Error("API danh sách chương của xtruyen trả về sai định dạng");
+    throw new Error("xtruyen's chapter list API returned the wrong format");
   }
   return data
     .filter((x): x is { s: string; n: string } => {
@@ -107,7 +107,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   const meta = parseStoryMeta(pageHtml, storyUrl);
   const mangaId = parseMangaId(pageHtml);
   if (!mangaId) {
-    throw new Error(`Không tìm thấy mã truyện trên trang ${storyUrl} — kiểm tra lại URL truyện`);
+    throw new Error(`Story ID not found on the page at ${storyUrl} — check the story URL again`);
   }
 
   const apiUrl = new URL("/api/api-chapters.php", storyUrl).toString();
@@ -138,7 +138,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   }
 
   if (chapters.length === 0) {
-    throw new Error(`Không tìm thấy danh sách chương tại ${storyUrl} — kiểm tra lại URL truyện`);
+    throw new Error(`No chapter list found at ${storyUrl} — check the story URL again`);
   }
 
   const chapterNumber = (url: string) => {

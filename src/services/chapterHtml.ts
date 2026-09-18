@@ -4,13 +4,13 @@ import { ContentBlock } from "../types";
 const TEXT_NODE = 3;
 const ELEMENT_NODE = 1;
 
-// Thẻ mở một khối mới. Mọi thẻ khác (b, i, em, strong, a, span, code, br…) là
-// inline và được giữ nguyên bên trong đoạn văn.
+// Tags that open a new block. Other tags (b, i, em, strong, a, span, code, br…) are
+// inline and kept as-is within paragraphs.
 const BLOCK_RE =
   /^(address|article|aside|audio|blockquote|dd|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|img|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul|video)$/;
 
-// Rác không bao giờ nên đi vào sách, kể cả khi người dùng dán nguyên một khối
-// HTML copy từ trang nguồn.
+// Trash that should never enter the book, even when users paste an entire HTML block
+// copied from a source page.
 const DROP_RE = /^(script|style|noscript|iframe|object|embed|link|meta)$/;
 
 const HEADING_RE = /^h([1-6])$/;
@@ -19,14 +19,14 @@ function escapeText(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
 
-// Đoạn chỉ còn thẻ rỗng hoặc khoảng trắng (`&nbsp;` rất hay gặp khi dán từ
-// trình duyệt) thì không đáng thành một đoạn văn.
+// Paragraphs containing only empty tags or whitespace (`&nbsp;` often appears when pasting
+// from a browser) should not become a paragraph.
 function hasText(html: string): boolean {
   return html.replace(/<[^>]*>/g, "").replace(/&nbsp;/gi, " ").trim().length > 0;
 }
 
-// Khung soạn thảo dùng <br> cho mỗi lần xuống dòng mềm; tách ra thành từng đoạn
-// để EPUB không dồn cả chương thành một khối chữ.
+// The editor uses <br> for each soft line break; split into separate paragraphs
+// so EPUB doesn't pack the entire chapter into one text block.
 function pushParagraphs(html: string, blocks: ContentBlock[]): void {
   for (const part of html.split(/<br\s*\/?>/i)) {
     const text = part.trim();
@@ -34,8 +34,8 @@ function pushParagraphs(html: string, blocks: ContentBlock[]): void {
   }
 }
 
-// <audio>/<video> mang URL ở thuộc tính src, hoặc ở <source> con khi trang cho
-// nhiều định dạng — lấy cái đầu tiên, EPUB chỉ đóng gói được một file mỗi thẻ.
+// <audio>/<video> holds a URL in the src attribute, or in a <source> child when the page
+// offers multiple formats — take the first one; EPUB can only pack one file per tag.
 export function mediaSrc(el: Element): string | undefined {
   const own = el.getAttribute("src")?.trim();
   if (own) return own;
@@ -71,8 +71,8 @@ function walk(root: ParentNode, blocks: ContentBlock[]): void {
       continue;
     }
 
-    // Sang khối mới: chốt đoạn inline đang gom dở trước đã, nếu không chữ nằm
-    // ngay trước một <p> sẽ bị nuốt mất.
+    // Moving to a new block: finalize the accumulated inline paragraph first;
+    // otherwise text immediately before a <p> will be lost.
     flush();
 
     const heading = HEADING_RE.exec(tag);
@@ -83,8 +83,8 @@ function walk(root: ParentNode, blocks: ContentBlock[]): void {
     }
 
     if (tag === "img") {
-      // getAttribute thay vì .src: giữ nguyên URL người dùng thấy, không để
-      // jsdom nối thêm base URL của fragment.
+      // Use getAttribute instead of .src: preserve the URL as the user sees it,
+      // don't let jsdom append a base URL to the fragment.
       const src = el.getAttribute("src")?.trim();
       if (src) blocks.push({ type: "image", src, alt: el.getAttribute("alt") || "" });
       continue;
@@ -96,8 +96,8 @@ function walk(root: ParentNode, blocks: ContentBlock[]): void {
       continue;
     }
 
-    // Khối lồng khối (div bọc p, figure bọc img…): đi tiếp vào trong thay vì
-    // gộp cả cụm thành một đoạn.
+    // Nested blocks (div wrapping p, figure wrapping img…): recurse into them rather than
+    // merging the entire group into one paragraph.
     if (Array.from(el.children).some(isBlock)) {
       walk(el, blocks);
       continue;
@@ -110,9 +110,9 @@ function walk(root: ParentNode, blocks: ContentBlock[]): void {
 }
 
 /**
- * Chuyển HTML người dùng vừa sửa trong khung soạn thảo về đúng dạng block đang
- * lưu trong DB. Giữ định dạng inline (b/i/a…) vì `text` của block vốn chứa HTML,
- * bỏ thẻ rác và đoạn rỗng.
+ * Convert HTML the user just edited in the editor to the correct block format stored
+ * in the DB. Preserve inline formatting (b/i/a…) because the block's `text` already contains HTML;
+ * discard trash tags and empty paragraphs.
  */
 export function htmlToBlocks(html: string): ContentBlock[] {
   const blocks: ContentBlock[] = [];
@@ -120,19 +120,19 @@ export function htmlToBlocks(html: string): ContentBlock[] {
   return blocks;
 }
 
-// `controls` là thứ duy nhất làm thẻ media hiện ra nút play — cả trong khung
-// soạn thảo lẫn trong EPUB. Nội dung bên trong thẻ là phần dự phòng cho trình
-// đọc không phát được (Kindle), đồng thời giữ thẻ không rỗng để cheerio của
-// epub-gen không rút gọn thành <audio/> — dạng vài trình đọc parse sai.
+// `controls` is the only thing that makes a media tag show a play button — both in the
+// editor and in EPUB. Content inside the tag is a fallback for readers that can't play it (Kindle),
+// and also keeps the tag non-empty so cheerio in epub-gen doesn't collapse it to <audio/> —
+// a form some readers parse incorrectly.
 export function mediaTag(type: "audio" | "video", src: string): string {
-  const label = type === "audio" ? "Tệp âm thanh" : "Tệp video";
+  const label = type === "audio" ? "Audio file" : "Video file";
   return `<${type} controls src="${src}">${label}</${type}>`;
 }
 
 /**
- * Chiều ngược lại: dựng HTML chương từ block đã lưu. Giữ đúng cách frontend
- * dựng (frontend/src/blocksToHtml.ts) để EPUB xuất từ server giống hệt bản
- * xuất từ nội dung đang mở trên giao diện.
+ * Reverse direction: build chapter HTML from saved blocks. Keep the same approach as the frontend
+ * (frontend/src/blocksToHtml.ts) so EPUB exported from the server matches what's exported from
+ * the content open in the UI.
  */
 export function blocksToHtml(blocks: ContentBlock[]): string {
   return blocks

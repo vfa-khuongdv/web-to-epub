@@ -10,13 +10,13 @@ import { useCrawlJob } from "./useCrawlJob";
 type Theme = "system" | "light" | "dark";
 
 const THEME_KEY = "theme";
-// Bấm một nút để xoay vòng: tự động -> sáng -> tối -> tự động.
+// Click button to cycle: auto -> light -> dark -> auto.
 const THEME_CYCLE: Theme[] = ["system", "light", "dark"];
-const THEME_LABEL: Record<Theme, string> = { system: "Tự động", light: "Sáng", dark: "Tối" };
+const THEME_LABEL: Record<Theme, string> = { system: "Auto", light: "Light", dark: "Dark" };
 const THEME_ICON: Record<Theme, IconName> = { system: "display", light: "sun", dark: "moon" };
 
-// localStorage có thể ném lỗi (cửa sổ riêng tư, chặn cookie): vẫn đổi được
-// giao diện, chỉ là không nhớ cho lần mở sau.
+// localStorage can throw (private window, cookies blocked): theme still switches, just
+// won't be remembered on next open.
 function readTheme(): Theme {
   try {
     const saved = localStorage.getItem(THEME_KEY);
@@ -42,7 +42,7 @@ export default function App() {
     fetchSupportedSites().then(setSupportedSites).catch(() => setSupportedSites([]));
   }, []);
 
-  // Kênh realtime chung: mở một lần cho cả app, đóng khi unmount.
+  // Shared live channel: open once for the whole app, close on unmount.
   useEffect(() => subscribe(), [subscribe]);
 
   useEffect(() => {
@@ -51,10 +51,10 @@ export default function App() {
       if (theme === "system") localStorage.removeItem(THEME_KEY);
       else localStorage.setItem(THEME_KEY, theme);
     } catch {
-      /* không lưu được thì thôi, giao diện vẫn đổi cho phiên này */
+      /* Storage failed, but theme still changes for this session */
     }
     if (theme !== "system") return;
-    // Đang để tự động: đổi ngay khi hệ điều hành chuyển sáng/tối.
+    // Auto mode: switch immediately when OS changes light/dark preference.
     const media = matchMedia("(prefers-color-scheme: dark)");
     const sync = () => applyTheme("system");
     media.addEventListener("change", sync);
@@ -69,7 +69,7 @@ export default function App() {
           <small className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-2">cho Kindle</small>
         </span>
 
-        <nav className="tabs" role="tablist" aria-label="Khu vực làm việc">
+        <nav className="tabs" role="tablist" aria-label="Workspace">
           <button
             type="button"
             role="tab"
@@ -77,7 +77,7 @@ export default function App() {
             onClick={() => setTab("library")}
           >
             <Icon name="library" size={14} />
-            Truyện của tôi
+            My Stories
           </button>
           <button
             type="button"
@@ -86,7 +86,7 @@ export default function App() {
             onClick={() => setTab("manual")}
           >
             <Icon name="crawl" size={14} />
-            Crawl thủ công
+            Manual Crawl
           </button>
         </nav>
 
@@ -94,8 +94,8 @@ export default function App() {
           <button
             type="button"
             className="btn btn-quiet btn-tiny"
-            title={`Giao diện: ${THEME_LABEL[theme]}${theme === "system" ? " (theo hệ điều hành)" : ""} — bấm để chuyển sang ${THEME_LABEL[nextTheme]}`}
-            aria-label={`Giao diện: ${THEME_LABEL[theme]}. Bấm để chuyển sang ${THEME_LABEL[nextTheme]}`}
+            title={`Theme: ${THEME_LABEL[theme]}${theme === "system" ? " (system)" : ""} — click to switch to ${THEME_LABEL[nextTheme]}`}
+            aria-label={`Theme: ${THEME_LABEL[theme]}. Click to switch to ${THEME_LABEL[nextTheme]}`}
             onClick={() => setTheme(nextTheme)}
           >
             <Icon name={THEME_ICON[theme]} size={14} />
@@ -104,12 +104,12 @@ export default function App() {
           {job.running ? (
             <span className="chip chip-running">
               <Icon name="dot" size={12} className="animate-pulse" />
-              {job.total > 0 ? `Đang crawl ${job.cursor}/${job.total}` : "Đang crawl"}
+              {job.total > 0 ? `Crawling ${job.cursor}/${job.total}` : "Crawling"}
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
               <Icon name="info" size={13} className="text-ink-3" />
-              {supportedSites.length > 0 ? `${supportedSites.length} trang hỗ trợ` : "Đang tải danh sách trang hỗ trợ…"}
+              {supportedSites.length > 0 ? `${supportedSites.length} sites supported` : "Loading supported sites…"}
             </span>
           )}
         </div>

@@ -38,9 +38,9 @@ export interface ExportRequest {
 }
 
 export interface ProgressEvent {
-  // "chapter-done": xong một chương (kèm `url`). Báo đích danh thay vì để giao
-  // diện suy ra từ việc chương sau bắt đầu — phép suy đó không đánh dấu được
-  // chương cuối cùng. "done" vẫn là xong cả lần crawl.
+  // "chapter-done": one chapter finished (with `url`). Report specifically instead of
+  // letting UI infer from the next chapter starting — that inference can't mark the
+  // final chapter. "done" still means the entire crawl completed.
   type: "progress" | "done" | "error" | "chapter-done" | "running" | "idle";
   index?: number;
   cursor?: number;
@@ -48,15 +48,15 @@ export interface ProgressEvent {
   url?: string;
   message?: string;
   chapters?: ExtractedChapter[];
-  // Thời gian còn lại ước lượng (ms) cho lần crawl đang chạy; vắng mặt khi
-  // chưa đủ mẫu để ước lượng (xem estimateRemainingMs).
+  // Remaining time estimate (ms) for the current crawl; absent when insufficient
+  // samples to estimate (see estimateRemainingMs).
   etaMs?: number;
 }
 
 export type ChapterStatus = "pending" | "done" | "error";
 
 export interface StoredChapter {
-  order: number; // vị trí trong TOC, bắt đầu từ 1
+  order: number; // position in TOC, starting from 1
   url: string;
   title: string;
   status: ChapterStatus;
@@ -70,13 +70,13 @@ export interface StoredStory {
   site: string;
   title: string;
   author?: string;
-  language?: string; // ngôn ngữ sách, dùng cho EPUB; mặc định "vi" ở giao diện
+  language?: string; // book language for EPUB; defaults to "vi" in UI
   coverUrl?: string;
-  // Theo dõi chương mới: bật thì app kiểm tra TOC khi mở; kết quả lần kiểm tra
-  // gần nhất (số chương mới + lỗi nếu có) lưu lại để hiện chip trong thư viện.
+  // Watch for new chapters: when enabled, app checks TOC on launch; the most recent
+  // check result (new chapter count + error if any) is saved to display a chip in library.
   watching: boolean;
   newChapterCount: number;
-  lastCheckedAt?: string; // ISO, lần kiểm tra thành công gần nhất
+  lastCheckedAt?: string; // ISO, most recent successful check
   checkError?: string;
   chapters: StoredChapter[];
   createdAt: string; // ISO

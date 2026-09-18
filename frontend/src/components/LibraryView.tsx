@@ -8,10 +8,10 @@ import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
 import StoryDetail from "./StoryDetail";
 
-// Trạng thái crawl của cả truyện, gộp số đã lưu với crawl đang chạy: còn
-// chương chờ thì báo còn bao nhiêu, hết chương chờ là crawl xong (kèm số lỗi
-// nếu có) — để nhìn danh sách là biết truyện nào đã crawl đủ. Truyện theo dõi
-// có chương mới được ưu tiên báo trước phần còn lại vì cần người dùng bấm.
+// Crawl status for the entire story, combining saved count with running crawl: if
+// chapters are waiting, report how many remain; if all waiting chapters are done,
+// report crawl complete (with error count if any) — at a glance, know which stories
+// are fully crawled. Watched stories with new chapters are prioritized before remaining.
 function crawlStatus(
   total: number,
   done: number,
@@ -22,16 +22,16 @@ function crawlStatus(
   if (crawling) {
     return {
       state: "running",
-      label: crawling.total > 0 ? `Đang crawl ${crawling.cursor}/${crawling.total}` : "Đang crawl",
+      label: crawling.total > 0 ? `Crawling ${crawling.cursor}/${crawling.total}` : "Crawling",
     };
   }
   if (newChapterCount > 0) {
-    return { state: "new", label: `${newChapterCount} chương mới` };
+    return { state: "new", label: `${newChapterCount} new chapters` };
   }
   const remaining = total - done - errors;
-  if (remaining > 0) return { state: "pending", label: `Còn ${remaining} chương` };
-  if (errors > 0) return { state: "error", label: `Xong · ${errors} lỗi` };
-  return { state: "done", label: "Đã crawl xong" };
+  if (remaining > 0) return { state: "pending", label: `${remaining} chapters pending` };
+  if (errors > 0) return { state: "error", label: `Done · ${errors} errors` };
+  return { state: "done", label: "Crawl complete" };
 }
 
 const PAGE_SIZE = 10;
@@ -42,12 +42,12 @@ interface SortState {
   dir: "asc" | "desc";
 }
 
-// Sort nhiều cấp: phần tử đầu là tiêu chí chính, các phần tử sau chỉ dùng để
-// gỡ hoà. Shift-click thêm cột phụ, click thường thay toàn bộ bằng một cột.
+// Multi-level sort: first element is primary criteria, subsequent elements are
+// tie-breakers. Shift+click adds a secondary column, regular click replaces all.
 const DEFAULT_SORTS: SortState[] = [{ key: "updatedAt", dir: "desc" }];
 
-// Một dòng trong bảng: số liệu đã lưu cộng phần crawl đang chạy, tính sẵn để
-// lọc/sắp xếp làm việc trên cùng con số mà người dùng nhìn thấy.
+// A table row: combines saved data plus running crawl, pre-calculated for
+// filtering/sorting to work on the same numbers the user sees.
 interface StoryRow extends StorySummary {
   done: number;
   errors: number;
@@ -56,7 +56,7 @@ interface StoryRow extends StorySummary {
   status: { state: ChipState; label: string };
 }
 
-// Bỏ dấu để gõ "dau xuan" vẫn tìm ra "Đấu Xuân".
+// Remove diacritics so typing "van" still finds "Văn".
 function fold(text: string): string {
   return text
     .normalize("NFD")
@@ -73,7 +73,7 @@ function compareRows(a: StoryRow, b: StoryRow, key: SortKey): number {
     case "site":
       return a.site.localeCompare(b.site, "vi");
     case "updatedAt":
-      // ISO nên so chuỗi là so thời gian.
+      // ISO format, so string comparison = time comparison.
       return a.updatedAt.localeCompare(b.updatedAt);
     default:
       return a[key] - b[key];
@@ -103,7 +103,7 @@ function SortTh({
       <button
         type="button"
         className="inline-flex cursor-pointer items-center gap-1"
-        title={`Sắp xếp theo ${label} — giữ Shift để thêm tiêu chí phụ`}
+        title={`Sort by ${label} — hold Shift to add secondary criteria`}
         onClick={(e) => onSort(sortKey, e.shiftKey)}
       >
         {label}
@@ -155,8 +155,8 @@ export default function LibraryView({
     }
   }
 
-  // Kiểm tra TOC các truyện đang theo dõi, tối đa 2 truyện song song; kết quả
-  // nào về thì cập nhật dòng đó ngay, lỗi giữ số cũ và hiện cảnh báo.
+  // Check TOC for watched stories, max 2 in parallel; update each row when its
+  // result arrives, preserve old count and show warning on error.
   async function runChecks(targets: StorySummary[]) {
     if (targets.length === 0) return;
     setChecking(true);
@@ -172,8 +172,8 @@ export default function LibraryView({
           );
         } catch (err) {
           const message = (err as Error).message;
-          // Truyện đang crawl thì server từ chối kiểm tra — chip crawl đã thay thế.
-          if (/đang được crawl/.test(message)) continue;
+          // Story being crawled: server refuses checks — crawl chip replaces it.
+          if (/is being crawled/.test(message)) continue;
           setStories((current) =>
             current.map((s) => (s.id === story.id ? { ...s, checkError: message } : s))
           );
@@ -189,8 +189,8 @@ export default function LibraryView({
     loadStories().finally(() => setLoading(false));
   }, []);
 
-  // Mở app: kiểm tra một lần cho các truyện đang theo dõi (không chạy nền,
-  // không hẹn giờ). Truyện đang crawl bị bỏ qua — server cũng chặn.
+  // On app open: check watched stories once (no background, no schedule). Crawling
+  // stories are skipped — server blocks them too.
   useEffect(() => {
     if (loading || checkedOnOpen.current) return;
     checkedOnOpen.current = true;
@@ -199,9 +199,8 @@ export default function LibraryView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [loading, stories, live]);
 
-  // Truyện đang chọn đã có StoryDetail tải lại khi crawl xong; truyện khác thì
-  // không, nên tự tải lại khi một truyện rời kênh realtime để chip trạng thái
-  // không kẹt ở số liệu cũ.
+  // Selected story: StoryDetail refetches when crawl done. Others don't, so we
+  // refetch when a story leaves the realtime channel so status chip doesn't stale.
   const crawlingIds = Object.keys(live).filter((id) => live[id]).sort().join(",");
   const prevCrawlingIds = useRef(crawlingIds);
   useEffect(() => {
@@ -224,12 +223,12 @@ export default function LibraryView({
   async function handleCreate() {
     const url = storyUrl.trim();
     if (!url) {
-      setError("Dán URL trang truyện trước đã.");
+      setError("Paste a story URL first.");
       return;
     }
     if (!isSupportedUrl(url, supportedSites)) {
       setError(
-        `URL không thuộc trang được hỗ trợ. Chỉ nhận: ${supportedSites.map((s) => s.domain).join(", ")}.`
+        `URL is not from a supported site. Supported: ${supportedSites.map((s) => s.domain).join(", ")}.`
       );
       return;
     }
@@ -257,8 +256,8 @@ export default function LibraryView({
     }
   }
 
-  // Bật/tắt theo dõi rồi tải lại danh sách: server xoá số chương mới + lỗi khi
-  // tắt, nên state cục bộ phải theo bản đã lưu chứ không tự đoán.
+  // Toggle watch, then refetch: server clears new chapter + error counts when
+  // unwatching, so local state must follow saved version, not guess.
   async function handleWatchToggle(story: StorySummary) {
     try {
       await setStoryWatch(story.id, !story.watching);
@@ -267,7 +266,7 @@ export default function LibraryView({
         try {
           setSelected(await fetchStory(story.id));
         } catch {
-          /* loadStories đã hiện lỗi */
+          /* loadStories already showed the error */
         }
       }
     } catch (err) {
@@ -275,8 +274,8 @@ export default function LibraryView({
     }
   }
 
-  // Xoá nhiều truyện: gọi lần lượt DELETE /stories/:id — thư viện chỉ vài chục
-  // dòng nên không đáng thêm endpoint xoá hàng loạt ở backend.
+  // Delete multiple stories: call DELETE /stories/:id sequentially — library is
+  // just a few dozen rows, not worth adding a batch delete endpoint.
   async function handleBulkDelete(ids: string[]) {
     setBulkBusy(true);
     try {
@@ -313,17 +312,16 @@ export default function LibraryView({
     }
   }
 
-  // Lọc, sắp xếp và phân trang ngay ở client: thư viện là danh sách truyện của
-  // một người nên chỉ vài chục dòng, tải hết một lần vẫn nhẹ hơn thêm tham số
-  // cho API và phân trang ở SQL.
+  // Filter, sort, and paginate on client: library is one person's stories (just
+  // a few dozen rows), loading once is lighter than adding API params and SQL pagination.
   const rows: StoryRow[] = stories.map((s) => {
     // The selected story may be mid-crawl: its stored summary lags
     // behind the chapters this run has already finished.
     const overlay = selected?.id === s.id ? liveCounts(selected.chapters, job.chapters) : { done: 0, error: 0 };
     const done = s.doneCount + overlay.done;
     const errors = s.errorCount + overlay.error;
-    // Trạng thái crawl của MỌI truyện đến từ kênh realtime chung, nên dòng
-    // đang crawl có chip dù chưa được chọn.
+    // Crawl status for ALL stories comes from the shared realtime channel, so
+    // crawling rows show chips even if not selected.
     const crawling = live[s.id];
     return {
       ...s,
@@ -345,12 +343,12 @@ export default function LibraryView({
     return 0;
   });
   const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
-  // Kẹp trang thay vì sửa state trong effect: danh sách ngắn đi (xoá truyện,
-  // lọc) thì tự lùi về trang cuối còn hợp lệ.
+  // Clamp page instead of fixing in effect: when list shrinks (delete, filter),
+  // automatically go back to the last valid page.
   const currentPage = Math.min(page, pageCount);
   const visible = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  // Truyện đang crawl không xoá được nên cũng không cho chọn; chọn được giữ qua
-  // các trang để xoá một lượt.
+  // Crawling stories can't be deleted, so don't let them be picked; selections
+  // persist across pages so you can delete many at once.
   const pickable = visible.filter((r) => !r.crawling);
   const pickedIds = rows.filter((r) => picked.has(r.id) && !r.crawling).map((r) => r.id);
   const allPagePicked = pickable.length > 0 && pickable.every((r) => picked.has(r.id));
@@ -374,7 +372,7 @@ export default function LibraryView({
     <>
       <section className="pane">
         <div className="pane-head">
-          <h2>Truyện của tôi</h2>
+          <h2>My Stories</h2>
           <span className="end flex items-center gap-2 text-xs text-ink-2">
             {stories.some((s) => s.watching) && (
               <button
@@ -388,11 +386,11 @@ export default function LibraryView({
                   size={12}
                   className={checking ? "animate-pulse" : undefined}
                 />
-                {checking ? "Đang kiểm tra…" : "Kiểm tra chương mới"}
+                {checking ? "Checking..." : "Check for new chapters"}
               </button>
             )}
             <span>
-              {stories.length === 0 ? "" : needle ? `${filtered.length}/${stories.length} truyện` : `${stories.length} truyện`}
+              {stories.length === 0 ? "" : needle ? `${filtered.length}/${stories.length} stories` : `${stories.length} stories`}
             </span>
           </span>
         </div>
@@ -400,13 +398,13 @@ export default function LibraryView({
         <div className="border-b border-rule p-3">
           <div className="flex gap-2">
             <label className="visually-hidden" htmlFor="story-url">
-              URL trang truyện
+              Story page URL
             </label>
             <input
               id="story-url"
               type="text"
               className="input"
-              placeholder="https://truyenfull.live/ten-truyen/"
+              placeholder="https://example.com/story-title/"
               value={storyUrl}
               onChange={(e) => setStoryUrl(e.target.value)}
               onKeyDown={(e) => {
@@ -414,26 +412,25 @@ export default function LibraryView({
               }}
             />
             <button type="button" className="btn btn-primary" disabled={busy} onClick={handleCreate}>
-              {busy ? "Đang tải…" : "Tải danh sách chương"}
+              {busy ? "Loading..." : "Load chapters"}
             </button>
           </div>
           <p className="mt-1.5 text-xs text-ink-3">
-            Dán URL trang truyện để nạp toàn bộ mục lục — ví dụ truyenfull.live/dau-xuan-tuoi-sang/ hoặc
-            wattpad.com/story/44634431-pumpkin-patch-princess. Tự động load được:{" "}
-            {[...new Set(supportedSites.map((s) => s.name))].join(", ") || "đang tải…"}
+            Paste a story page URL to load the full chapter list. Auto-loading sites:{" "}
+            {[...new Set(supportedSites.map((s) => s.name))].join(", ") || "loading..."}
           </p>
         </div>
 
         {!loading && stories.length > 0 && (
           <div className="border-b border-rule p-3">
             <label className="visually-hidden" htmlFor="story-search">
-              Tìm truyện
+              Search stories
             </label>
             <input
               id="story-search"
               type="search"
               className="input"
-              placeholder="Tìm theo tên truyện hoặc site…"
+              placeholder="Search by story name or site..."
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -445,7 +442,7 @@ export default function LibraryView({
 
         {pickedIds.length > 0 && (
           <div className="flex items-center gap-2 border-b border-rule px-3 py-2 text-xs text-ink-2">
-            <span>Đã chọn {pickedIds.length} truyện</span>
+            <span>Selected {pickedIds.length} stories</span>
             <span className="ml-auto flex gap-1.5">
               {confirmBulk ? (
                 <>
@@ -455,20 +452,20 @@ export default function LibraryView({
                     disabled={bulkBusy}
                     onClick={() => handleBulkDelete(pickedIds)}
                   >
-                    {bulkBusy ? "Đang xoá…" : `Xoá ${pickedIds.length} truyện`}
+                    {bulkBusy ? "Deleting..." : `Delete ${pickedIds.length} stories`}
                   </button>
                   <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setConfirmBulk(false)}>
-                    Huỷ
+                    Cancel
                   </button>
                 </>
               ) : (
                 <>
                   <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setConfirmBulk(true)}>
                     <Icon name="trash" size={12} />
-                    Xoá đã chọn
+                    Delete selected
                   </button>
                   <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setPicked(new Set())}>
-                    Bỏ chọn
+                    Deselect
                   </button>
                 </>
               )}
@@ -489,24 +486,23 @@ export default function LibraryView({
               {[0, 1, 2].map((i) => (
                 <div key={i} className="h-3 animate-pulse rounded-[2px] bg-sunken" style={{ width: `${92 - i * 14}%` }} />
               ))}
-              <span className="visually-hidden">Đang tải danh sách truyện</span>
+              <span className="visually-hidden">Loading story list</span>
             </div>
           ) : stories.length === 0 ? (
             <div className="empty">
-              <h3>Thư viện đang trống</h3>
+              <h3>Library is empty</h3>
               <ol>
-                <li>Dán URL trang truyện vào ô trên rồi bấm Tải danh sách chương.</li>
-                <li>Toàn bộ mục lục được nạp về với trạng thái Chờ crawl.</li>
+                <li>Paste a story URL above and click "Load chapters".</li>
+                <li>The entire chapter list loads with "Pending" status.</li>
                 <li>
-                  Bấm Crawl tiếp để crawl dần. Đóng tab lúc nào cũng được — tiến độ nằm trong thư viện, mở lại là
-                  thấy đang ở đâu.
+                  Click "Crawl" to crawl gradually. Close the tab anytime — progress is saved in the library, reopen to see where you left off.
                 </li>
               </ol>
             </div>
           ) : sorted.length === 0 ? (
-            <div className="empty">
-              <h3>Không có truyện nào khớp</h3>
-              <p>Không tìm thấy truyện nào có tên hoặc site chứa “{query.trim()}”. Thử từ khoá ngắn hơn.</p>
+            <div className=”empty”>
+              <h3>No stories match</h3>
+              <p>No stories with name or site containing “{query.trim()}”. Try shorter keywords.</p>
             </div>
           ) : (
             <table className="tbl">
@@ -516,7 +512,7 @@ export default function LibraryView({
                     <input
                       type="checkbox"
                       className="checkbox"
-                      aria-label="Chọn tất cả truyện trong trang"
+                      aria-label="Select all stories on this page"
                       checked={allPagePicked}
                       ref={(el) => {
                         if (el) el.indeterminate = somePagePicked && !allPagePicked;
@@ -535,13 +531,13 @@ export default function LibraryView({
                       }}
                     />
                   </th>
-                  <SortTh label="Truyện" sortKey="title" sorts={sorts} onSort={toggleSort} />
+                  <SortTh label="Story" sortKey="title" sorts={sorts} onSort={toggleSort} />
                   <SortTh label="Site" sortKey="site" sorts={sorts} onSort={toggleSort} className="w-28" />
-                  <SortTh label="Chương" sortKey="chapterCount" sorts={sorts} onSort={toggleSort} className="num w-20" />
-                  <SortTh label="Xong" sortKey="done" sorts={sorts} onSort={toggleSort} className="num w-16" />
-                  <SortTh label="Lỗi" sortKey="errors" sorts={sorts} onSort={toggleSort} className="num w-14" />
-                  <SortTh label="Trạng thái" sortKey="remaining" sorts={sorts} onSort={toggleSort} className="w-40" />
-                  <SortTh label="Cập nhật" sortKey="updatedAt" sorts={sorts} onSort={toggleSort} className="w-24" />
+                  <SortTh label="Chapters" sortKey="chapterCount" sorts={sorts} onSort={toggleSort} className="num w-20" />
+                  <SortTh label="Done" sortKey="done" sorts={sorts} onSort={toggleSort} className="num w-16" />
+                  <SortTh label="Errors" sortKey="errors" sorts={sorts} onSort={toggleSort} className="num w-14" />
+                  <SortTh label="Status" sortKey="remaining" sorts={sorts} onSort={toggleSort} className="w-40" />
+                  <SortTh label="Updated" sortKey="updatedAt" sorts={sorts} onSort={toggleSort} className="w-24" />
                   <th className="w-16" />
                 </tr>
               </thead>
@@ -556,7 +552,7 @@ export default function LibraryView({
                       <input
                         type="checkbox"
                         className="checkbox"
-                        aria-label={`Chọn ${s.title}`}
+                        aria-label={`Select ${s.title}`}
                         checked={picked.has(s.id)}
                         disabled={!!s.crawling}
                         onChange={() => togglePicked(s.id)}
@@ -590,7 +586,7 @@ export default function LibraryView({
                       {s.checkError && (
                         <span className="mt-1 flex items-center gap-1 text-xs text-error" title={s.checkError}>
                           <Icon name="alert" size={11} />
-                          Lỗi kiểm tra
+                          Check error
                         </span>
                       )}
                     </td>
@@ -603,14 +599,14 @@ export default function LibraryView({
                             className="btn btn-tiny btn-danger"
                             onClick={() => handleDelete(s.id)}
                           >
-                            Xoá
+                            Delete
                           </button>
                           <button
                             type="button"
                             className="btn btn-tiny btn-quiet"
                             onClick={() => setConfirmDelete(null)}
                           >
-                            Huỷ
+                            Cancel
                           </button>
                         </span>
                       ) : (
@@ -618,8 +614,8 @@ export default function LibraryView({
                           <button
                             type="button"
                             className="btn btn-quiet btn-tiny"
-                            title={s.watching ? "Bỏ theo dõi chương mới" : "Theo dõi chương mới"}
-                            aria-label={s.watching ? `Bỏ theo dõi ${s.title}` : `Theo dõi ${s.title}`}
+                            title={s.watching ? "Stop watching for new chapters" : "Watch for new chapters"}
+                            aria-label={s.watching ? `Stop watching ${s.title}` : `Watch ${s.title}`}
                             aria-pressed={s.watching}
                             onClick={() => handleWatchToggle(s)}
                           >
@@ -628,8 +624,8 @@ export default function LibraryView({
                           <button
                             type="button"
                             className="btn btn-quiet btn-tiny"
-                            title={s.crawling ? "Đang crawl, chưa xoá được" : "Xoá truyện khỏi thư viện"}
-                            aria-label={`Xoá ${s.title}`}
+                            title={s.crawling ? "Crawling, cannot delete" : "Delete story from library"}
+                            aria-label={`Delete ${s.title}`}
                             disabled={!!s.crawling}
                             onClick={() => setConfirmDelete(s.id)}
                           >
@@ -648,7 +644,7 @@ export default function LibraryView({
         {pageCount > 1 && (
           <div className="flex items-center gap-2 border-t border-rule px-3 py-2 text-xs text-ink-2">
             <span>
-              Trang {currentPage}/{pageCount}
+              Page {currentPage}/{pageCount}
             </span>
             <span className="ml-auto flex gap-1.5">
               <button
@@ -657,7 +653,7 @@ export default function LibraryView({
                 disabled={currentPage <= 1}
                 onClick={() => setPage(currentPage - 1)}
               >
-                Trước
+                Previous
               </button>
               <button
                 type="button"
@@ -665,7 +661,7 @@ export default function LibraryView({
                 disabled={currentPage >= pageCount}
                 onClick={() => setPage(currentPage + 1)}
               >
-                Sau
+                Next
               </button>
             </span>
           </div>
@@ -685,13 +681,12 @@ export default function LibraryView({
       ) : (
         <section className="pane">
           <div className="pane-head">
-            <h2 className="ml-auto">Chi tiết truyện</h2>
+            <h2 className="ml-auto">Story Details</h2>
           </div>
           <div className="empty">
-            <h3>Chưa chọn truyện nào</h3>
+            <h3>No story selected</h3>
             <p>
-              Bảng bên trái liệt kê các truyện đã lưu kèm tiến độ. Chọn một truyện để xem danh sách chương, crawl
-              tiếp, sửa nội dung và xuất EPUB.
+              The table on the left lists saved stories with progress. Select a story to view its chapters, continue crawling, edit content, and export to EPUB.
             </p>
           </div>
         </section>

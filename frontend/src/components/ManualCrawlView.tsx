@@ -83,13 +83,13 @@ export default function ManualCrawlView({
     setError(null);
 
     if (urls.length === 0) {
-      setError("Nhập ít nhất một URL chương.");
+      setError("Enter at least one chapter URL.");
       return;
     }
     const unsupported = urls.filter((u) => !isSupportedUrl(u, supportedSites));
     if (unsupported.length > 0) {
       setBadUrls(unsupported);
-      setError(`${unsupported.length} URL không thuộc trang được hỗ trợ.`);
+      setError(`${unsupported.length} URLs are not from supported sites.`);
       return;
     }
 
@@ -106,7 +106,7 @@ export default function ManualCrawlView({
       }))
     );
 
-    await run("Crawl thủ công", (emit) => extractChapters(urls, emit), (event) => {
+    await run("Manual crawl", (emit) => extractChapters(urls, emit), (event) => {
       if (event.type === "error" && event.index !== undefined && event.message) {
         const order = event.index + 1;
         setChapters((cs) =>
@@ -141,7 +141,7 @@ export default function ManualCrawlView({
     setError(null);
 
     await run(
-      targets.length === 1 ? "Thử lại một chương" : `Thử lại ${targets.length} chương lỗi`,
+      targets.length === 1 ? "Retry one chapter" : `Retry ${targets.length} failed chapters`,
       (emit) => extractChapters(targets.map((c) => c.url), emit),
       (event) => {
         if (event.type === "done" && event.chapters) {
@@ -179,27 +179,27 @@ export default function ManualCrawlView({
     <>
       <section className="pane">
         <div className="pane-head">
-          <h2>Nguồn nội dung</h2>
-          <span className="end text-xs text-ink-2">Không cần tài khoản truyện — chỉ cần URL</span>
+          <h2>Content source</h2>
+          <span className="end text-xs text-ink-2">No story account needed — just URLs</span>
         </div>
 
         <div className="pane-body p-3">
           <div className="field">
-            <label htmlFor="urls">Danh sách URL — mỗi dòng một chương, theo đúng thứ tự</label>
+            <label htmlFor="urls">URL list — one chapter per line, in order</label>
             <textarea
               id="urls"
               className="input"
               rows={8}
-              placeholder={"https://xtruyen.vn/truyen/ten-truyen/chuong-1/\nhttps://xtruyen.vn/truyen/ten-truyen/chuong-2/"}
+              placeholder={"https://example.com/story/chapter-1/\nhttps://example.com/story/chapter-2/"}
               value={urlsText}
               onChange={(e) => setUrlsText(e.target.value)}
             />
           </div>
 
           <div className="sites-line mt-2">
-            <span className="text-xs text-ink-2">Chỉ hỗ trợ:</span>
+            <span className="text-xs text-ink-2">Supported sites:</span>
             {supportedSites.length === 0 ? (
-              <span className="text-xs text-ink-3">đang tải danh sách trang…</span>
+              <span className="text-xs text-ink-3">loading site list...</span>
             ) : (
               supportedSites.map((s) => (
                 <span className="chip" key={s.domain}>
@@ -228,18 +228,18 @@ export default function ManualCrawlView({
 
           <div className="fields mt-4">
             <div className="field">
-              <label htmlFor="title">Tên sách</label>
+              <label htmlFor="title">Book title</label>
               <input
                 id="title"
                 type="text"
                 className="input"
-                placeholder="Để trống sẽ lấy từ chương đầu tiên"
+                placeholder="Leave empty to use the first chapter's title"
                 value={bookTitle}
                 onChange={(e) => setBookTitle(e.target.value)}
               />
             </div>
             <div className="field">
-              <label htmlFor="author">Tác giả</label>
+              <label htmlFor="author">Author</label>
               <input
                 id="author"
                 type="text"
@@ -249,19 +249,19 @@ export default function ManualCrawlView({
               />
             </div>
             <div className="field">
-              <label htmlFor="language">Ngôn ngữ</label>
+              <label htmlFor="language">Language</label>
               <select
                 id="language"
                 className="input"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
               >
-                <option value="vi">Tiếng Việt</option>
+                <option value="vi">Vietnamese</option>
                 <option value="en">English</option>
               </select>
             </div>
             <div className="field">
-              <label htmlFor="cover-file">Ảnh bìa (tùy chọn)</label>
+              <label htmlFor="cover-file">Cover image (optional)</label>
               <input
                 id="cover-file"
                 type="file"
@@ -274,14 +274,14 @@ export default function ManualCrawlView({
 
           <button type="button" className="btn btn-primary mt-3" disabled={job.running} onClick={handleExtract}>
             <Icon name="crawl" size={14} />
-            {job.running ? "Đang crawl…" : "Crawl & trích xuất nội dung"}
+            {job.running ? "Crawling..." : "Crawl & extract content"}
           </button>
         </div>
       </section>
 
       <section className="pane">
         <div className="pane-head">
-          <h2>Kết quả</h2>
+          <h2>Results</h2>
           <span className="end">
             {failedOrders.length > 0 && (
               <button
@@ -291,7 +291,7 @@ export default function ManualCrawlView({
                 onClick={() => retryOrders(failedOrders)}
               >
                 <Icon name="retry" size={13} />
-                Thử lại {failedOrders.length} chương lỗi
+                Retry {failedOrders.length} failed chapters
               </button>
             )}
             <button
@@ -301,11 +301,11 @@ export default function ManualCrawlView({
               onClick={handleExport}
             >
               <Icon name="download" size={13} />
-              {isExporting ? "Đang xuất…" : "Xuất EPUB"}
+              {isExporting ? "Exporting..." : "Export EPUB"}
             </button>
             {isExporting && (
               <span className="export-progress" role="status">
-                {progress ? exportProgressLabel(progress) : "Đang chuẩn bị…"}
+                {progress ? exportProgressLabel(progress) : "Preparing..."}
               </span>
             )}
           </span>
@@ -314,19 +314,17 @@ export default function ManualCrawlView({
         {chapters.length === 0 ? (
           <div className="pane-body">
             <div className="empty">
-              <h3>Chưa có nội dung nào</h3>
+              <h3>No content yet</h3>
               <p>
-                Dán danh sách URL chương ở khung bên trái — mỗi dòng một chương, đúng theo thứ tự bạn muốn trong
-                sách — rồi bấm Crawl &amp; trích xuất nội dung.
+                Paste a list of chapter URLs in the left panel — one chapter per line, in the order you want them in the book — then click Crawl &amp; extract content.
               </p>
               <ol>
-                <li>Tool mở từng trang bằng trình duyệt ẩn, đọc nội dung đã render nên không bị chặn copy.</li>
-                <li>Chương lỗi có nút Thử lại; thử lại không được thì bạn tự dán nội dung vào.</li>
-                <li>Sửa tiêu đề và nội dung ngay trong bảng, rồi xuất EPUB để đọc trên Kindle.</li>
+                <li>The tool opens each page in a headless browser and reads the rendered content, so it's not blocked by copy-protection.</li>
+                <li>Failed chapters have a Retry button; if retry doesn't work, you can paste the content manually.</li>
+                <li>Edit the title and content right in the table, then export to EPUB to read on Kindle.</li>
               </ol>
               <p>
-                Truyện dài hàng trăm chương nên dùng tab Truyện của tôi: chỉ cần dán URL trang truyện và tiến độ
-                được lưu lại.
+                For stories with hundreds of chapters, use the "My Stories" tab instead: just paste the story page URL and progress is saved.
               </p>
             </div>
           </div>
@@ -336,14 +334,14 @@ export default function ManualCrawlView({
               <div className="readout">
                 <span className="readout-n">{ok}</span>
                 <span className="readout-of">/{chapters.length}</span>
-                <span className="readout-what">chương trích xuất được</span>
+                <span className="readout-what">chapters extracted</span>
               </div>
               <p className="text-xs text-ink-2">
-                {waiting > 0 && <span>{waiting} chờ crawl</span>}
+                {waiting > 0 && <span>{waiting} pending crawl</span>}
                 {waiting > 0 && failed > 0 && <span> · </span>}
-                {failed > 0 && <span className="font-semibold text-error">{failed} lỗi</span>}
+                {failed > 0 && <span className="font-semibold text-error">{failed} errors</span>}
                 {crawled.length > 0 && failed === 0 && waiting === 0 && (
-                  <span>Tất cả chương đã trích xuất thành công</span>
+                  <span>All chapters extracted successfully</span>
                 )}
               </p>
             </div>
@@ -354,8 +352,8 @@ export default function ManualCrawlView({
                   <tr>
                     <th className="w-9" />
                     <th className="num w-11">#</th>
-                    <th>Chương</th>
-                    <th className="w-32">Trạng thái</th>
+                    <th>Chapter</th>
+                    <th className="w-32">Status</th>
                     <th className="w-28" />
                   </tr>
                 </thead>

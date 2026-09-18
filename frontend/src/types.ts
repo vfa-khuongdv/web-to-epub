@@ -21,9 +21,9 @@ export interface SupportedSite {
 }
 
 export interface ProgressEvent {
-  // "chapter-done": xong một chương (kèm `url`). Báo đích danh thay vì để giao
-  // diện suy ra từ việc chương sau bắt đầu — phép suy đó không đánh dấu được
-  // chương cuối cùng. "done" vẫn là xong cả lần crawl.
+  // "chapter-done": one chapter complete (with `url`). Explicit instead of
+  // inferring from next chapter starting — that inference can't mark the last
+  // chapter. "done" is still the entire crawl complete.
   type: "progress" | "error" | "done" | "chapter-done" | "running" | "idle";
   index?: number;
   cursor?: number;
@@ -31,8 +31,8 @@ export interface ProgressEvent {
   url?: string;
   message?: string;
   chapters?: ExtractedChapter[];
-  // Thời gian còn lại ước lượng (ms) cho lần crawl đang chạy; vắng mặt khi
-  // chưa đủ mẫu để ước lượng.
+  // Estimated time remaining (ms) for running crawl; absent when there aren't
+  // enough samples to estimate yet.
   etaMs?: number;
 }
 

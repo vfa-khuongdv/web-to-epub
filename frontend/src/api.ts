@@ -19,7 +19,7 @@ async function streamNdjson<T>(path: string, body: unknown, onEvent: (event: T) 
   });
 
   if (!res.ok || !res.body) {
-    throw new Error(await readJsonError(res, "Crawl thất bại"));
+    throw new Error(await readJsonError(res, "Crawl failed"));
   }
 
   const reader = res.body.getReader();
@@ -45,21 +45,21 @@ export async function extractChapters(urls: string[], onEvent: (event: ProgressE
   await streamNdjson<ProgressEvent>("/api/extract", { urls }, onEvent);
 }
 
-// Bắt đầu crawl một truyện: server trả về ngay rồi crawl ở hậu trường, tiến
-// trình đến qua kênh realtime /api/stories/:id/live (EventSource).
+// Start crawling a story: server responds immediately, crawls in background,
+// progress arrives via realtime channel /api/stories/:id/live (EventSource).
 export async function startStoryCrawl(id: string, orders?: number[]): Promise<{ total: number }> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}/crawl`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ orders }),
   });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không bắt đầu được crawl"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not start crawl"));
   return (await res.json()) as { total: number };
 }
 
 export async function fetchStories(): Promise<StorySummary[]> {
   const res = await fetch("/api/stories");
-  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được danh sách truyện"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not load story list"));
   const data = await res.json();
   return data.stories || [];
 }
@@ -70,28 +70,28 @@ export async function createStory(url: string): Promise<StoredStory> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ url }),
   });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được danh sách chương"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not load chapters"));
   const data = await res.json();
   return data.story as StoredStory;
 }
 
 export async function fetchStory(id: string): Promise<StoredStory> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được truyện"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not load story"));
   const data = await res.json();
   return data.story as StoredStory;
 }
 
-// Lưu thông tin sách từ khung chi tiết (multipart vì có thể kèm ảnh bìa mới).
+// Save book metadata from detail view (multipart because may include new cover image).
 export async function saveStoryMeta(id: string, form: FormData): Promise<StoredStory> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}/meta`, { method: "POST", body: form });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không lưu được thông tin truyện"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not save story metadata"));
   const data = await res.json();
   return data.story as StoredStory;
 }
 
-// Lưu tên + nội dung một chương người dùng vừa sửa trong khung soạn thảo.
-// Server tự chuyển HTML về dạng block đang lưu và trả lại chương sau khi lưu.
+// Save title + content of a chapter the user just edited in the editor.
+// Server converts HTML to storage block format and returns chapter after saving.
 export async function saveChapterEdit(
   storyId: string,
   order: number,
@@ -102,24 +102,24 @@ export async function saveChapterEdit(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(edit),
   });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không lưu được chương"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not save chapter"));
   const data = await res.json();
   return data.chapter as StoredChapter;
 }
 
 export async function deleteStory(id: string): Promise<void> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}`, { method: "DELETE" });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không xoá được truyện"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not delete story"));
 }
 
-// Bật/tắt theo dõi chương mới cho một truyện.
+// Enable/disable watching for new chapters on a story.
 export async function setStoryWatch(id: string, watching: boolean): Promise<StoredStory> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}/watch`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ watching }),
   });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không đổi được trạng thái theo dõi"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not change watch status"));
   const data = await res.json();
   return data.story as StoredStory;
 }
@@ -130,18 +130,18 @@ export interface StoryCheckResult {
   checkError?: string;
 }
 
-// Kiểm tra TOC xem truyện có chương mới; throw message khi không fetch được TOC
-// (số liệu lần kiểm tra thành công trước đó vẫn được server giữ nguyên).
+// Check TOC for new chapters; throws on fetch failure (previous successful check
+// data still preserved on server).
 export async function checkStoryUpdates(id: string): Promise<StoryCheckResult> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}/check`, { method: "POST" });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không kiểm tra được chương mới"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not check for new chapters"));
   return (await res.json()) as StoryCheckResult;
 }
 
-// Nạp lại TOC cho truyện đã có: chương mới thành pending, chương cũ giữ nguyên.
+// Refetch TOC for existing story: new chapters become pending, old ones unchanged.
 export async function refreshStoryToc(id: string): Promise<StoredStory> {
   const res = await fetch(`/api/stories/${encodeURIComponent(id)}/refresh`, { method: "POST" });
-  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được danh sách chương mới"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not load new chapter list"));
   const data = await res.json();
   return data.story as StoredStory;
 }
@@ -151,30 +151,30 @@ export async function uploadCover(file: File): Promise<string> {
   formData.append("cover", file);
   const res = await fetch("/api/cover-upload", { method: "POST", body: formData });
   if (!res.ok) {
-    throw new Error(await readJsonError(res, "Upload cover thất bại"));
+    throw new Error(await readJsonError(res, "Cover upload failed"));
   }
   const data = await res.json();
   return data.path as string;
 }
 
-// Nội dung một chương, tải khi người dùng mở chương ra xem/sửa (chi tiết truyện
-// không còn kèm nội dung để tránh tải hàng chục MB mỗi lần mở truyện).
+// Chapter content, loaded when user opens chapter to view/edit (story detail no
+// longer carries content to avoid loading tens of MB each time opening a story).
 export async function fetchChapterContent(storyId: string, order: number): Promise<StoredChapter> {
   const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`);
-  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được nội dung chương"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not load chapter content"));
   const data = await res.json();
   return data.chapter as StoredChapter;
 }
 
-// Xuất EPUB cho truyện đã lưu: chỉ gửi chương nào đang sửa dở, phần còn lại
-// server dựng từ nội dung trong DB.
+// Export EPUB for saved story: only send chapters being edited, rest server builds
+// from DB content.
 export interface StoryExportChapter {
   order: number;
   title: string;
   contentHtml?: string;
 }
 
-// Tiến trình dựng sách: phần lớn thời gian là tải ảnh trong chương về.
+// Book building progress: most time spent downloading images in chapters.
 export interface ExportProgress {
   phase: "images" | "media" | "packaging";
   done: number;
@@ -187,8 +187,8 @@ interface ExportEvent extends Partial<ExportProgress> {
   message?: string;
 }
 
-// Server stream tiến trình rồi trả mã tải; file lấy ở request thứ hai vì một
-// response không thể vừa là luồng tiến trình vừa là file nhị phân.
+// Server streams progress then returns download code; file fetched in second request because
+// one response cannot be both progress stream and binary file.
 async function runExport(
   path: string,
   body: unknown,
@@ -208,10 +208,10 @@ async function runExport(
   });
 
   if (failure) throw new Error(failure);
-  if (!exportId) throw new Error("Export thất bại — luồng kết thúc mà không có file");
+  if (!exportId) throw new Error("Export failed — stream ended without file");
 
   const res = await fetch(`/api/exports/${encodeURIComponent(exportId)}`);
-  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được file EPUB vừa dựng"));
+  if (!res.ok) throw new Error(await readJsonError(res, "Could not download the exported EPUB file"));
   return res.blob();
 }
 

@@ -3,217 +3,214 @@
 [![Docker Image](https://img.shields.io/docker/v/vfakhuongdv/web-to-epub?label=docker%20hub&sort=semver)](https://hub.docker.com/r/vfakhuongdv/web-to-epub)
 [![Release](https://img.shields.io/github/v/release/vfa-khuongdv/web-to-epub)](https://github.com/vfa-khuongdv/web-to-epub/releases)
 
-Crawl truyện từ web rồi đóng gói thành file **EPUB** đọc trên Kindle. Trích xuất
-nội dung **đang thực sự hiển thị** trên trang, kể cả khi trang dùng CSS/JS để
-chặn bôi đen, copy hay chuột phải.
+Crawl stories from the web and package them as **EPUB** files readable on Kindle. Extracts
+content **actually displayed on the page**, even when the site uses CSS/JS to prevent selection,
+copying, or right-click.
 
-> Công cụ chỉ xử lý nội dung bạn đã có quyền truy cập. Nó **không** bypass đăng
-> nhập, paywall hay DRM — chương bị khóa sẽ báo lỗi rõ ràng thay vì tìm cách
-> vượt qua.
+> This tool only processes content you already have access to. It **does not** bypass login,
+> paywalls, or DRM — locked chapters will report a clear error instead of attempting to bypass.
 
-![Giao diện Web to EPUB](docs/screenshots/giao-dien.png)
+![Web to EPUB Interface](docs/screenshots/giao-dien.png)
 
-Giao diện tối (bấm icon trên thanh tiêu đề để đổi, hoặc để "tự động" theo hệ điều hành):
+Dark theme (click the icon in the header to change, or set to "auto" to follow OS):
 
-![Giao diện tối](docs/screenshots/giao-dien-toi.png)
+![Dark theme](docs/screenshots/giao-dien-toi.png)
 
-## Mục lục
+## Table of Contents
 
-- [Tính năng](#tính-năng)
-- [Trang được hỗ trợ](#trang-được-hỗ-trợ)
-- [Cài đặt](#cài-đặt)
-- [Sử dụng](#sử-dụng)
-- [Cấu hình](#cấu-hình)
+- [Features](#features)
+- [Supported Sites](#supported-sites)
+- [Installation](#installation)
+- [Usage](#usage)
+- [Configuration](#configuration)
 - [API](#api)
-- [Cấu trúc project](#cấu-trúc-project)
-- [Phát triển](#phát-triển)
-- [Đóng gói & phát hành](#đóng-gói--phát-hành)
-- [Cách hoạt động](#cách-hoạt-động)
-- [Giới hạn đã biết](#giới-hạn-đã-biết)
+- [Project Structure](#project-structure)
+- [Development](#development)
+- [Packaging & Release](#packaging--release)
+- [How It Works](#how-it-works)
+- [Known Limitations](#known-limitations)
 
-## Tính năng
+## Features
 
-- **Tự động load danh sách chương** — dán URL trang truyện, công cụ nạp toàn bộ
-  mục lục rồi crawl tuần tự.
-- **Không mất tiến độ** — mỗi chương được ghi xuống SQLite ngay khi crawl xong.
-  Đóng tab giữa chừng, mở lại vẫn thấy đúng `done/total` và crawl tiếp được.
-- **Theo dõi realtime** — crawl chạy ở hậu trường, tiến độ đẩy qua SSE nên mọi
-  tab đang mở đều thấy trạng thái giống nhau, không cần F5.
-- **Ảnh bìa tự động** — lấy bìa từ trang truyện, nhận dạng bằng magic bytes để
-  CDN trả `content-type` chung chung vẫn lưu đúng định dạng.
-- **Sửa lại chương rồi lưu** — nội dung crawl về thường lẫn lời web, quảng cáo
-  hay tên chương lặp lại; sửa tiêu đề và nội dung ngay trong bảng chương rồi
-  bấm **Lưu chương** là ghi thẳng vào thư viện, mở lại vẫn còn.
-- **Quản lý thư viện** — cột trạng thái cho biết truyện nào đã crawl xong hay
-  còn bao nhiêu chương, tìm theo tên (gõ không dấu vẫn ra), bấm tiêu đề cột để
-  sắp xếp — giữ Shift để thêm tiêu chí phụ — phân trang, và chọn nhiều truyện
-  để xoá một lượt.
-- **Theo dõi chương mới** — bật chuông cho truyện đang đọc; khi mở app, công cụ
-  tự kiểm tra mục lục và báo "N chương mới" (kèm nút kiểm tra tay). Bấm "Tải N
-  chương mới" để nạp lại mục lục và crawl đúng phần còn thiếu — không có tiến
-  trình nền, không tự crawl.
-- **Ước lượng thời gian còn lại** — trong lúc crawl, ETA và tốc độ chương/phút
-  hiện ở thanh tiến độ và chi tiết truyện.
-- **Mở nhanh cả truyện nghìn chương** — danh sách chương không kèm nội dung,
-  mở chương nào mới tải chương đó; bảng chương phân trang 100 chương/trang.
-- **Xử lý chương lỗi** — thử lại riêng từng chương, hoặc tự dán nội dung cho
-  chương crawl không được.
-- **Giao diện sáng/tối** — một nút trên thanh tiêu đề, xoay vòng tự động → sáng
-  → tối; để tự động thì bám theo cài đặt hệ điều hành.
-- **EPUB chuẩn** — TOC (NCX + nav), metadata, ảnh bìa, ảnh trong chương được
-  tải về và nhúng thẳng vào file.
-- **Audio/video trong chương** — thẻ `<audio>`/`<video>` của trang nguồn được
-  tải về và nhúng vào EPUB, phát ngay trong máy đọc sách hỗ trợ (Apple Books,
-  Thorium, Calibre). Kindle không phát được nên ở đó hiện link về nguồn.
-- **Chạy được ở 3 dạng** — server Node, container Docker, hoặc app macOS.
+- **Automatic chapter list loading** — paste a story URL and the tool loads the entire table
+  of contents, then crawls sequentially.
+- **Progress is never lost** — each chapter is saved to SQLite as soon as crawling completes.
+  Close the tab mid-crawl, reopen and you'll see the exact `done/total` and can continue.
+- **Real-time progress tracking** — crawl runs in background, progress pushed via SSE so all
+  open tabs see the same state, no F5 needed.
+- **Automatic cover images** — pulls cover from story page, detects format via magic bytes so
+  even CDN URLs with generic `content-type` save with correct format.
+- **Edit chapters and save** — crawled content often mixes page chrome, ads, or repeated
+  chapter names; edit title and content in the chapter table, click **Save Chapter** to persist
+  to library, reopen and it's still there.
+- **Library management** — status column shows which stories are complete or how many chapters
+  remain, search by name (diacritics optional), click column headers to sort — hold Shift for
+  secondary sort — paginated view, and select multiple stories to delete at once.
+- **Watch for new chapters** — enable notifications for stories you're reading; app auto-checks
+  the table of contents on launch and reports "N new chapters" (with manual check button).
+  Click "Load N new chapters" to reload the TOC and crawl only the missing parts — no background
+  progress, no automatic crawling.
+- **Remaining time estimate** — during crawl, ETA and chapters/minute show in the progress bar
+  and story detail.
+- **Fast open for massive stories** — chapter list doesn't include content, chapters only load
+  when opened; the chapter table is paginated (100 chapters/page).
+- **Handle failed chapters** — retry individual chapters, or manually paste content for chapters
+  that won't extract.
+- **Light/dark theme** — one button in the header, cycles auto → light → dark; auto follows
+  OS preferences.
+- **Standard EPUB** — TOC (NCX + nav), metadata, cover image, and chapter images downloaded and
+  embedded directly in the file.
+- **Audio/video in chapters** — `<audio>`/`<video>` tags from source pages are downloaded and
+  embedded in EPUB, playable immediately in compatible readers (Apple Books, Thorium, Calibre).
+  Kindle can't play them so a link to the source is shown instead.
+- **Three deployment modes** — Node.js server, Docker container, or native macOS app.
 
-## Trang được hỗ trợ
+## Supported Sites
 
-Danh sách whitelist nằm ở [`src/config/supportedSites.ts`](src/config/supportedSites.ts);
-thêm domain mới chỉ cần sửa file này.
+Whitelist is in [`src/config/supportedSites.ts`](src/config/supportedSites.ts);
+adding a new domain only requires editing this file.
 
-| Trang | Tự động load mục lục | Ghi chú |
+| Site | Auto-load TOC | Notes |
 |---|---|---|
-| `xtruyen.vn` | ✅ (API JSON của site) | Đã test kỹ nhất |
-| `truyenfull.live` / `truyenfull.vn` | ✅ (ghép các trang TOC) | Đã test thực tế |
-| `truyencom.com` | ✅ (ghép các trang TOC) | |
-| `wattpad.com` | ✅ (API nội bộ `/api/v3/stories/<id>`) | Chương trả phí không hỗ trợ |
+| `xtruyen.vn` | ✅ (site JSON API) | Most thoroughly tested |
+| `truyenfull.live` / `truyenfull.vn` | ✅ (scrape TOC pages) | Real-world tested |
+| `truyencom.com` | ✅ (scrape TOC pages) | |
+| `wattpad.com` | ✅ (internal API `/api/v3/stories/<id>`) | Paid chapters not supported |
 
-## Cài đặt
+## Installation
 
-### Docker (khuyến nghị)
+### Docker (recommended)
 
-Image multi-arch (`linux/amd64` + `linux/arm64`), không cần cài Node hay Chromium:
+Multi-arch image (`linux/amd64` + `linux/arm64`), no need to install Node or Chromium:
 
 ```bash
 docker run -d -p 3100:3100 -v "$PWD/data:/app/data" vfakhuongdv/web-to-epub:latest
 ```
 
-Hoặc dùng [`docker-compose.yml`](docker-compose.yml) có sẵn:
+Or use the included [`docker-compose.yml`](docker-compose.yml):
 
 ```bash
 docker compose up -d
 ```
 
-Mở `http://localhost:3100`.
+Open `http://localhost:3100`.
 
-### App macOS
+### macOS App
 
-Tải `.dmg` từ [Releases](https://github.com/vfa-khuongdv/web-to-epub/releases),
-kéo app vào `/Applications`, rồi chạy **một lần** trong Terminal:
+Download `.dmg` from [Releases](https://github.com/vfa-khuongdv/web-to-epub/releases),
+drag the app to `/Applications`, then run **once** in Terminal:
 
 ```bash
 xattr -dr com.apple.quarantine "/Applications/Web to EPUB.app"
 ```
 
-Bước này bắt buộc vì app chỉ được ký ad-hoc (không có tài khoản Apple
-Developer). Bỏ qua thì macOS báo *"Apple could not verify..."*.
+This step is required because the app is signed ad-hoc (no Apple Developer account).
+Skip it and macOS will report *"Apple could not verify..."*.
 
-Bản phát hành **chỉ chạy trên Apple Silicon**. Máy Intel cần tự build
-(xem [Đóng gói & phát hành](#đóng-gói--phát-hành)).
+Release builds **only run on Apple Silicon**. Intel Macs need to build from source
+(see [Packaging & Release](#packaging--release)).
 
-### Từ source
+### From Source
 
-Yêu cầu **Node.js ≥ 22** (dùng `node:sqlite` built-in, có từ Node 22.5).
-Project dùng npm workspaces nên `npm install` ở thư mục gốc cài luôn cho
-`frontend/`.
+Requires **Node.js ≥ 22** (uses `node:sqlite` built-in, available since Node 22.5).
+Project uses npm workspaces so `npm install` in the root directory installs for
+both root and `frontend/`.
 
 ```bash
 npm install
-npx playwright install chromium   # Chromium headless cho Playwright (~200MB)
+npx playwright install chromium   # Chromium headless for Playwright (~200MB)
 npm run build                     # tsc (backend) + vite build (frontend -> public/)
 npm start
 ```
 
-Các lệnh này đều có trong `Makefile` — gõ `make` để xem danh sách.
+All these commands are in the `Makefile` — run `make` to see the full list.
 
-## Sử dụng
+## Usage
 
-UI có hai tab:
+UI has two tabs:
 
-**Truyện của tôi** — cách dùng chính:
+**My Stories** — the main workflow:
 
-1. Dán URL trang truyện (ví dụ `https://truyenfull.live/dau-xuan-tuoi-sang/`)
-   rồi bấm "Tải danh sách chương".
-2. Bấm "Crawl" — tiến độ hiện realtime, đóng tab không mất tiến độ.
-3. Mở chi tiết truyện để sửa tên sách / tác giả / ảnh bìa, sửa lại tên và nội
-   dung từng chương nếu cần.
-4. Bấm "Xuất EPUB" — sách gồm mọi chương đã có nội dung.
+1. Paste a story URL (e.g., `https://example.com/story-name/`)
+   and click "Load chapter list".
+2. Click "Crawl" — progress updates in real time, closing the tab doesn't lose progress.
+3. Open story detail to edit book name / author / cover image, edit chapter names and
+   content if needed.
+4. Click "Export EPUB" — the book includes every chapter with content.
 
-**Crawl thủ công** — dán trực tiếp danh sách URL từng chương (mỗi dòng một
-URL).
+**Manual Crawl** — paste a list of chapter URLs directly (one URL per line).
 
-Chương lỗi hiển thị khung đỏ kèm nút "Thử lại" riêng và nút "Nhập nội dung thủ
-công" để tự dán nội dung vào.
+Failed chapters show a red frame with a "Retry" button and an "Enter content manually"
+button to paste content directly.
 
-## Cấu hình
+## Configuration
 
-| Biến | Mặc định | Ý nghĩa |
+| Variable | Default | Meaning |
 |---|---|---|
-| `PORT` | `3100` | Cổng HTTP |
-| `DATA_DIR` | `./data` | Nơi lưu `stories.db` và `covers/`. Bản app macOS trỏ vào `~/Library/Application Support/web-to-epub/data` |
-| `CHROMIUM_NO_SANDBOX` | — | Đặt `1` để tắt sandbox của Chromium. Image Docker bật sẵn vì container không có user namespace; chạy ngoài Docker nên để trống |
+| `PORT` | `3100` | HTTP port |
+| `DATA_DIR` | `./data` | Where to save `stories.db` and `covers/`. macOS app points to `~/Library/Application Support/web-to-epub/data` |
+| `CHROMIUM_NO_SANDBOX` | — | Set to `1` to disable Chromium sandbox. Docker image enables this by default because containers have no user namespace; leave empty for local runs |
 
-Dữ liệu nằm hết trong `DATA_DIR` — sao lưu thư mục đó là sao lưu toàn bộ thư
-viện. Chạy Docker thì **phải** mount volume vào `/app/data`, không thì xoá
-container là mất sạch.
+All data lives in `DATA_DIR` — backing up that directory backs up the entire library.
+Docker deployments **must** mount a volume to `/app/data`, otherwise deleting the container
+wipes everything.
 
 ## API
 
-Backend phục vụ cả frontend đã build lẫn REST API dưới `/api`.
+Backend serves both the built frontend and a REST API under `/api`.
 
-| Method | Endpoint | Mô tả |
+| Method | Endpoint | Description |
 |---|---|---|
-| `GET` | `/api/supported-sites` | Danh sách domain được phép crawl |
-| `GET` | `/api/stories` | Danh sách truyện trong thư viện |
-| `POST` | `/api/stories` | `{ url }` — nạp mục lục từ trang truyện, tải bìa, lưu vào thư viện |
-| `GET` | `/api/stories/:id` | Chi tiết truyện + danh sách chương (**không** kèm nội dung, để truyện nghìn chương vẫn mở nhanh) |
-| `GET` | `/api/stories/:id/chapters/:order` | Nội dung một chương, tải khi người dùng mở chương ra |
-| `POST` | `/api/stories/:id/crawl` | `{ orders? }` — crawl ở hậu trường, trả `202` ngay |
-| `POST` | `/api/stories/:id/meta` | Lưu tên sách / tác giả / ngôn ngữ / ảnh bìa (multipart khi kèm ảnh) |
-| `POST` | `/api/stories/:id/watch` | `{ watching }` — bật/tắt theo dõi chương mới |
-| `POST` | `/api/stories/:id/check` | Kiểm tra mục lục, trả `{ newChapterCount, lastCheckedAt, checkError }` |
-| `POST` | `/api/stories/:id/refresh` | Nạp lại mục lục cho truyện đã có — chương cũ giữ nguyên nội dung, chương mới thành `pending` |
-| `PATCH` | `/api/stories/:id/chapters/:order` | `{ title, contentHtml }` — lưu tên & nội dung người dùng đã sửa cho một chương |
-| `GET` | `/api/stories/:id/cover` | Ảnh bìa đã lưu |
-| `GET` | `/api/stories/live` | **SSE** — tiến độ mọi truyện đang crawl (kèm `storyId`) |
-| `GET` | `/api/stories/:id/live` | **SSE** — tiến độ một truyện |
-| `POST` | `/api/extract` | `{ urls }` — crawl danh sách URL, trả **NDJSON** mỗi dòng một sự kiện |
-| `POST` | `/api/extract-one` | `{ url }` — crawl lại một chương |
-| `POST` | `/api/cover-upload` | Upload ảnh bìa tạm (multipart) |
-| `POST` | `/api/stories/:id/export` | `{ metadata, chapters }` — dựng EPUB từ nội dung trong DB, client chỉ gửi chương đang sửa dở |
-| `POST` | `/api/export` | `{ metadata, chapters }` — trả file `.epub` (dùng cho tab Crawl thủ công) |
+| `GET` | `/api/supported-sites` | List of allowed crawl domains |
+| `GET` | `/api/stories` | List of stories in library |
+| `POST` | `/api/stories` | `{ url }` — load TOC from story URL, download cover, save to library |
+| `GET` | `/api/stories/:id` | Story detail + chapter list (**without** content, so thousand-chapter stories still open fast) |
+| `GET` | `/api/stories/:id/chapters/:order` | One chapter's content, fetched when user opens it |
+| `POST` | `/api/stories/:id/crawl` | `{ orders? }` — crawl in background, return `202` immediately |
+| `POST` | `/api/stories/:id/meta` | Save book name / author / language / cover image (multipart when image included) |
+| `POST` | `/api/stories/:id/watch` | `{ watching }` — enable/disable new chapter notifications |
+| `POST` | `/api/stories/:id/check` | Check TOC, return `{ newChapterCount, lastCheckedAt, checkError }` |
+| `POST` | `/api/stories/:id/refresh` | Reload TOC for existing story — old chapters keep content, new ones become `pending` |
+| `PATCH` | `/api/stories/:id/chapters/:order` | `{ title, contentHtml }` — save user-edited title & content for one chapter |
+| `GET` | `/api/stories/:id/cover` | Saved cover image |
+| `GET` | `/api/stories/live` | **SSE** — progress of all crawling stories (with `storyId`) |
+| `GET` | `/api/stories/:id/live` | **SSE** — progress of one story |
+| `POST` | `/api/extract` | `{ urls }` — crawl a URL list, return **NDJSON** (one event per line) |
+| `POST` | `/api/extract-one` | `{ url }` — re-crawl one chapter |
+| `POST` | `/api/cover-upload` | Upload temporary cover image (multipart) |
+| `POST` | `/api/stories/:id/export` | `{ metadata, chapters }` — build EPUB from DB content, client only sends chapters being edited |
+| `POST` | `/api/export` | `{ metadata, chapters }` — return `.epub` file (used by Manual Crawl tab) |
 
-## Cấu trúc project
+## Project Structure
 
 ```
 .
 ├── src/                          # Backend (Node + TypeScript + Express)
-│   ├── server.ts                 # Khởi động Express, serve public/ + API
+│   ├── server.ts                 # Start Express, serve public/ + API
 │   ├── config/
 │   │   ├── paths.ts              # DATA_DIR
-│   │   └── supportedSites.ts     # Whitelist domain
-│   ├── routes/api.ts             # Toàn bộ endpoint /api
+│   │   └── supportedSites.ts     # Domain whitelist
+│   ├── routes/api.ts             # All /api endpoints
 │   └── services/
-│       ├── renderer.ts           # Playwright: render trang + auto-scroll
-│       ├── extractor.ts          # Readability + lọc chrome + DOM -> blocks
-│       ├── crawl.ts              # Vòng lặp crawl + tự thử lại
-│       ├── epubBuilder.ts        # Chapters + metadata -> buffer EPUB
-│       ├── storyStore.ts         # SQLite: bảng stories + chapters
-│       ├── coverStore.ts         # Tải & lưu ảnh bìa
-│       ├── toc/                  # Adapter mục lục theo từng site
-│       └── chapters/             # Fetcher chương riêng cho Wattpad
-├── frontend/                     # React + TypeScript, build bằng Vite
+│       ├── renderer.ts           # Playwright: render page + auto-scroll
+│       ├── extractor.ts          # Readability + filter chrome + DOM -> blocks
+│       ├── crawl.ts              # Crawl loop + automatic retries
+│       ├── epubBuilder.ts        # Chapters + metadata -> EPUB buffer
+│       ├── storyStore.ts         # SQLite: stories and chapters tables
+│       ├── coverStore.ts         # Download & save cover images
+│       ├── toc/                  # TOC adapters for each site
+│       └── chapters/             # Chapter fetcher specific to Wattpad
+├── frontend/                     # React + TypeScript, built with Vite
 │   └── src/components/           # LibraryView, StoryDetail, ChapterCard...
-├── electron/main.js              # Main process cho bản app macOS
-├── scripts/                      # Tạo icon, ký ad-hoc bundle
-├── public/                       # Build output của frontend (tự sinh)
-├── data/                         # Thư viện: stories.db + covers/ (không commit)
-├── Dockerfile                    # Image multi-stage
-└── Makefile                      # make help để xem toàn bộ lệnh
+├── electron/main.js              # Main process for macOS app
+├── scripts/                      # Icon generation, ad-hoc signing
+├── public/                       # Frontend build output (auto-generated)
+├── data/                         # Library: stories.db + covers/ (not committed)
+├── Dockerfile                    # Multi-stage image
+└── Makefile                      # Run `make help` to see all commands
 ```
 
-## Phát triển
+## Development
 
 ```bash
 make dev            # backend: tsc --watch + nodemon
@@ -221,96 +218,88 @@ make dev-frontend   # frontend: Vite dev server (HMR, proxy /api -> :3100)
 make test           # vitest
 ```
 
-`public/` là thư mục **sinh ra** bởi `npm run build` — sửa trong `frontend/src/`
-chứ đừng sửa trực tiếp.
+`public/` is **generated** by `npm run build` — edit in `frontend/src/`
+not directly in the output.
 
-## Đóng gói & phát hành
+## Packaging & Release
 
 ```bash
-make docker-build   # image cho máy hiện tại
-make docker-push    # multi-arch amd64 + arm64 lên Docker Hub
-make app            # app macOS -> release/*.dmg
-make release-mac    # build app rồi thay file .dmg trên GitHub release
+make docker-build   # image for current machine
+make docker-push    # multi-arch amd64 + arm64 to Docker Hub
+make app            # macOS app -> release/*.dmg
+make release-mac    # build app then update .dmg file on GitHub release
 ```
 
-**Docker**: multi-stage — stage builder chạy `npm run build`, stage runtime chỉ
-cài dependency production kèm Chromium của Playwright và chạy bằng user `node`.
+**Docker**: multi-stage — builder stage runs `npm run build`, runtime stage only installs
+production dependencies plus Playwright's Chromium and runs as user `node`.
 
-**App macOS**: Electron chạy thẳng server Express rồi mở cửa sổ trỏ vào
-localhost (cổng ngẫu nhiên nên không đụng cổng đang dùng). Chromium của
-Playwright (bản `--only-shell`, 195MB) nằm trong `Contents/Resources/` nên máy
-nhận không cần cài gì. File `.dmg` khoảng 217MB, app giải nén ~520MB. Máy Intel
-cần `electron-builder --mac --x64` và bản Chromium x64 — chạy build trên chính
-máy Intel là chắc ăn nhất.
+**macOS App**: Electron runs the Express server directly then opens a window pointing to
+localhost (random port to avoid conflicts). Playwright's Chromium (built as `--only-shell`, 195MB)
+lives in `Contents/Resources/` so no installation needed on user machines. `.dmg` file is ~217MB,
+unpacked app ~520MB. Intel Macs need `electron-builder --mac --x64` and x64 Chromium — building
+on the actual Intel machine is most reliable.
 
-## Cách hoạt động
+## How It Works
 
 ```
 URL ──▶ Renderer ──▶ Extractor ──▶ Blocks ──▶ Preview/Edit ──▶ EPUB Builder ──▶ .epub
        Playwright   Readability   (SQLite)      (React)          epub-gen
 ```
 
-1. **Render** (`renderer.ts`) — Playwright mở trang như trình duyệt thật, chạy
-   đủ JS/CSS, tự scroll để kích hoạt lazy-load, rồi đọc `page.content()`.
-2. **Extract** (`extractor.ts`) — Readability lấy phần nội dung chính, bộ lọc
-   tự viết loại nốt menu/quảng cáo/related posts, rồi map DOM thành
-   `ContentBlock` có kiểu (`heading` / `paragraph` / `image`).
-3. **Lưu** (`storyStore.ts`) — mỗi chương ghi xuống SQLite bằng transaction
-   riêng ngay khi xong.
-4. **Export** (`epubBuilder.ts`) — gom chương đã tick + metadata, gọi `epub-gen`.
+1. **Render** (`renderer.ts`) — Playwright opens the page like a real browser, runs all
+   JS/CSS, auto-scrolls to trigger lazy-load, then reads `page.content()`.
+2. **Extract** (`extractor.ts`) — Readability extracts main content, custom filter removes
+   remaining menus/ads/related posts, then walks DOM into `ContentBlock` types
+   (`heading` / `paragraph` / `image`).
+3. **Save** (`storyStore.ts`) — each chapter is written to SQLite in its own transaction
+   as soon as it completes.
+4. **Export** (`epubBuilder.ts`) — gather checked chapters + metadata and call `epub-gen`.
 
-**Vì sao vượt qua được chặn copy?** Renderer không mô phỏng thao tác bôi
-đen/copy của người dùng — nó đọc thẳng cây DOM đã render từ phía server.
-`user-select: none`, `oncopy`, `oncontextmenu` hay JS chặn phím tắt chỉ chặn
-**hành vi trong trình duyệt của người dùng**, không ảnh hưởng tới việc đọc DOM
-bằng code.
+**Why can it bypass copy restrictions?** The renderer doesn't simulate user selection/copy
+actions — it reads the rendered DOM tree directly from the server. `user-select: none`,
+`oncopy`, `oncontextmenu`, or JS that blocks keyboard shortcuts only affects **behavior in
+the user's browser**, not code reading the DOM.
 
-**Ảnh trong chương** được tải về **trước** khi đưa cho `epub-gen`, và đuôi file
-lấy từ magic bytes chứ không đoán từ URL. Lý do: `epub-gen` đoán bằng
-`mime.getType(url)` nên URL không có đuôi (rất phổ biến với CDN ảnh) cho ra file
-`<id>.null` kèm `media-type=""` — máy đọc sách không hiện được ảnh và file EPUB
-sai chuẩn. Ảnh tải hỏng thì bỏ hẳn thẻ `<img>` thay vì để lại tham chiếu gãy.
+**Images in chapters** are downloaded **before** passing to `epub-gen`, and file extension
+comes from magic bytes not URL guessing. Reason: `epub-gen` guesses via `mime.getType(url)`,
+so URLs without extensions (very common with CDN images) produce `<id>.null` with empty
+`media-type=""` — ebook readers can't display the image and the EPUB is non-standard.
+Failed image downloads skip the `<img>` tag entirely instead of leaving a broken reference.
 
-**Audio/video** đi xa hơn một bước: `epub-gen` không biết gì về chúng — nó chỉ
-đóng gói thẻ `<img>`, còn `controls` (thứ duy nhất làm hiện nút play) thì bị bộ
-lọc thuộc tính của nó xoá. Nên file media được tải về trước, `src` trỏ vào
-`media/<n>.<ext>` trong sách, rồi sau khi `epub-gen` đóng gói xong thì file EPUB
-được mở ra vá lại: thêm file media, khai `<item>` trong manifest và trả
-`controls` về chỗ cũ. File quá 50MB hoặc tải hỏng (link streaming, host chặn)
-thành một đoạn chứa link về nguồn, thay vì mất hẳn.
+**Audio/video** go one step further: `epub-gen` knows nothing about them — it only packages
+`<img>` tags, and its attribute filter removes `controls` (the only thing that shows the play
+button). So media files are downloaded first, `src` points to `media/<n>.<ext>` in the book,
+then after `epub-gen` finishes, the EPUB file is reopened and patched: media files added, entries
+added to the manifest, and `controls` restored. Files over 50MB or with download errors (streaming
+links, host-blocked) become a text block with a link to the source, rather than disappearing entirely.
 
-## Giới hạn đã biết
+## Known Limitations
 
-- **Chỉ crawl domain trong whitelist.** Trong đó mới `xtruyen.vn` và
-  `truyenfull.live` được test thực tế; các domain còn lại thêm theo yêu cầu,
-  nên kiểm tra chất lượng trích xuất trước khi tin tưởng.
-- **Trích xuất thất bại không đều** ở vài trang (rõ nhất với `xtruyen.vn`) do
-  nội dung load trễ, dù đã tự thử lại 3 lần — dùng nút "Thử lại" trên UI.
-- **Tường chống-chặn-quảng-cáo** (gặp ở `truyenfull.live`) làm chương báo lỗi.
-  Công cụ cố ý **không** vượt qua; dùng "Nhập nội dung thủ công" nếu bạn đã xem
-  hợp lệ nội dung đó ở trình duyệt thường.
-- **Wattpad**: chương tải bằng HTTP thường (nhanh hơn mở trình duyệt) vì site
-  server-render sẵn nội dung. Chương trả phí (Paid Stories) báo lỗi, không
-  bypass. API mục lục là API nội bộ, không chính thức — site đổi API thì adapter
-  báo lỗi rõ ràng.
-- **Nút "Load more"** chưa được click tự động; hiện chỉ tự scroll để kích hoạt
-  lazy-load qua scroll event.
-- **Theo dõi chương mới chỉ chạy khi app đang mở** — mỗi truyện theo dõi tốn
-  một lần fetch mục lục, tối đa 2 truyện song song, không có tiến trình nền.
-  Phát hiện dựa trên URL chương: chương đổi URL vẫn tính là mới, chương bị xoá
-  khỏi mục lục không được báo.
-- **ETA là ước lượng** theo tốc độ trung bình của lần crawl hiện tại — chương
-  chậm hoặc retry làm số đổi; chỉ hiện sau vài chương và không giữ qua restart
-  server.
-- **Bảng (`<table>`)** bị làm phẳng thành các đoạn văn rời rạc.
-- **Không có đăng nhập tự động** — trang yêu cầu đăng nhập thì nằm ngoài phạm vi.
-- **Tên chương phụ thuộc mục lục của site.** Mục lục `xtruyen.vn` chỉ trả phần
-  số ("Quyển 1 Chương 2"); phụ đề ("… : Mở cửa") nằm trên trang từng chương nên
-  chỉ hiện sau khi crawl chương đó. Chương đã crawl từ các bản cũ vẫn giữ tên
-  cũ — crawl lại để cập nhật.
-- **Kindle đời cũ** chỉ đọc MOBI/AZW3 — dùng Calibre để chuyển:
-  `ebook-convert book.epub book.azw3`. Kindle firmware mới, "Send to Kindle" và
-  Kindle app đọc EPUB trực tiếp.
-- **`epub-gen` là thư viện cũ**, kéo theo vài dependency có cảnh báo audit.
-  Chấp nhận được cho công cụ chạy local; dùng lâu dài có thể thay bằng EPUB
-  writer mới hơn.
+- **Only crawl whitelisted domains.** Of these, only `xtruyen.vn` and `truyenfull.live` have
+  real-world testing; others were added on request so verify extraction quality before trusting.
+- **Extraction can fail inconsistently** on some sites (especially `xtruyen.vn`) due to delayed
+  content loads, even after 3 automatic retries — use the "Retry" button on the UI.
+- **Anti-ad-blocker walls** (seen on `truyenfull.live`) cause chapters to error. The tool
+  intentionally **does not** bypass these; use "Enter content manually" if you've already viewed
+  the content in a regular browser.
+- **Wattpad**: chapters load via standard HTTP (faster than opening a browser) because the site
+  server-renders content. Paid Stories report an error, no bypass. The TOC API is internal and
+  undocumented — if the site changes it, the adapter will error clearly.
+- **"Load more" buttons** aren't clicked automatically yet; currently only auto-scroll to trigger
+  lazy-load via scroll events.
+- **Watch for new chapters only runs while the app is open** — each watched story costs one TOC
+  fetch, maximum 2 in parallel, no background progress. Detection is URL-based: chapters that
+  change URL still count as new, chapters removed from TOC aren't reported.
+- **ETA is an estimate** based on average speed of the current crawl — slow chapters or retries
+  change the number; only shows after several chapters and doesn't persist across server restart.
+- **Tables (`<table>`)** are flattened into separate paragraphs.
+- **No automatic login** — sites requiring login are out of scope.
+- **Chapter names depend on the site's TOC.** `xtruyen.vn` TOC only returns chapter numbers
+  ("Volume 1 Chapter 2"); subtitles ("… : Opening") sit on individual chapter pages so only
+  appear after crawling. Chapters crawled from old backups keep their old names — crawl again
+  to update.
+- **Older Kindle models** only read MOBI/AZW3 — use Calibre to convert:
+  `ebook-convert book.epub book.azw3`. Newer Kindle firmware, "Send to Kindle", and the Kindle
+  app read EPUB directly.
+- **`epub-gen` is an old library**, pulling in dependencies with some audit warnings.
+  Acceptable for local-only tools; long-term use might warrant switching to a newer EPUB writer.

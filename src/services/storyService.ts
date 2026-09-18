@@ -25,14 +25,14 @@ export function mergeStory(params: {
     id: storyId(params.storyUrl),
     storyUrl: params.storyUrl,
     site: params.site,
-    // Thông tin người dùng đã sửa (nút "Lưu thông tin") thắng TOC khi nạp lại
-    // danh sách chương; TOC chỉ điền lúc tạo truyện.
+    // User-edited info (the "Save info" button) beats the TOC when reloading the chapter list;
+    // the TOC is only used when creating a story.
     title: params.existing?.title ?? params.toc.title ?? "Untitled",
     author: params.existing?.author ?? params.toc.author,
     language: params.existing?.language,
     coverUrl: params.toc.coverUrl ?? params.existing?.coverUrl,
-    // Thông tin theo dõi không nằm trong TOC; giữ nguyên của truyện cũ (save()
-    // cũng không ghi 4 field này nên giá trị thật vẫn nằm trong DB).
+    // Watch information doesn't come from TOC; keep the old story's values (save() also
+    // doesn't write these 4 fields, so the real values remain in the DB).
     watching: params.existing?.watching ?? false,
     newChapterCount: params.existing?.newChapterCount ?? 0,
     lastCheckedAt: params.existing?.lastCheckedAt,
@@ -51,8 +51,8 @@ export function chaptersToCrawl(story: StoredStory, orders?: number[]): StoredCh
   return story.chapters.filter((c) => c.status !== "done").sort((a, b) => a.order - b.order);
 }
 
-// Chương mới = URL có trong TOC hiện tại mà thư viện chưa từng thấy. Chương
-// đổi URL cũng tính là mới; chương biến mất khỏi TOC không được tính.
+// New chapters = URLs in the current TOC that the library hasn't seen before. A chapter
+// with a changed URL also counts as new; chapters that disappear from the TOC don't count.
 export function countNewChapters(stored: { url: string }[], toc: TocChapter[]): number {
   const known = new Set(stored.map((c) => c.url));
   return toc.reduce((count, chapter) => (known.has(chapter.url) ? count : count + 1), 0);
@@ -60,22 +60,21 @@ export function countNewChapters(stored: { url: string }[], toc: TocChapter[]): 
 
 export function toExtractedChapter(chapter: StoredChapter): ExtractedChapter {
   if (chapter.status === "error") {
-    return { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || "Lỗi không xác định" };
+    return { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || "Unknown error" };
   }
   return { sourceUrl: chapter.url, title: chapter.title, blocks: chapter.blocks ?? [] };
 }
 
 /**
- * Mục lục cho tên ngắn gọn và đúng thứ tự, nhưng trang chương đôi khi có bản
- * đầy đủ hơn: mục lục xtruyen chỉ có "Quyển 1 Chương 2", trang chương mới có
- * "Quyển 1 Chương 2 : Mở cửa". Chỉ nhận tên của trang khi nó nối dài tên mục
- * lục — đủ để loại những <title> lẫn tên truyện và hậu tố site
- * ("Hãn Phu - Chương 1 - XTruyện").
+ * TOC provides short, correct names, but chapter page sometimes has a fuller version:
+ * xtruyen TOC has only "Book 1 Chapter 2", chapter page has "Book 1 Chapter 2 : Opening Door".
+ * Only accept page name when it extends the TOC name — enough to exclude <title> tags,
+ * story names, and site suffixes ("Han Phu - Chapter 1 - XTruyen").
  */
 export function pickChapterTitle(tocTitle: string | undefined, pageTitle: string, chapterUrl: string): string {
   const toc = tocTitle?.trim();
   const page = pageTitle.trim();
-  // Crawl thủ công không có mục lục: tên đang là chính URL.
+  // Manual crawl has no TOC: name is currently the URL itself.
   if (!toc || toc === chapterUrl) return page || toc || chapterUrl;
   if (!page) return toc;
   const normalize = (text: string) => text.replace(/\s+/g, " ").toLowerCase();

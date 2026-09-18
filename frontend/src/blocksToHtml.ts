@@ -1,8 +1,8 @@
 import { ContentBlock } from "./types";
 
-// Giữ đồng bộ với mediaTag trong src/services/chapterHtml.ts.
+// Keep in sync with mediaTag in src/services/chapterHtml.ts.
 function mediaTag(type: "audio" | "video", src: string): string {
-  const label = type === "audio" ? "Tệp âm thanh" : "Tệp video";
+  const label = type === "audio" ? "Audio file" : "Video file";
   return `<${type} controls src="${src}">${label}</${type}>`;
 }
 

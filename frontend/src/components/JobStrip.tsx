@@ -50,12 +50,12 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
               ) : (
                 <Icon name="check" size={13} />
               )}
-              <span className="what">Xong · {job.label}</span>
+              <span className="what">Done · {job.label}</span>
             </>
           ) : (
             <>
               <Icon name="info" size={13} className="text-ink-3" />
-              <span className="what">Sẵn sàng</span>
+              <span className="what">Ready</span>
             </>
           )}
         </span>
@@ -65,22 +65,22 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
             <ProgressBar
               pct={job.pct}
               running={job.running}
-              label={job.running ? "Tiến trình crawl" : "Lần crawl đã xong"}
+              label={job.running ? "Crawl progress" : "Crawl completed"}
             />
           </div>
         )}
 
         <span className="counts">
-          {job.running && job.total === 0 && <span>Đang chuẩn bị…</span>}
+          {job.running && job.total === 0 && <span>Preparing...</span>}
           {job.total > 0 && (
             <span>
-              {job.cursor}/{job.total} chương
+              {job.cursor}/{job.total} chapters
             </span>
           )}
-          {job.running && job.etaMs !== undefined && <span>· còn {formatEta(job.etaMs)}</span>}
+          {job.running && job.etaMs !== undefined && <span>· {formatEta(job.etaMs)} remaining</span>}
           {job.errors > 0 && (
             <span className="bad">
-              {job.errors} lỗi
+              {job.errors} errors
             </span>
           )}
         </span>
@@ -94,7 +94,7 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
               onClick={() => setOpen((o) => !o)}
             >
               <Icon name="chapter" size={13} />
-              Nhật ký ({job.log.length})
+              Log ({job.log.length})
               <Icon name="chevron" size={12} className={open ? "rotate-90" : undefined} />
             </button>
           )}

@@ -3,8 +3,8 @@ const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 const JITTER_MS = 250;
-// Lỗi kết nối (reset/timeout) chỉ thử lại một lần: nếu mạng chặn hẳn một host
-// thì retry 5 lần như với 429 sẽ khiến mỗi chương lỗi tốn hàng chục giây.
+// Connection errors (reset/timeout) are retried once: if the network blocks a host entirely,
+// retrying 5 times like with 429 would make each chapter error cost tens of seconds.
 const NETWORK_ATTEMPTS = 2;
 
 const RETRIABLE_NETWORK_CODES = new Set([
@@ -18,7 +18,7 @@ const RETRIABLE_NETWORK_CODES = new Set([
   "UND_ERR_ABORTED",
 ]);
 
-// undici gói lỗi mạng thành TypeError("fetch failed") và để mã thật ở `cause`.
+// undici wraps network errors as TypeError("fetch failed") and puts the real code in `cause`.
 export function networkErrorCode(err: unknown): string | undefined {
   const cause = (err as { cause?: unknown } | null)?.cause ?? err;
   const code = (cause as { code?: unknown } | null)?.code;
@@ -35,18 +35,18 @@ function hostOf(url: string): string {
   }
 }
 
-// "fetch failed" không nói được gì cho người dùng; khi kết nối bị ngắt (ví dụ
-// nhà mạng chặn host, hoặc site chặn IP) thì phải nói rõ host nào và thử gì tiếp.
+// "fetch failed" tells users nothing; when a connection dies (e.g., ISP blocks a host or the site
+// blocks your IP), say which host clearly and what to try next.
 function networkFailureMessage(url: string, code: string): string {
-  return `Không kết nối được tới ${hostOf(url)} (${code}) — kết nối bị ngắt trước khi có phản hồi. Nếu mạng đang chặn site này hoặc site chặn IP của bạn, hãy thử VPN/proxy rồi chạy lại. URL: ${url}`;
+  return `Failed to connect to ${hostOf(url)} (${code}) — connection dropped before getting a response. If your network is blocking this site or the site is blocking your IP, try a VPN/proxy and run again. URL: ${url}`;
 }
 
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-// Retry-After (giây) của server được ưu tiên; nếu không có thì backoff luỹ
-// thừa + jitter để nhiều request không dồn lại cùng lúc.
+// Server Retry-After (in seconds) takes priority; without it, use exponential backoff + jitter
+// to prevent multiple requests from coinciding.
 export function retryDelayMs(attempt: number, retryAfterHeader: string | null): number {
   const retryAfterSec = retryAfterHeader ? Number(retryAfterHeader) : NaN;
   if (Number.isFinite(retryAfterSec) && retryAfterSec >= 0) {
@@ -60,13 +60,13 @@ interface FetchWithRetryOptions {
   fetchImpl?: typeof fetch;
   sleepImpl?: (ms: number) => Promise<void>;
   maxAttempts?: number;
-  // Tải file lớn (audio/video nhúng vào EPUB) không xong trong 15 giây mặc định.
+  // Large files (audio/video embedded in EPUB) don't fit in the 15-second default timeout.
   timeoutMs?: number;
 }
 
-// Các site bị Cloudflare giới hạn tần suất (429) khi bị bắn nhiều request
-// liên tiếp — đã gặp thật với api-chapters.php của xtruyen.vn khi load truyện
-// dài. Retry với backoff thay vì fail ngay; 5xx cũng retry vì thường tạm thời.
+// Some sites hit Cloudflare rate limits (429) when bombarded with requests in succession —
+// happened with xtruyen.vn's api-chapters.php when loading long stories. Retry with backoff
+// instead of failing immediately; also retry 5xx since they're usually temporary.
 export async function fetchWithRetry(
   url: string,
   init: RequestInit = {},
@@ -105,8 +105,8 @@ export async function fetchText(url: string, init: RequestInit = {}, options: Fe
     throw new Error(networkFailureMessage(url, code));
   }
   if (!res.ok) {
-    const hint = res.status === 429 ? " — trang đang giới hạn tần suất truy cập, thử lại sau ít phút" : "";
-    throw new Error(`Không tải được ${url} (HTTP ${res.status})${hint}`);
+    const hint = res.status === 429 ? " — page is rate-limiting access, try again in a few minutes" : "";
+    throw new Error(`Failed to fetch ${url} (HTTP ${res.status})${hint}`);
   }
   return res.text();
 }

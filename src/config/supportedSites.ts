@@ -13,7 +13,7 @@ export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "truyenfull.vn", name: "TruyenFull" },
   { domain: "truyenfull.live", name: "TruyenFull" }, // truyenfull.vn's current mirror domain
   { domain: "truyencom.com", name: "Đọc Truyện" }, // dtruyen.com's current domain
-  { domain: "wattpad.com", name: "Wattpad" }, // tiếng Anh; chương trả phí (Paid Stories) không hỗ trợ
+  { domain: "wattpad.com", name: "Wattpad" }, // English site; paid chapters (Paid Stories) not supported
 ];
 
 export function findSupportedSite(url: string): SupportedSite | undefined {

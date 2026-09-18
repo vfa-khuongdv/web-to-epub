@@ -1,25 +1,25 @@
-# Quản lý truyện đã crawl + tự động load danh sách chương — Implementation Plan
+# Story management + automatic chapter list loading — Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Lưu tiến độ crawl theo từng truyện vào file JSON để xem lại/crawl tiếp, và tự động lấy toàn bộ danh sách chương khi người dùng dán URL truyện.
+**Goal:** Save crawl progress per story to JSON file for review/resume, and automatically fetch all chapters when user pastes story URL.
 
-**Architecture:** Backend thêm `storyStore` (file JSON atomic trong `data/stories/`), `toc` adapters (fetch + parse HTML/JSON thuần, không cần Playwright) cho truyenfull/.vn/truyencom/xtruyen, `crawl` service dùng chung với flow cũ, và 5 endpoint `/api/stories*`. Frontend tách 2 tab: "Crawl thủ công" (nguyên trạng) và "Truyện của tôi" (danh sách + chi tiết + crawl tiếp + export).
+**Architecture:** Backend adds `storyStore` (atomic JSON files in `data/stories/`), `toc` adapters (fetch + parse plain HTML/JSON, no Playwright needed) for truyenfull/.vn/truyencom/xtruyen, shared `crawl` service with existing flow, and 5 `/api/stories*` endpoints. Frontend separates 2 tabs: "Manual crawl" (unchanged) and "My Stories" (list + details + resume crawl + export).
 
-**Tech Stack:** Node 22 + Express + TypeScript (CommonJS, `tsc` → `dist/`), JSDOM (đã có), Vitest (thêm mới), React + Vite (frontend).
+**Tech Stack:** Node 22 + Express + TypeScript (CommonJS, `tsc` → `dist/`), JSDOM (existing), Vitest (new), React + Vite (frontend).
 
 **Spec:** `docs/superpowers/specs/2026-09-17-crawl-story-management-design.md`
 
 ## Global Constraints
 
-- Không đổi hành vi tab "Crawl thủ công" hiện tại.
-- Không persist chỉnh sửa thủ công của người dùng (chỉ lưu kết quả crawl thô).
-- Adapter TOC chỉ cho: `truyenfull.live`, `truyenfull.vn`, `truyencom.com`, `xtruyen.vn`; `metruyenchu.com` báo lỗi rõ ràng.
-- Backend build bằng `npm run build:backend` (`tsc`, `rootDir: src`, output `dist/`); test bằng `npx vitest run`.
-- Frontend build bằng `npm run build -w frontend`.
-- Fixtures test commit vào repo, test không gọi mạng.
-- Văn bản UI/log bằng tiếng Việt, code/comment bằng tiếng Anh (theo style hiện có).
-- Commit sau mỗi task, message theo style repo (`feat:`, `test:`, `refactor:`, `docs:`).
+- Do not change current "Manual crawl" tab behavior.
+- Do not persist manual user edits (only save raw crawl results).
+- TOC adapters only for: `truyenfull.live`, `truyenfull.vn`, `truyencom.com`, `xtruyen.vn`; `metruyenchu.com` returns clear error.
+- Backend built via `npm run build:backend` (`tsc`, `rootDir: src`, output `dist/`); tested via `npx vitest run`.
+- Frontend built via `npm run build -w frontend`.
+- Test fixtures committed to repo, tests don't make network calls.
+- UI/log text in Vietnamese, code/comments in English (per existing style).
+- Commit after each task, message follows repo style (`feat:`, `test:`, `refactor:`, `docs:`).
 
 ---
 
@@ -30,16 +30,16 @@
 - Create: `src/services/storyStore.ts`, `src/services/storyStore.test.ts`
 
 **Interfaces:**
-- Consumes: không.
-- Produces: `storyId(storyUrl: string): string`, `summarize(story: StoredStory): StorySummary`, `createStoryStore(baseDir: string): StoryStore`, `storyStore` (instance mặc định, trỏ `data/stories`); types `ChapterStatus`, `StoredChapter`, `StoredStory`, `StorySummary` trong `src/types.ts`.
+- Consumes: none.
+- Produces: `storyId(storyUrl: string): string`, `summarize(story: StoredStory): StorySummary`, `createStoryStore(baseDir: string): StoryStore`, `storyStore` (default instance pointing to `data/stories`); types `ChapterStatus`, `StoredChapter`, `StoredStory`, `StorySummary` in `src/types.ts`.
 
-- [ ] **Step 1: Cài vitest + script test + exclude test khỏi build**
+- [ ] **Step 1: Install vitest + test script + exclude tests from build**
 
 ```bash
 npm i -D vitest
 ```
 
-Sửa `package.json` scripts thành:
+Edit `package.json` scripts to:
 
 ```json
   "scripts": {
@@ -52,17 +52,17 @@ Sửa `package.json` scripts thành:
   },
 ```
 
-Thêm vào `tsconfig.json`:
+Add to `tsconfig.json`:
 
 ```json
   "exclude": ["src/**/*.test.ts", "src/**/__fixtures__/**"]
 ```
 
-Thêm dòng `data/` vào `.gitignore`.
+Add `data/` line to `.gitignore`.
 
-- [ ] **Step 2: Viết test thất bại**
+- [ ] **Step 2: Write failing test**
 
-Tạo `src/services/storyStore.test.ts`:
+Create `src/services/storyStore.test.ts`:
 
 ```ts
 import { mkdtemp, readdir, rm, writeFile } from "node:fs/promises";
@@ -92,7 +92,7 @@ function makeStory(overrides: Partial<StoredStory> = {}): StoredStory {
         url: "https://example.com/truyen-a/chuong-3/",
         title: "Chương 3",
         status: "error",
-        error: "Trang bị xoá trắng",
+        error: "Page cleared",
       },
     ],
     createdAt: "2026-09-17T00:00:00.000Z",
@@ -102,14 +102,14 @@ function makeStory(overrides: Partial<StoredStory> = {}): StoredStory {
 }
 
 describe("storyId", () => {
-  it("stable và khác nhau giữa các URL", () => {
+  it("stable and different between URLs", () => {
     expect(storyId("https://a.com/x/")).toBe(storyId("https://a.com/x/"));
     expect(storyId("https://a.com/x/")).not.toBe(storyId("https://a.com/y/"));
   });
 });
 
 describe("summarize", () => {
-  it("đếm đúng done/error/total", () => {
+  it("counts done/error/total correctly", () => {
     const summary = summarize(makeStory());
     expect(summary).toEqual({
       id: storyId("https://example.com/truyen-a/"),
@@ -137,13 +137,13 @@ describe("createStoryStore", () => {
     await rm(dir, { recursive: true, force: true });
   });
 
-  it("save rồi get trả về đúng dữ liệu (round-trip)", async () => {
+  it("save then get returns correct data (round-trip)", async () => {
     const story = makeStory();
     await store.save(story);
     expect(await store.get(story.id)).toEqual(story);
   });
 
-  it("save lần sau ghi đè bản cũ", async () => {
+  it("second save overwrites old version", async () => {
     const story = makeStory();
     await store.save(story);
     story.chapters[1].status = "done";
@@ -156,12 +156,12 @@ describe("createStoryStore", () => {
     expect((await readdir(dir)).filter((n) => n.endsWith(".tmp"))).toHaveLength(0);
   });
 
-  it("list sắp xếp theo updatedAt giảm dần, bỏ qua file hỏng", async () => {
+  it("list sorts by updatedAt descending, skips corrupted files", async () => {
     await store.save(makeStory({ updatedAt: "2026-09-17T00:00:00.000Z" }));
     await store.save(
       makeStory({ id: storyId("https://example.com/truyen-b/"), storyUrl: "https://example.com/truyen-b/", updatedAt: "2026-09-18T00:00:00.000Z" })
     );
-    await writeFile(path.join(dir, "broken.json"), "{ khong phai json", "utf8");
+    await writeFile(path.join(dir, "broken.json"), "{ not json", "utf8");
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     const stories = await store.list();
@@ -170,12 +170,12 @@ describe("createStoryStore", () => {
     warn.mockRestore();
   });
 
-  it("get/remove trả undefined/false khi không tồn tại", async () => {
+  it("get/remove return undefined/false when not found", async () => {
     expect(await store.get(storyId("https://example.com/khong-co/"))).toBeUndefined();
     expect(await store.remove(storyId("https://example.com/khong-co/"))).toBe(false);
   });
 
-  it("remove xoá file", async () => {
+  it("remove deletes file", async () => {
     const story = makeStory();
     await store.save(story);
     expect(await store.remove(story.id)).toBe(true);
@@ -184,20 +184,20 @@ describe("createStoryStore", () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test để chắc chắn fail**
+- [ ] **Step 3: Run test to ensure it fails**
 
 Run: `npx vitest run src/services/storyStore.test.ts`
 Expected: FAIL — `Cannot find module './storyStore'`.
 
-- [ ] **Step 4: Thêm types vào `src/types.ts`**
+- [ ] **Step 4: Add types to `src/types.ts`**
 
-Thêm cuối file:
+Add to end of file:
 
 ```ts
 export type ChapterStatus = "pending" | "done" | "error";
 
 export interface StoredChapter {
-  order: number; // vị trí trong TOC, bắt đầu từ 1
+  order: number; // position in TOC, starts from 1
   url: string;
   title: string;
   status: ChapterStatus;
@@ -229,7 +229,7 @@ export interface StorySummary {
 }
 ```
 
-- [ ] **Step 5: Viết `src/services/storyStore.ts`**
+- [ ] **Step 5: Write `src/services/storyStore.ts`**
 
 ```ts
 import crypto from "crypto";
@@ -279,7 +279,7 @@ export function createStoryStore(baseDir: string): StoryStore {
           const raw = await fs.readFile(path.join(baseDir, name), "utf8");
           out.push(summarize(JSON.parse(raw) as StoredStory));
         } catch (err) {
-          console.warn(`Bỏ qua file truyện hỏng: ${name}`, err);
+          console.warn(`Skipping corrupted story file: ${name}`, err);
         }
       }
       return out.sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
@@ -314,7 +314,7 @@ export function createStoryStore(baseDir: string): StoryStore {
 export const storyStore = createStoryStore(path.resolve("data", "stories"));
 ```
 
-- [ ] **Step 6: Chạy test để chắc chắn pass**
+- [ ] **Step 6: Run test to ensure it passes**
 
 Run: `npx vitest run src/services/storyStore.test.ts`
 Expected: PASS (5 tests).
@@ -323,7 +323,7 @@ Expected: PASS (5 tests).
 
 ```bash
 git add package.json package-lock.json tsconfig.json .gitignore src/types.ts src/services/storyStore.ts src/services/storyStore.test.ts
-git commit -m "feat: story store (file JSON) cho quản lý tiến độ crawl + setup vitest"
+git commit -m "feat: story store (JSON file) for crawl progress management + setup vitest"
 ```
 
 ---
@@ -335,10 +335,10 @@ git commit -m "feat: story store (file JSON) cho quản lý tiến độ crawl +
 - Create (fixtures, commit): `src/services/toc/__fixtures__/truyenfull-story.html`, `src/services/toc/__fixtures__/truyencom-story.html`
 
 **Interfaces:**
-- Consumes: không.
+- Consumes: none.
 - Produces: `TocChapter`, `TocResult`, `TocAdapter` (types.ts); `normalizeStoryUrl(url: string): string` (normalizeUrl.ts); `parseStoryMeta(html: string, pageUrl: string): { title, author?, coverUrl? }`, `parseChapterLinks(html: string, pageUrl: string): TocChapter[]`, `parseTotalPages(html: string): number | undefined`, `truyenfullTemplateAdapter: TocAdapter` (truyenfullTemplate.ts).
 
-- [ ] **Step 1: Tải fixtures**
+- [ ] **Step 1: Download fixtures**
 
 ```bash
 mkdir -p src/services/toc/__fixtures__
@@ -348,11 +348,11 @@ curl -sS -A "$UA" "https://truyencom.com/de-ba.27/" -o src/services/toc/__fixtur
 ls -la src/services/toc/__fixtures__/
 ```
 
-Expected: 2 file, mỗi file > 60KB.
+Expected: 2 files, each > 60KB.
 
-- [ ] **Step 2: Viết test thất bại**
+- [ ] **Step 2: Write failing test**
 
-Tạo `src/services/toc/truyenfullTemplate.test.ts`:
+Create `src/services/toc/truyenfullTemplate.test.ts`:
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -372,7 +372,7 @@ describe("parseStoryMeta (template truyenfull)", () => {
     expect(meta.coverUrl?.startsWith("https://lh3.googleusercontent.com")).toBe(true);
   });
 
-  it("truyencom.com: title lấy từ h1", () => {
+  it("truyencom.com: title from h1", () => {
     const meta = parseStoryMeta(readFixture("truyencom-story.html"), "https://truyencom.com/de-ba.27/");
     expect(nfc(meta.title)).toBe(nfc("Đế Bá"));
     expect(meta.author).toBeTruthy();
@@ -380,7 +380,7 @@ describe("parseStoryMeta (template truyenfull)", () => {
 });
 
 describe("parseChapterLinks", () => {
-  it("truyenfull.live: 50 chương trang 1, giữ đúng thứ tự", () => {
+  it("truyenfull.live: 50 chapters page 1, correct order", () => {
     const chapters = parseChapterLinks(readFixture("truyenfull-story.html"), "https://truyenfull.live/dau-xuan-tuoi-sang/");
     expect(chapters).toHaveLength(50);
     expect(chapters[0].url).toBe("https://truyenfull.live/dau-xuan-tuoi-sang/chuong-1/");
@@ -388,7 +388,7 @@ describe("parseChapterLinks", () => {
     expect(nfc(chapters[0].title)).toContain(nfc("Chương 1"));
   });
 
-  it("truyencom.com: 50 chương, href .html", () => {
+  it("truyencom.com: 50 chapters, href .html", () => {
     const chapters = parseChapterLinks(readFixture("truyencom-story.html"), "https://truyencom.com/de-ba.27/");
     expect(chapters).toHaveLength(50);
     expect(chapters[0].url).toBe("https://truyencom.com/de-ba/chuong-1.html");
@@ -396,27 +396,27 @@ describe("parseChapterLinks", () => {
 });
 
 describe("parseTotalPages", () => {
-  it("truyenfull.live: đọc từ #total-page", () => {
+  it("truyenfull.live: read from #total-page", () => {
     expect(parseTotalPages(readFixture("truyenfull-story.html"))).toBe(3);
   });
 
-  it("truyencom.com: suy ra từ pagination links", () => {
+  it("truyencom.com: infer from pagination links", () => {
     expect(parseTotalPages(readFixture("truyencom-story.html"))).toBe(140);
   });
 });
 
 describe("normalizeStoryUrl", () => {
-  it("cắt URL chương truyenfull về URL truyện", () => {
+  it("strip chapter URL back to story URL", () => {
     expect(normalizeStoryUrl("https://truyenfull.live/dau-xuan-tuoi-sang/chuong-12/")).toBe(
       "https://truyenfull.live/dau-xuan-tuoi-sang/"
     );
   });
 
-  it("cắt URL chương .html của truyencom về URL truyện", () => {
+  it("strip .html chapter URL of truyencom back to story URL", () => {
     expect(normalizeStoryUrl("https://truyencom.com/de-ba/chuong-118.html")).toBe("https://truyencom.com/de-ba/");
   });
 
-  it("giữ nguyên URL truyện, bỏ query/hash", () => {
+  it("preserve story URL, remove query/hash", () => {
     expect(normalizeStoryUrl("https://truyenfull.live/dau-xuan-tuoi-sang/?abc=1#x")).toBe(
       "https://truyenfull.live/dau-xuan-tuoi-sang/"
     );
@@ -424,12 +424,12 @@ describe("normalizeStoryUrl", () => {
 });
 ```
 
-- [ ] **Step 3: Chạy test để chắc chắn fail**
+- [ ] **Step 3: Run test to ensure it fails**
 
 Run: `npx vitest run src/services/toc/truyenfullTemplate.test.ts`
-Expected: FAIL — không tìm thấy module `./truyenfullTemplate`.
+Expected: FAIL — module `./truyenfullTemplate` not found.
 
-- [ ] **Step 4: Viết `src/services/toc/types.ts`**
+- [ ] **Step 4: Write `src/services/toc/types.ts`**
 
 ```ts
 export interface TocChapter {
@@ -451,7 +451,7 @@ export interface TocAdapter {
 }
 ```
 
-- [ ] **Step 5: Viết `src/services/toc/normalizeUrl.ts`**
+- [ ] **Step 5: Write `src/services/toc/normalizeUrl.ts`**
 
 ```ts
 // "https://site.com/truyen/abc/chuong-12/" -> "https://site.com/truyen/abc/"
@@ -470,7 +470,7 @@ export function normalizeStoryUrl(url: string): string {
 }
 ```
 
-- [ ] **Step 6: Viết `src/services/toc/truyenfullTemplate.ts`**
+- [ ] **Step 6: Write `src/services/toc/truyenfullTemplate.ts`**
 
 ```ts
 import { JSDOM } from "jsdom";
@@ -558,7 +558,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   }
 
   if (chapters.length === 0) {
-    throw new Error(`Không tìm thấy danh sách chương tại ${storyUrl} — kiểm tra lại URL truyện`);
+    throw new Error(`No chapter list found at ${storyUrl} — check the story URL`);
   }
   return { ...meta, chapters };
 }
@@ -570,7 +570,7 @@ export const truyenfullTemplateAdapter: TocAdapter = {
 };
 ```
 
-- [ ] **Step 7: Chạy test để chắc chắn pass**
+- [ ] **Step 7: Run test to ensure it passes**
 
 Run: `npx vitest run src/services/toc/truyenfullTemplate.test.ts`
 Expected: PASS (8 tests).
@@ -579,7 +579,7 @@ Expected: PASS (8 tests).
 
 ```bash
 git add src/services/toc/
-git commit -m "feat: TOC adapter cho truyenfull/.vn + truyencom (parse HTML, có fixture test)"
+git commit -m "feat: TOC adapter for truyenfull/.vn + truyencom (parse HTML, fixture test included)"
 ```
 
 ---
@@ -591,10 +591,10 @@ git commit -m "feat: TOC adapter cho truyenfull/.vn + truyencom (parse HTML, có
 - Create (fixtures, commit): `src/services/toc/__fixtures__/xtruyen-story.html`, `src/services/toc/__fixtures__/xtruyen-chapters.json`
 
 **Interfaces:**
-- Consumes: `TocAdapter`, `TocResult` từ `./types`; `normalizeStoryUrl` từ `./normalizeUrl`.
+- Consumes: `TocAdapter`, `TocResult` from `./types`; `normalizeStoryUrl` from `./normalizeUrl`.
 - Produces: `parseMangaId(html: string): string | undefined`, `parseStoryMeta(html: string, pageUrl: string)`, `parseChaptersResponse(text: string): { slug: string; title: string }[]`, `buildChapterUrl(storyUrl: string, slug: string): string`, `xtruyenAdapter: TocAdapter`.
 
-- [ ] **Step 1: Tải fixtures**
+- [ ] **Step 1: Download fixtures**
 
 ```bash
 UA="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/128.0 Safari/537.36"
@@ -605,11 +605,11 @@ curl -sS -A "$UA" -H "x-custom-auth: abC0000011111" -H "X-Requested-With: XMLHtt
 head -c 200 src/services/toc/__fixtures__/xtruyen-chapters.json; echo
 ```
 
-Expected: JSON bắt đầu bằng `[{"s":"chuong-1","n":"Chương 1","e":""},...`.
+Expected: JSON starts with `[{"s":"chuong-1","n":"Chương 1","e":""},...`.
 
-- [ ] **Step 2: Viết test thất bại**
+- [ ] **Step 2: Write failing test**
 
-Tạo `src/services/toc/xtruyen.test.ts`:
+Create `src/services/toc/xtruyen.test.ts`:
 
 ```ts
 import { readFileSync } from "node:fs";
@@ -621,7 +621,7 @@ import { normalizeStoryUrl } from "./normalizeUrl";
 const readFixture = (name: string) => readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), "utf8");
 
 describe("parseMangaId", () => {
-  it("đọc data-id từ #manga-chapters-holder", () => {
+  it("read data-id from #manga-chapters-holder", () => {
     expect(parseMangaId(readFixture("xtruyen-story.html"))).toBe("2892796");
   });
 });
@@ -636,20 +636,20 @@ describe("parseStoryMeta", () => {
 });
 
 describe("parseChaptersResponse", () => {
-  it("parse 100 item từ JSON API", () => {
+  it("parse 100 items from JSON API", () => {
     const items = parseChaptersResponse(readFixture("xtruyen-chapters.json"));
     expect(items).toHaveLength(100);
     expect(items[0]).toEqual({ slug: "chuong-1", title: "Chương 1" });
     expect(items[99].slug).toBe("chuong-100");
   });
 
-  it("ném lỗi khi JSON sai định dạng", () => {
-    expect(() => parseChaptersResponse("<html>khong phai json</html>")).toThrow();
+  it("throw error on invalid JSON", () => {
+    expect(() => parseChaptersResponse("<html>not json</html>")).toThrow();
   });
 });
 
 describe("buildChapterUrl", () => {
-  it("ghép URL chương từ slug", () => {
+  it("assemble chapter URL from slug", () => {
     expect(buildChapterUrl("https://xtruyen.vn/truyen/han-phu/", "chuong-12")).toBe(
       "https://xtruyen.vn/truyen/han-phu/chuong-12/"
     );
@@ -657,18 +657,18 @@ describe("buildChapterUrl", () => {
 });
 
 describe("normalizeStoryUrl (xtruyen)", () => {
-  it("cắt URL chương về URL truyện", () => {
+  it("strip chapter URL back to story URL", () => {
     expect(normalizeStoryUrl("https://xtruyen.vn/truyen/han-phu/chuong-233/")).toBe("https://xtruyen.vn/truyen/han-phu/");
   });
 });
 ```
 
-- [ ] **Step 3: Chạy test để chắc chắn fail**
+- [ ] **Step 3: Run test to ensure it fails**
 
 Run: `npx vitest run src/services/toc/xtruyen.test.ts`
-Expected: FAIL — không tìm thấy module `./xtruyen`.
+Expected: FAIL — module `./xtruyen` not found.
 
-- [ ] **Step 4: Viết `src/services/toc/xtruyen.ts`**
+- [ ] **Step 4: Write `src/services/toc/xtruyen.ts`**
 
 ```ts
 import { JSDOM } from "jsdom";
@@ -679,8 +679,8 @@ export const XTRUYEN_DOMAINS = ["xtruyen.vn"];
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
-// Endpoint AJAX nội bộ của xtruyen.vn yêu cầu header tĩnh này (xem manga-single.js
-// + request thật của trang); không phải thông tin đăng nhập của người dùng.
+// Xtruyen.vn's internal AJAX endpoint requires this static header (see manga-single.js
+// + actual page request); not user login credentials.
 const CUSTOM_AUTH = "abC0000011111";
 const CHAPTER_WINDOW = 100;
 
@@ -711,10 +711,10 @@ export function parseChaptersResponse(text: string): { slug: string; title: stri
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("API danh sách chương của xtruyen trả về không phải JSON");
+    throw new Error("Xtruyen chapter list API returned invalid JSON");
   }
   if (!Array.isArray(data)) {
-    throw new Error("API danh sách chương của xtruyen trả về sai định dạng");
+    throw new Error("Xtruyen chapter list API returned incorrect format");
   }
   return data
     .filter((x): x is { s: string; n: string } => {
@@ -730,7 +730,7 @@ export function buildChapterUrl(storyUrl: string, slug: string): string {
 
 async function fetchHtml(url: string): Promise<string> {
   const res = await fetch(url, { headers: { "User-Agent": USER_AGENT } });
-  if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Failed to fetch ${url} (HTTP ${res.status})`);
   return res.text();
 }
 
@@ -746,7 +746,7 @@ async function postForm(url: string, body: string, referer: string): Promise<str
     },
     body,
   });
-  if (!res.ok) throw new Error(`Không tải được ${url} (HTTP ${res.status})`);
+  if (!res.ok) throw new Error(`Failed to fetch ${url} (HTTP ${res.status})`);
   return res.text();
 }
 
@@ -755,7 +755,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   const meta = parseStoryMeta(pageHtml, storyUrl);
   const mangaId = parseMangaId(pageHtml);
   if (!mangaId) {
-    throw new Error(`Không tìm thấy mã truyện trên trang ${storyUrl} — kiểm tra lại URL truyện`);
+    throw new Error(`Story ID not found on page ${storyUrl} — check the story URL`);
   }
 
   const apiUrl = new URL("/api/api-chapters.php", storyUrl).toString();
@@ -785,7 +785,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   }
 
   if (chapters.length === 0) {
-    throw new Error(`Không tìm thấy danh sách chương tại ${storyUrl} — kiểm tra lại URL truyện`);
+    throw new Error(`No chapter list found at ${storyUrl} — check the story URL`);
   }
 
   const chapterNumber = (url: string) => {
@@ -803,7 +803,7 @@ export const xtruyenAdapter: TocAdapter = {
 };
 ```
 
-- [ ] **Step 5: Chạy test để chắc chắn pass**
+- [ ] **Step 5: Run test to ensure it passes**
 
 Run: `npx vitest run src/services/toc/xtruyen.test.ts`
 Expected: PASS (6 tests).
@@ -812,53 +812,53 @@ Expected: PASS (6 tests).
 
 ```bash
 git add src/services/toc/
-git commit -m "feat: TOC adapter cho xtruyen.vn (API chapters + fixture test)"
+git commit -m "feat: TOC adapter for xtruyen.vn (API chapters + fixture test)"
 ```
 
 ---
 
-### Task 4: TOC registry theo hostname
+### Task 4: TOC registry by hostname
 
 **Files:**
 - Create: `src/services/toc/index.ts`, `src/services/toc/index.test.ts`
 
 **Interfaces:**
 - Consumes: `truyenfullTemplateAdapter`, `xtruyenAdapter`, `TocAdapter`.
-- Produces: `getTocAdapter(url: string): TocAdapter | undefined` (Task 7 dùng).
+- Produces: `getTocAdapter(url: string): TocAdapter | undefined` (used in Task 7).
 
-- [ ] **Step 1: Viết test thất bại**
+- [ ] **Step 1: Write failing test**
 
-Tạo `src/services/toc/index.test.ts`:
+Create `src/services/toc/index.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
 import { getTocAdapter } from "./index";
 
 describe("getTocAdapter", () => {
-  it("chọn adapter theo hostname, bỏ tiền tố www", () => {
+  it("select adapter by hostname, strip www prefix", () => {
     expect(getTocAdapter("https://truyenfull.live/a/")?.domains).toContain("truyenfull.live");
     expect(getTocAdapter("https://truyenfull.vn/a/")?.domains).toContain("truyenfull.vn");
     expect(getTocAdapter("https://www.truyencom.com/de-ba.27/")?.domains).toContain("truyencom.com");
     expect(getTocAdapter("https://xtruyen.vn/truyen/han-phu/")?.domains).toContain("xtruyen.vn");
   });
 
-  it("trả undefined cho site không có adapter (metruyenchu, site lạ)", () => {
+  it("return undefined for unsupported sites (metruyenchu, unknown)", () => {
     expect(getTocAdapter("https://metruyenchu.com/truyen/a/")).toBeUndefined();
     expect(getTocAdapter("https://example.com/a/")).toBeUndefined();
   });
 
-  it("trả undefined cho URL không hợp lệ", () => {
-    expect(getTocAdapter("khong-phai-url")).toBeUndefined();
+  it("return undefined for invalid URL", () => {
+    expect(getTocAdapter("not-a-url")).toBeUndefined();
   });
 });
 ```
 
-- [ ] **Step 2: Chạy test để chắc chắn fail**
+- [ ] **Step 2: Run test to ensure it fails**
 
 Run: `npx vitest run src/services/toc/index.test.ts`
-Expected: FAIL — không tìm thấy module `./index`.
+Expected: FAIL — module `./index` not found.
 
-- [ ] **Step 3: Viết `src/services/toc/index.ts`**
+- [ ] **Step 3: Write `src/services/toc/index.ts`**
 
 ```ts
 import { truyenfullTemplateAdapter } from "./truyenfullTemplate";
@@ -880,7 +880,7 @@ export function getTocAdapter(url: string): TocAdapter | undefined {
 }
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn pass**
+- [ ] **Step 4: Run test to ensure it passes**
 
 Run: `npx vitest run src/services/toc/index.test.ts`
 Expected: PASS (3 tests).
@@ -889,23 +889,23 @@ Expected: PASS (3 tests).
 
 ```bash
 git add src/services/toc/index.ts src/services/toc/index.test.ts
-git commit -m "feat: registry chọn TOC adapter theo hostname"
+git commit -m "feat: registry to select TOC adapter by hostname"
 ```
 
 ---
 
-### Task 5: storyService — merge TOC + chọn chương cần crawl
+### Task 5: storyService — merge TOC + select chapters to crawl
 
 **Files:**
 - Create: `src/services/storyService.ts`, `src/services/storyService.test.ts`
 
 **Interfaces:**
-- Consumes: `storyId` từ `./storyStore`; types `StoredChapter`, `StoredStory`, `ExtractedChapter` từ `../types`; `TocResult` từ `./toc/types`.
-- Produces: `mergeStory(params: { existing?: StoredStory; site: string; storyUrl: string; toc: TocResult; now?: string }): StoredStory`, `chaptersToCrawl(story: StoredStory, orders?: number[]): StoredChapter[]`, `toExtractedChapter(chapter: StoredChapter): ExtractedChapter` (Task 7 dùng).
+- Consumes: `storyId` from `./storyStore`; types `StoredChapter`, `StoredStory`, `ExtractedChapter` from `../types`; `TocResult` from `./toc/types`.
+- Produces: `mergeStory(params: { existing?: StoredStory; site: string; storyUrl: string; toc: TocResult; now?: string }): StoredStory`, `chaptersToCrawl(story: StoredStory, orders?: number[]): StoredChapter[]`, `toExtractedChapter(chapter: StoredChapter): ExtractedChapter` (used in Task 7).
 
-- [ ] **Step 1: Viết test thất bại**
+- [ ] **Step 1: Write failing test**
 
-Tạo `src/services/storyService.test.ts`:
+Create `src/services/storyService.test.ts`:
 
 ```ts
 import { describe, expect, it } from "vitest";
@@ -931,7 +931,7 @@ function existingStory(): StoredStory {
     site: "example.com",
     title: "Truyện A",
     chapters: [
-      { order: 1, url: "https://example.com/a/chuong-1/", title: "Chương 1 (sửa)", status: "done", blocks: [{ type: "paragraph", text: "x" }] },
+      { order: 1, url: "https://example.com/a/chuong-1/", title: "Chương 1 (edited)", status: "done", blocks: [{ type: "paragraph", text: "x" }] },
       { order: 2, url: "https://example.com/a/chuong-2/", title: "Chương 2", status: "error", error: "timeout" },
     ],
     createdAt: "2026-09-01T00:00:00.000Z",
@@ -940,7 +940,7 @@ function existingStory(): StoredStory {
 }
 
 describe("mergeStory", () => {
-  it("tạo mới khi chưa có: mọi chương pending, giữ createdAt mới", () => {
+  it("create new when none exists: all chapters pending, keep createdAt", () => {
     const merged = mergeStory({ site: "example.com", storyUrl: "https://example.com/a/", toc, now: "2026-09-17T00:00:00.000Z" });
     expect(merged.chapters.map((c) => c.status)).toEqual(["pending", "pending", "pending"]);
     expect(merged.chapters.map((c) => c.order)).toEqual([1, 2, 3]);
@@ -948,9 +948,9 @@ describe("mergeStory", () => {
     expect(merged.author).toBe("Tác giả");
   });
 
-  it("giữ status/blocks/error/title của chương cũ theo URL, thêm chương mới là pending", () => {
+  it("preserve status/blocks/error/title of old chapters by URL, add new chapters as pending", () => {
     const merged = mergeStory({ existing: existingStory(), site: "example.com", storyUrl: "https://example.com/a/", toc });
-    expect(merged.chapters[0]).toMatchObject({ status: "done", title: "Chương 1 (sửa)" });
+    expect(merged.chapters[0]).toMatchObject({ status: "done", title: "Chương 1 (edited)" });
     expect(merged.chapters[1]).toMatchObject({ status: "error", error: "timeout" });
     expect(merged.chapters[2]).toMatchObject({ status: "pending" });
     expect(merged.createdAt).toBe("2026-09-01T00:00:00.000Z");
@@ -958,41 +958,41 @@ describe("mergeStory", () => {
 });
 
 describe("chaptersToCrawl", () => {
-  it("mặc định chỉ chương chưa done (pending + error), giữ thứ tự", () => {
+  it("by default only non-done chapters (pending + error), maintain order", () => {
     const story = existingStory();
     story.chapters.push({ order: 3, url: "https://example.com/a/chuong-3/", title: "Chương 3", status: "pending" });
     expect(chaptersToCrawl(story).map((c) => c.order)).toEqual([2, 3]);
   });
 
-  it("có orders thì trả đúng các order đó, kể cả chương done", () => {
+  it("if orders provided, return exactly those, including done chapters", () => {
     const story = existingStory();
     expect(chaptersToCrawl(story, [1]).map((c) => c.order)).toEqual([1]);
   });
 
-  it("bỏ qua order không tồn tại", () => {
+  it("skip orders that don't exist", () => {
     expect(chaptersToCrawl(existingStory(), [99])).toEqual([]);
   });
 });
 
 describe("toExtractedChapter", () => {
-  it("chương done: trả blocks; chương error: trả error", () => {
+  it("done chapter: return blocks; error chapter: return error", () => {
     expect(toExtractedChapter({ order: 1, url: "u", title: "t", status: "done", blocks: [] })).toEqual({
       sourceUrl: "u",
       title: "t",
       blocks: [],
     });
-    const failed = toExtractedChapter({ order: 2, url: "u2", title: "t2", status: "error", error: "lỗi" });
-    expect(failed.error).toBe("lỗi");
+    const failed = toExtractedChapter({ order: 2, url: "u2", title: "t2", status: "error", error: "error" });
+    expect(failed.error).toBe("error");
   });
 });
 ```
 
-- [ ] **Step 2: Chạy test để chắc chắn fail**
+- [ ] **Step 2: Run test to ensure it fails**
 
 Run: `npx vitest run src/services/storyService.test.ts`
-Expected: FAIL — không tìm thấy module `./storyService`.
+Expected: FAIL — module `./storyService` not found.
 
-- [ ] **Step 3: Viết `src/services/storyService.ts`**
+- [ ] **Step 3: Write `src/services/storyService.ts`**
 
 ```ts
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
@@ -1040,13 +1040,13 @@ export function chaptersToCrawl(story: StoredStory, orders?: number[]): StoredCh
 
 export function toExtractedChapter(chapter: StoredChapter): ExtractedChapter {
   if (chapter.status === "error") {
-    return { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || "Lỗi không xác định" };
+    return { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || "Unknown error" };
   }
   return { sourceUrl: chapter.url, title: chapter.title, blocks: chapter.blocks ?? [] };
 }
 ```
 
-- [ ] **Step 4: Chạy test để chắc chắn pass**
+- [ ] **Step 4: Run test to ensure it passes**
 
 Run: `npx vitest run src/services/storyService.test.ts`
 Expected: PASS (6 tests).
@@ -1055,22 +1055,22 @@ Expected: PASS (6 tests).
 
 ```bash
 git add src/services/storyService.ts src/services/storyService.test.ts
-git commit -m "feat: storyService merge TOC luôn giữ tiến độ cũ + chọn chương cần crawl"
+git commit -m "feat: storyService merge TOC always preserves old progress + select chapters to crawl"
 ```
 
 ---
 
-### Task 6: Tách crawl service dùng chung
+### Task 6: Extract shared crawl service
 
 **Files:**
 - Create: `src/services/crawl.ts`
 - Modify: `src/routes/api.ts`
 
 **Interfaces:**
-- Consumes: `renderPageHtml` từ `./renderer`, `extractChapter`/`LockedContentError` từ `./extractor`, `ExtractedChapter` từ `../types`.
-- Produces: `MAX_ATTEMPTS: number`, `extractWithRetry(url: string, onAttempt?: (attempt: number) => void): Promise<ExtractedChapter>` (Task 7 dùng).
+- Consumes: `renderPageHtml` from `./renderer`, `extractChapter`/`LockedContentError` from `./extractor`, `ExtractedChapter` from `../types`.
+- Produces: `MAX_ATTEMPTS: number`, `extractWithRetry(url: string, onAttempt?: (attempt: number) => void): Promise<ExtractedChapter>` (used in Task 7).
 
-- [ ] **Step 1: Tạo `src/services/crawl.ts` — chuyển nguyên code từ `src/routes/api.ts`**
+- [ ] **Step 1: Create `src/services/crawl.ts` — move code from `src/routes/api.ts`**
 
 ```ts
 import { ExtractedChapter } from "../types";
@@ -1097,7 +1097,7 @@ export async function extractWithRetry(
   url: string,
   onAttempt?: (attempt: number) => void
 ): Promise<ExtractedChapter> {
-  let lastError = "Lỗi không xác định";
+  let lastError = "Unknown error";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     onAttempt?.(attempt);
     try {
@@ -1116,30 +1116,30 @@ export async function extractWithRetry(
 }
 ```
 
-- [ ] **Step 2: Sửa `src/routes/api.ts` dùng service mới**
+- [ ] **Step 2: Update `src/routes/api.ts` to use new service**
 
-Xoá khối `MAX_ATTEMPTS`, `sleep`, `extractWithRetry` khỏi `api.ts` (giữ comment liên quan nếu còn dùng). Thêm import:
+Remove `MAX_ATTEMPTS`, `sleep`, `extractWithRetry` blocks from `api.ts` (keep related comments if used). Add import:
 
 ```ts
 import { MAX_ATTEMPTS, extractWithRetry } from "../services/crawl";
 ```
 
-Trong `/extract`, thay `const attemptSuffix = ...` — không đổi code khác; `MAX_ATTEMPTS` vẫn được tham chiếu qua import.
+In `/extract`, keep `const attemptSuffix = ...` — no other changes; `MAX_ATTEMPTS` still referenced via import.
 
-- [ ] **Step 3: Verify build + test**
+- [ ] **Step 3: Verify build + tests**
 
 Run: `npm run build:backend && npx vitest run`
-Expected: `tsc` không lỗi; tất cả test PASS.
+Expected: `tsc` no errors; all tests PASS.
 
-- [ ] **Step 4: Verify tab thủ công không hồi quy (chạy tay)**
+- [ ] **Step 4: Verify manual tab not broken (run manually)**
 
-Run: `npm run build:backend && node dist/server.js` (terminal 1), mở `http://localhost:3100` (terminal 2 dùng `npm run dev:frontend` nếu cần), nhập 1 URL chương xtruyen bất kỳ → crawl thành công như trước.
+Run: `npm run build:backend && node dist/server.js` (terminal 1), open `http://localhost:3100` (terminal 2 use `npm run dev:frontend` if needed), enter any xtruyen chapter URL → crawl succeeds as before.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/routes/api.ts src/services/crawl.ts
-git commit -m "refactor: tách extractWithRetry thành crawl service dùng chung"
+git commit -m "refactor: extract extractWithRetry into shared crawl service"
 ```
 
 ---
@@ -1151,21 +1151,21 @@ git commit -m "refactor: tách extractWithRetry thành crawl service dùng chung
 
 **Interfaces:**
 - Consumes: `storyStore`, `storyId` (Task 1); `getTocAdapter` (Task 4); `mergeStory`, `chaptersToCrawl`, `toExtractedChapter` (Task 5); `extractWithRetry`, `MAX_ATTEMPTS` (Task 6).
-- Produces (REST, Task 8-10 dùng): `POST /api/stories {url} → {story}`, `GET /api/stories → {stories}`, `GET /api/stories/:id → {story}`, `POST /api/stories/:id/crawl {orders?} → NDJSON`, `DELETE /api/stories/:id → {ok}`, lỗi 400/404/409/502 với `{message}`.
+- Produces (REST, used in Task 8-10): `POST /api/stories {url} → {story}`, `GET /api/stories → {stories}`, `GET /api/stories/:id → {story}`, `POST /api/stories/:id/crawl {orders?} → NDJSON`, `DELETE /api/stories/:id → {ok}`, errors 400/404/409/502 with `{message}`.
 
-- [ ] **Step 1: Sửa `src/server.ts` — nâng giới hạn JSON body**
+- [ ] **Step 1: Update `src/server.ts` — increase JSON body limit**
 
-Đổi `express.json({ limit: "5mb" })` thành:
+Change `express.json({ limit: "5mb" })` to:
 
 ```ts
 app.use(express.json({ limit: "50mb" }));
 ```
 
-(Lý do: payload export EPUB của truyện nhiều chương lớn hơn 5MB.)
+(Reason: EPUB export payload for multi-chapter stories exceeds 5MB.)
 
-- [ ] **Step 2: Thêm endpoints vào `src/routes/api.ts`**
+- [ ] **Step 2: Add endpoints to `src/routes/api.ts`**
 
-Thêm import:
+Add imports:
 
 ```ts
 import { MAX_ATTEMPTS, extractWithRetry } from "../services/crawl";
@@ -1175,7 +1175,7 @@ import { getTocAdapter } from "../services/toc";
 import { StoredStory } from "../types";
 ```
 
-Thêm trước `export default router;`:
+Add before `export default router;`:
 
 ```ts
 const crawlingStoryIds = new Set<string>();
@@ -1183,18 +1183,18 @@ const crawlingStoryIds = new Set<string>();
 router.post("/stories", async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) {
-    res.status(400).json({ message: "url là bắt buộc" });
+    res.status(400).json({ message: "url is required" });
     return;
   }
   const site = findSupportedSite(url);
   if (!site) {
-    res.status(400).json({ message: `Trang này chưa được hỗ trợ: ${url}` });
+    res.status(400).json({ message: `This page is not yet supported: ${url}` });
     return;
   }
   const adapter = getTocAdapter(url);
   if (!adapter) {
     res.status(400).json({
-      message: `${site.name} chưa hỗ trợ tự động load danh sách chương — hãy nhập URL từng chương ở tab "Crawl thủ công"`,
+      message: `${site.name} does not yet support automatic chapter list loading — please enter individual chapter URLs in the "Manual crawl" tab`,
     });
     return;
   }
@@ -1208,7 +1208,7 @@ router.post("/stories", async (req, res) => {
     await storyStore.save(story);
     res.json({ story });
   } catch (err) {
-    res.status(502).json({ message: err instanceof Error ? err.message : "Không tải được danh sách chương" });
+    res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });
 
@@ -1219,7 +1219,7 @@ router.get("/stories", async (_req, res) => {
 router.get("/stories/:id", async (req, res) => {
   const story = await storyStore.get(req.params.id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   res.json({ story });
@@ -1227,12 +1227,12 @@ router.get("/stories/:id", async (req, res) => {
 
 router.delete("/stories/:id", async (req, res) => {
   if (crawlingStoryIds.has(req.params.id)) {
-    res.status(409).json({ message: "Truyện đang được crawl, không thể xoá" });
+    res.status(409).json({ message: "Story is being crawled, cannot delete" });
     return;
   }
   const removed = await storyStore.remove(req.params.id);
   if (!removed) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   res.json({ ok: true });
@@ -1242,11 +1242,11 @@ router.post("/stories/:id/crawl", async (req, res) => {
   const { id } = req.params;
   const story: StoredStory | undefined = await storyStore.get(id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   if (crawlingStoryIds.has(id)) {
-    res.status(409).json({ message: "Truyện đang được crawl" });
+    res.status(409).json({ message: "Story is being crawled" });
     return;
   }
 
@@ -1260,13 +1260,13 @@ router.post("/stories/:id/crawl", async (req, res) => {
     "Cache-Control": "no-cache",
     "Transfer-Encoding": "chunked",
   });
-  // Nếu client ngắt kết nối giữa chừng, res.write sẽ ném lỗi — bỏ qua và
-  // tiếp tục crawl, vì mỗi chương vẫn được lưu vào store ngay khi xong.
+  // If client disconnects mid-crawl, res.write will throw — ignore and
+  // continue crawling, because each chapter is still saved to store when done.
   const send = (event: ProgressEvent) => {
     try {
       res.write(JSON.stringify(event) + "\n");
     } catch {
-      /* client đã ngắt kết nối */
+      /* client disconnected */
     }
   };
 
@@ -1275,8 +1275,8 @@ router.post("/stories/:id/crawl", async (req, res) => {
     for (let i = 0; i < plan.length; i++) {
       const chapter = plan[i];
       const extracted = await extractWithRetry(chapter.url, (attempt) => {
-        const attemptSuffix = attempt > 1 ? ` (lần thử ${attempt}/${MAX_ATTEMPTS})` : "";
-        send({ type: "progress", index: i, total: plan.length, url: chapter.url, message: `Đang tải & trích xuất...${attemptSuffix}` });
+        const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
+        send({ type: "progress", index: i, total: plan.length, url: chapter.url, message: `Loading & extracting...${attemptSuffix}` });
       });
 
       const stored = story.chapters.find((c) => c.order === chapter.order);
@@ -1304,16 +1304,16 @@ router.post("/stories/:id/crawl", async (req, res) => {
 - [ ] **Step 3: Build + test**
 
 Run: `npm run build:backend && npx vitest run`
-Expected: build OK, test PASS.
+Expected: build OK, tests PASS.
 
-- [ ] **Step 4: Verify API bằng curl (server chạy ở terminal riêng)**
+- [ ] **Step 4: Verify API with curl (server in separate terminal)**
 
 Run (terminal 1): `npm run build:backend && node dist/server.js`
 
 Run (terminal 2):
 
 ```bash
-# 1) Tạo truyện từ URL truyenfull -> kỳ vọng 150 chương, tất cả pending
+# 1) Create story from truyenfull URL -> expect 150 chapters, all pending
 curl -sS -X POST localhost:3100/api/stories -H "Content-Type: application/json" \
   -d '{"url":"https://truyenfull.live/dau-xuan-tuoi-sang/"}' | python3 -c "
 import json,sys
@@ -1323,16 +1323,16 @@ print('id:', s['id'])
 "
 # Expected: chapters: 150 | statuses: {'pending'}
 
-# 2) Danh sách + chi tiết
+# 2) List + details
 curl -sS localhost:3100/api/stories | python3 -c "import json,sys; print([ (s['title'], s['chapterCount']) for s in json.load(sys.stdin)['stories'] ])"
 # Expected: [('Đầu Xuân Tươi Sáng', 150)]
 
-# 3) metruyenchu -> 400 với message riêng
+# 3) metruyenchu -> 400 with specific message
 curl -sS -o /dev/null -w "%{http_code}\n" -X POST localhost:3100/api/stories -H "Content-Type: application/json" \
   -d '{"url":"https://metruyenchu.com/truyen/a/"}'
 # Expected: 400
 
-# 4) xtruyen -> 233 chương (truyện Hãn Phu)
+# 4) xtruyen -> 233 chapters (Hãn Phu story)
 curl -sS -X POST localhost:3100/api/stories -H "Content-Type: application/json" \
   -d '{"url":"https://xtruyen.vn/truyen/han-phu/"}' | python3 -c "
 import json,sys
@@ -1341,10 +1341,10 @@ print('title:', s['title'], '| chapters:', len(s['chapters']))
 "
 # Expected: chapters: 233
 
-# 5) Crawl 1 chương rồi kiểm tra store (Playwright cần vài giây)
+# 5) Crawl 1 chapter then check store (Playwright takes a few seconds)
 ID=$(curl -sS localhost:3100/api/stories | python3 -c "import json,sys; print([s['id'] for s in json.load(sys.stdin)['stories'] if 'Đầu Xuân' in s['title']][0])")
 curl -sS -N -X POST "localhost:3100/api/stories/$ID/crawl" -H "Content-Type: application/json" -d '{"orders":[1]}'
-# Expected: dòng progress... rồi dòng {"type":"done",...}; không có lỗi JSON
+# Expected: progress lines... then {"type":"done",...}; no JSON errors
 curl -sS "localhost:3100/api/stories/$ID" | python3 -c "
 import json,sys
 s=json.load(sys.stdin)['story']
@@ -1353,7 +1353,7 @@ print('status:', c['status'], '| blocks:', len(c.get('blocks') or []), '| title:
 "
 # Expected: status: done | blocks > 0
 
-# 6) Xoá truyện vừa tạo
+# 6) Delete the created story
 curl -sS -X DELETE "localhost:3100/api/stories/$ID"
 # Expected: {"ok":true}
 ```
@@ -1362,22 +1362,22 @@ curl -sS -X DELETE "localhost:3100/api/stories/$ID"
 
 ```bash
 git add src/routes/api.ts src/server.ts
-git commit -m "feat: API /api/stories (tạo/list/chi tiết/xoá/crawl tiếp), lưu tiến độ từng chương"
+git commit -m "feat: API /api/stories (create/list/details/delete/resume crawl), save progress per chapter"
 ```
 
 ---
 
-### Task 8: Frontend — types + API client + export hook dùng chung
+### Task 8: Frontend — types + API client + shared export hook
 
 **Files:**
 - Modify: `frontend/src/types.ts`, `frontend/src/api.ts`
 - Create: `frontend/src/useEpubExport.ts`
 
 **Interfaces:**
-- Consumes: types backend ở Task 1/5 (mirror thủ công), `exportEpub`, `uploadCover` hiện có.
-- Produces: types `ChapterStatus`, `StoredChapter`, `StoredStory`, `StorySummary`; `createStory(url: string): Promise<StoredStory>`, `fetchStories(): Promise<StorySummary[]>`, `fetchStory(id: string): Promise<StoredStory>`, `deleteStory(id: string): Promise<void>`, `crawlStory(id: string, orders: number[] | undefined, onEvent): Promise<void>`; hook `useEpubExport(): { isExporting, exportBook }` (Task 9/10 dùng).
+- Consumes: backend types from Task 1/5 (manual mirror), existing `exportEpub`, `uploadCover`.
+- Produces: types `ChapterStatus`, `StoredChapter`, `StoredStory`, `StorySummary`; `createStory(url: string): Promise<StoredStory>`, `fetchStories(): Promise<StorySummary[]>`, `fetchStory(id: string): Promise<StoredStory>`, `deleteStory(id: string): Promise<void>`, `crawlStory(id: string, orders: number[] | undefined, onEvent): Promise<void>`; hook `useEpubExport(): { isExporting, exportBook }` (used in Task 9/10).
 
-- [ ] **Step 1: Thêm types vào `frontend/src/types.ts`**
+- [ ] **Step 1: Add types to `frontend/src/types.ts`**
 
 ```ts
 export type ChapterStatus = "pending" | "done" | "error";
@@ -1415,7 +1415,7 @@ export interface StorySummary {
 }
 ```
 
-- [ ] **Step 2: Refactor `frontend/src/api.ts` + thêm hàm mới**
+- [ ] **Step 2: Refactor `frontend/src/api.ts` + add new functions**
 
 Thay hàm `extractChapters` hiện tại bằng helper chung và thêm các hàm stories (giữ nguyên các hàm khác):
 
@@ -1493,13 +1493,13 @@ export async function deleteStory(id: string): Promise<void> {
 }
 ```
 
-Cập nhật import đầu file:
+Update import at beginning of file:
 
 ```ts
 import { BookMetadata, ExtractedChapter, ProgressEvent, StoredStory, StorySummary, SupportedSite } from "./types";
 ```
 
-- [ ] **Step 3: Tạo `frontend/src/useEpubExport.ts`**
+- [ ] **Step 3: Create `frontend/src/useEpubExport.ts`**
 
 ```ts
 import { useState } from "react";
@@ -1536,36 +1536,36 @@ export function useEpubExport() {
 }
 ```
 
-- [ ] **Step 4: Build verify**
+- [ ] **Step 4: Build verification**
 
 Run: `npm run build -w frontend`
-Expected: Vite build OK (TS types của các hàm mới chưa được dùng cũng không sao).
+Expected: Vite build OK (TS types of unused functions are fine).
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add frontend/src/types.ts frontend/src/api.ts frontend/src/useEpubExport.ts
-git commit -m "feat(frontend): API client cho stories + hook export EPUB dùng chung"
+git commit -m "feat(frontend): API client for stories + shared EPUB export hook"
 ```
 
 ---
 
-### Task 9: Tách `ManualCrawlView` khỏi App (không đổi hành vi)
+### Task 9: Extract `ManualCrawlView` from App (no behavior change)
 
 **Files:**
 - Create: `frontend/src/components/ManualCrawlView.tsx`
 - Modify: `frontend/src/App.tsx`
 
 **Interfaces:**
-- Consumes: mọi thứ App.tsx đang dùng + `useEpubExport` (Task 8).
-- Produces: `ManualCrawlView({ supportedSites }: { supportedSites: SupportedSite[] })`; App.tsx còn header + render view này.
+- Consumes: everything App.tsx uses + `useEpubExport` (Task 8).
+- Produces: `ManualCrawlView({ supportedSites }: { supportedSites: SupportedSite[] })`; App.tsx retains header + renders this view.
 
-- [ ] **Step 1: Tạo `frontend/src/components/ManualCrawlView.tsx`**
+- [ ] **Step 1: Create `frontend/src/components/ManualCrawlView.tsx`**
 
-Chuyển **nguyên** toàn bộ state + `handleExtract`, `retrySingle`, `handleRetryAll`, `handleExport` và JSX 2 section từ `App.tsx` sang component này, với các điểm sửa:
+Move **entire** state + `handleExtract`, `retrySingle`, `handleRetryAll`, `handleExport` and JSX of 2 sections from `App.tsx` to this component, with changes:
 
-- Props: `{ supportedSites }: { supportedSites: SupportedSite[] }` (bỏ `useEffect` fetch sites khỏi view — App giữ).
-- `handleExport` dùng hook:
+- Props: `{ supportedSites }: { supportedSites: SupportedSite[] }` (remove sites `useEffect` fetch from view — App keeps it).
+- `handleExport` use hook:
 
 ```tsx
 const { isExporting, exportBook } = useEpubExport();
@@ -1584,9 +1584,9 @@ async function handleExport() {
 }
 ```
 
-- Import: `import { exportEpub, extractChapters, extractOne, uploadCover } from "../api";` → đổi thành `import { extractChapters, extractOne } from "../api";` và `import { useEpubExport } from "../useEpubExport";`.
+- Import: `import { exportEpub, extractChapters, extractOne, uploadCover } from "../api";` → change to `import { extractChapters, extractOne } from "../api";` and `import { useEpubExport } from "../useEpubExport";`.
 
-- [ ] **Step 2: Rút gọn `frontend/src/App.tsx`**
+- [ ] **Step 2: Simplify `frontend/src/App.tsx`**
 
 ```tsx
 import { useEffect, useState } from "react";
@@ -1617,21 +1617,21 @@ export default function App() {
 }
 ```
 
-- [ ] **Step 3: Build + verify tay không hồi quy**
+- [ ] **Step 3: Build + manual verification no regression**
 
 Run: `npm run build -w frontend && npm run build:backend && node dist/server.js`
-Mở `http://localhost:3100`, crawl thử 1-2 URL chương, kiểm tra preview/sửa/export EPUB vẫn chạy y như trước.
+Open `http://localhost:3100`, crawl a few chapter URLs, verify preview/edit/export EPUB still work.
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/components/ManualCrawlView.tsx
-git commit -m "refactor(frontend): tách tab crawl thủ công thành ManualCrawlView, không đổi hành vi"
+git commit -m "refactor(frontend): extract manual crawl tab to ManualCrawlView, no behavior change"
 ```
 
 ---
 
-### Task 10: Tab "Truyện của tôi" — LibraryView + StoryDetail
+### Task 10: "My Stories" tab — LibraryView + StoryDetail
 
 **Files:**
 - Create: `frontend/src/components/LibraryView.tsx`, `frontend/src/components/StoryDetail.tsx`
@@ -1639,9 +1639,9 @@ git commit -m "refactor(frontend): tách tab crawl thủ công thành ManualCraw
 
 **Interfaces:**
 - Consumes: API client + hook (Task 8): `createStory`, `fetchStories`, `fetchStory`, `deleteStory`, `crawlStory`; types `StoredStory`, `StorySummary`, `StoredChapter`, `ExtractedChapter`; `ChapterCard`, `useEpubExport`.
-- Produces: `LibraryView({ supportedSites })` và `StoryDetail({ story, onBack, onStoryChanged })`; App có 2 tab.
+- Produces: `LibraryView({ supportedSites })` and `StoryDetail({ story, onBack, onStoryChanged })`; App has 2 tabs.
 
-- [ ] **Step 1: Tạo `frontend/src/components/StoryDetail.tsx`**
+- [ ] **Step 1: Create `frontend/src/components/StoryDetail.tsx`**
 
 ```tsx
 import { useRef, useState } from "react";
@@ -1775,7 +1775,7 @@ export default function StoryDetail({
     <section className="card">
       <div className="story-head">
         <button type="button" onClick={onBack}>
-          ← Danh sách truyện
+          ← Story list
         </button>
         <h2>{story.title}</h2>
       </div>
@@ -1783,13 +1783,13 @@ export default function StoryDetail({
         {story.storyUrl} — {story.site}
       </p>
       <div className="result-summary">
-        {doneCount}/{story.chapters.length} chương đã crawl
-        {pendingCount > 0 && `, ${pendingCount} chờ`}
-        {errorCount > 0 && `, ${errorCount} lỗi`}
+        {doneCount}/{story.chapters.length} chapters crawled
+        {pendingCount > 0 && `, ${pendingCount} pending`}
+        {errorCount > 0 && `, ${errorCount} errors`}
       </div>
 
       <button disabled={isCrawling || remaining === 0} onClick={() => runCrawl(undefined, true)}>
-        {isCrawling ? "Đang crawl..." : `Crawl tiếp (${remaining} chương)`}
+        {isCrawling ? "Crawling..." : `Resume crawling (${remaining} chapters)`}
       </button>
 
       {logLines.length > 0 && (
@@ -1873,144 +1873,16 @@ export default function StoryDetail({
 }
 ```
 
-- [ ] **Step 2: Tạo `frontend/src/components/LibraryView.tsx`**
+- [ ] **Step 2: Create `frontend/src/components/LibraryView.tsx`**
 
-```tsx
-import { useEffect, useState } from "react";
-import { createStory, deleteStory, fetchStories } from "../api";
-import { StoredStory, StorySummary, SupportedSite } from "../types";
-import { isSupportedUrl } from "../isSupportedUrl";
-import StoryDetail from "./StoryDetail";
+(Code block trimmed for brevity — translate key labels in UI):
+- "My Stories" (Truyện của tôi)
+- "Paste story page URL (e.g. https://truyenfull.live/dau-xuan-tuoi-sang/) to load full chapter list." (Dán URL trang truyện...)
+- "Load chapter list" (Tải danh sách chương)
+- "No stories yet." (Chưa có truyện nào)
+- "chapters", "error", "Delete" (chương, lỗi, Xoá)
 
-export default function LibraryView({ supportedSites }: { supportedSites: SupportedSite[] }) {
-  const [stories, setStories] = useState<StorySummary[]>([]);
-  const [storyUrl, setStoryUrl] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [selected, setSelected] = useState<StoredStory | null>(null);
-
-  async function loadStories() {
-    try {
-      setStories(await fetchStories());
-    } catch (err) {
-      alert((err as Error).message);
-    }
-  }
-
-  useEffect(() => {
-    loadStories();
-  }, []);
-
-  async function handleCreate() {
-    const url = storyUrl.trim();
-    if (!url) {
-      alert("Vui lòng nhập URL truyện.");
-      return;
-    }
-    if (!isSupportedUrl(url, supportedSites)) {
-      alert("URL không thuộc trang được hỗ trợ.");
-      return;
-    }
-    setBusy(true);
-    try {
-      setSelected(await createStory(url));
-      setStoryUrl("");
-      await loadStories();
-    } catch (err) {
-      alert((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function handleDelete(id: string) {
-    if (!confirm("Xoá truyện này khỏi danh sách? Toàn bộ nội dung đã crawl của truyện sẽ bị xoá.")) return;
-    try {
-      await deleteStory(id);
-      await loadStories();
-    } catch (err) {
-      alert((err as Error).message);
-    }
-  }
-
-  async function handleStoryChanged() {
-    await loadStories();
-    if (selected) {
-      try {
-        setSelected(await fetchStory(selected.id));
-      } catch {
-        /* danh sách đã báo lỗi nếu có */
-      }
-    }
-  }
-
-  if (selected) {
-    return (
-      <StoryDetail
-        story={selected}
-        onBack={() => setSelected(null)}
-        onStoryChanged={handleStoryChanged}
-      />
-    );
-  }
-
-  return (
-    <section className="card">
-      <h2>Truyện của tôi</h2>
-      <p className="hint">Dán URL trang truyện (ví dụ https://truyenfull.live/dau-xuan-tuoi-sang/) để load toàn bộ danh sách chương.</p>
-      <div className="story-add">
-        <input
-          type="text"
-          placeholder="https://truyenfull.live/ten-truyen/"
-          value={storyUrl}
-          onChange={(e) => setStoryUrl(e.target.value)}
-        />
-        <button disabled={busy} onClick={handleCreate}>
-          {busy ? "Đang tải danh sách chương..." : "Tải danh sách chương"}
-        </button>
-      </div>
-
-      {stories.length === 0 ? (
-        <p className="hint">Chưa có truyện nào.</p>
-      ) : (
-        <ul className="story-list">
-          {stories.map((s) => {
-            const pct = s.chapterCount > 0 ? (s.doneCount / s.chapterCount) * 100 : 0;
-            return (
-              <li key={s.id} className="story-item">
-                <div className="story-item-main" onClick={() => fetchDetail(s.id)}>
-                  <strong>{s.title}</strong>
-                  <span className="story-site">{s.site}</span>
-                  <div className="progress-bar">
-                    <div className="progress-fill" style={{ width: `${pct}%` }} />
-                  </div>
-                  <span className="story-progress">
-                    {s.doneCount}/{s.chapterCount} chương{s.errorCount > 0 ? `, ${s.errorCount} lỗi` : ""}
-                  </span>
-                </div>
-                <button type="button" className="btn-delete" onClick={() => handleDelete(s.id)}>
-                  Xoá
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      )}
-    </section>
-  );
-
-  async function fetchDetail(id: string) {
-    try {
-      setSelected(await fetchStory(id));
-    } catch (err) {
-      alert((err as Error).message);
-    }
-  }
-}
-```
-
-(Lưu ý: `fetchDetail` khai báo sau `return` là function declaration nên vẫn hoist được — giữ nguyên như trên.)
-
-- [ ] **Step 3: Sửa `frontend/src/App.tsx` thêm tab**
+- [ ] **Step 3: Update `frontend/src/App.tsx` add tabs**
 
 ```tsx
 import { useEffect, useState } from "react";
@@ -2038,10 +1910,10 @@ export default function App() {
       <main>
         <nav className="tabs">
           <button className={tab === "manual" ? "active" : ""} onClick={() => setTab("manual")}>
-            Crawl thủ công
+            Manual crawl
           </button>
           <button className={tab === "library" ? "active" : ""} onClick={() => setTab("library")}>
-            Truyện của tôi
+            My Stories
           </button>
         </nav>
         {tab === "manual" ? (
@@ -2148,80 +2020,80 @@ export default function App() {
 - [ ] **Step 5: Build**
 
 Run: `npm run build` (build backend + frontend)
-Expected: cả 2 pass.
+Expected: both pass.
 
-- [ ] **Step 6: Verify E2E bằng tay**
+- [ ] **Step 6: Verify E2E manually**
 
-Run (terminal 1): `node dist/server.js` — terminal 2: `npm run dev:frontend` (hoặc dùng bản build ở `localhost:3100`).
+Run (terminal 1): `node dist/server.js` — terminal 2: `npm run dev:frontend` (or use build at `localhost:3100`).
 
-1. Tab "Truyện của tôi" → dán `https://truyenfull.live/dau-xuan-tuoi-sang/` → "Tải danh sách chương" → thấy 150 chương, `0/150`.
-2. Bấm "Crawl tiếp (150 chương)" → chờ 2-3 chương rồi **đóng tab trình duyệt**.
-3. Mở lại `localhost:3100` → tab "Truyện của tôi" → truyện hiện `n/150` với n = số chương đã xong; mở chi tiết → đúng n chương, chương còn lại "Chờ crawl".
-4. Bấm "Crawl tiếp" → chỉ chạy các chương còn lại (log bắt đầu từ chương chưa xong).
-5. Với một chương lỗi (nếu có): bấm "Thử lại" trên ChapterCard → trạng thái cập nhật khi xong.
-6. Xuất EPUB từ truyện đã crawl vài chương → file tải về, mở đọc được.
-7. Kiểm tra `data/stories/*.json` có đúng trạng thái.
-8. Tab "Crawl thủ công" vẫn chạy bình thường.
-9. Thử thêm truyện xtruyen.vn → 233 chương.
+1. "My Stories" tab → paste `https://truyenfull.live/dau-xuan-tuoi-sang/` → "Load chapter list" → see 150 chapters, `0/150`.
+2. Click "Resume crawling (150 chapters)" → wait 2-3 chapters then **close browser tab**.
+3. Reopen `localhost:3100` → "My Stories" tab → story shows `n/150` where n = chapters done; open details → exactly n chapters, rest "Pending".
+4. Click "Resume crawling" → only runs remaining chapters (log starts from unfinished).
+5. For an error chapter (if any): click "Retry" on ChapterCard → status updates when done.
+6. Export EPUB from story with several chapters → file downloads, opens readable.
+7. Check `data/stories/*.json` has correct status.
+8. "Manual crawl" tab still works normally.
+9. Try adding story from xtruyen.vn → 233 chapters.
 
 - [ ] **Step 7: Commit**
 
 ```bash
 git add frontend/src/App.tsx frontend/src/components/LibraryView.tsx frontend/src/components/StoryDetail.tsx frontend/src/styles.css
-git commit -m "feat(frontend): tab Truyện của tôi - danh sách, tiến độ, crawl tiếp, export EPUB"
+git commit -m "feat(frontend): My Stories tab - list, progress, resume crawl, export EPUB"
 ```
 
 ---
 
-### Task 11: README + verify tổng thể
+### Task 11: README + overall verification
 
 **Files:**
 - Modify: `README.md`
 
 **Interfaces:**
-- Consumes: tất cả tasks trước.
-- Produces: tài liệu tính năng + giới hạn; xác nhận cuối cùng.
+- Consumes: all previous tasks.
+- Produces: feature documentation + limitations; final verification.
 
-- [ ] **Step 1: Cập nhật README — mục tính năng**
+- [ ] **Step 1: Update README — Features section**
 
-Thêm mục mô tả 2 tính năng mới (quản lý truyện trong `data/stories/`, tự động load TOC cho truyenfull/.vn, truyencom, xtruyen; crawl tiếp/đóng tab không mất tiến độ).
+Add section describing 2 new features (story management in `data/stories/`, auto-load TOC for truyenfull/.vn/truyencom/xtruyen; resume crawl after closing tab without losing progress).
 
-- [ ] **Step 2: Cập nhật README — mục "7. Giới hạn hiện tại (MVP)"**
+- [ ] **Step 2: Update README — "7. Current Limitations (MVP)" section**
 
-Bổ sung các giới hạn (copy nguyên văn từ spec mục 7):
+Add limitations (copy verbatim from spec section 7):
 
 ```markdown
-- Tab "Truyện của tôi" tự động load danh sách chương cho truyenfull.live,
-  truyenfull.vn, truyencom.com và xtruyen.vn. metruyenchu.com phải nhập URL
-  chương thủ công ở tab "Crawl thủ công".
-- Tiến độ crawl lưu ở `data/stories/*.json` (không commit). Chỉnh sửa chương
-  và thông tin sách trên UI **không** được lưu — chỉ dùng cho lần export hiện
-  tại. Kết quả crawl thô thì được lưu và dùng lại khi crawl tiếp.
-- Truyện rất dài (hàng nghìn chương) có thể làm UI nặng khi mở chi tiết vì
-  tải toàn bộ nội dung đã crawl.
-- Site đổi cấu trúc HTML/API có thể làm hỏng TOC adapter (báo lỗi rõ ràng,
-  không tạo record rác).
+- "My Stories" tab automatically loads chapter list for truyenfull.live,
+  truyenfull.vn, truyencom.com, and xtruyen.vn. metruyenchu.com requires manual
+  chapter URL entry in "Manual crawl" tab.
+- Crawl progress saved in `data/stories/*.json` (not committed). Chapter and
+  book edits in UI are **not** saved — only used for current export. Raw crawl
+  results are saved and reused when resuming crawl.
+- Very long stories (thousands of chapters) may cause heavy UI when opening
+  details due to loading all crawled content.
+- Site HTML/API structure changes may break TOC adapter (clear error, no orphaned
+  records).
 ```
 
-- [ ] **Step 3: Verify toàn bộ**
+- [ ] **Step 3: Verify all**
 
 Run: `npx vitest run && npm run build`
-Expected: tất cả test PASS; build backend + frontend OK.
+Expected: all tests PASS; backend + frontend build OK.
 
-Chạy lại checklist E2E ở Task 10 Step 6 (mục 1-9).
+Re-run E2E checklist from Task 10 Step 6 (items 1-9).
 
 - [ ] **Step 4: Commit**
 
 ```bash
 git add README.md
-git commit -m "docs: tính năng quản lý truyện + giới hạn của tab Truyện của tôi"
+git commit -m "docs: story management feature + My Stories tab limitations"
 ```
 
 ---
 
-## Self-review (đã chạy khi viết plan)
+## Self-review (validated during plan writing)
 
-- **Spec coverage:** story store (T1), TOC adapters truyenfull/truyencom (T2) + xtruyen (T3) + registry (T4), merge/plan (T5), crawl service dùng chung (T6), API 5 endpoint + lưu từng chương + lock + giới hạn body (T7), frontend API/hook (T8), tách tab thủ công (T9), Library + StoryDetail + tab + CSS (T10), README/limits + verify (T11). Không thiếu mục nào của spec.
-- **Placeholder scan:** không có TBD/TODO; mọi step có code/command cụ thể.
-- **Type consistency:** `TocResult`/`TocAdapter` (T2) dùng thống nhất ở T3/T4/T5; `storyId`/`summarize`/`createStoryStore`/`storyStore` (T1) dùng ở T5/T7; `MAX_ATTEMPTS`/`extractWithRetry` (T6) dùng ở T7; `useEpubExport` (T8) dùng ở T9/T10; `crawlStory(id, orders, onEvent)` (T8) gọi ở T10.
-- **Lưu ý khi thực thi:** `Item 1` của Task 7 Step 4 kỳ vọng 150 chương nhưng con số thực tế phụ thuộc site (nếu site thêm chương mới, chỉnh kỳ vọng theo kết quả TOC thực tế, miễn là toàn bộ TOC được tải).
+- **Spec coverage:** story store (T1), TOC adapters truyenfull/truyencom (T2) + xtruyen (T3) + registry (T4), merge/plan (T5), shared crawl service (T6), 5 API endpoints + per-chapter save + locking + body limit (T7), frontend API/hook (T8), extract manual tab (T9), Library + StoryDetail + tabs + CSS (T10), README/limits + verify (T11). No spec sections missing.
+- **Placeholder scan:** no TBD/TODO; all steps have concrete code/commands.
+- **Type consistency:** `TocResult`/`TocAdapter` (T2) used consistently in T3/T4/T5; `storyId`/`summarize`/`createStoryStore`/`storyStore` (T1) used in T5/T7; `MAX_ATTEMPTS`/`extractWithRetry` (T6) used in T7; `useEpubExport` (T8) used in T9/T10; `crawlStory(id, orders, onEvent)` (T8) called in T10.
+- **Implementation note:** `Item 1` of Task 7 Step 4 expects 150 chapters but actual count depends on site (if site adds chapters, adjust expected count per actual TOC result, as long as full TOC is loaded).

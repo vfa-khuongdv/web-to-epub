@@ -1,6 +1,6 @@
 ---
-name: "Web → EPUB cho Kindle"
-description: "Thư viện để bàn — an archivist's desktop instrument for turning Vietnamese web novels into Kindle EPUBs."
+name: "Web → EPUB for Kindle"
+description: "Desktop library — an archivist's tool for turning web novels into Kindle EPUBs."
 colors:
   chrome: "#ececec"
   chrome-2: "#e2e2e2"

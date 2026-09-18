@@ -2,27 +2,27 @@ import { Browser, chromium } from "playwright";
 
 let browserPromise: Promise<Browser> | null = null;
 
-// Bộ nhớ của tiến trình Chromium phình dần theo số trang đã mở, mà crawl vài
-// trăm chương (cộng các lần thử lại) dồn hàng nghìn lần tải vào đúng một tiến
-// trình. Thay browser mới sau mỗi ngần này lần tải để trả lại phần đã phình —
-// đừng hạ quá thấp: lần tải đầu trên browser mới đo được ~4.7s (cold start).
+// Chromium process memory grows with each opened page, and crawling hundreds of
+// chapters (plus retries) packs thousands of loads into one process. Swap browser
+// every ~this-many loads to reclaim swollen memory — don't set too low: first load
+// on fresh browser clocks ~4.7s (cold start).
 const RENDERS_PER_BROWSER = 500;
-// Crawl xong thì không giữ Chromium sống chỉ để ngồi chiếm RAM.
+// After crawl, don't keep Chromium alive just sitting and eating RAM.
 const IDLE_CLOSE_MS = 60_000;
 
 let rendersOnBrowser = 0;
-// Số trang đang mở: chỉ được thay/đóng browser khi không còn trang nào, nếu
-// không lần crawl song song bên cạnh sẽ bị đóng browser ngay giữa chừng.
+// Count of open pages: only swap/close browser when none are open, otherwise
+// parallel crawls beside will have their browser closed mid-stream.
 let openPages = 0;
 let idleTimer: NodeJS.Timeout | null = null;
 
 function getBrowser(): Promise<Browser> {
   if (!browserPromise) {
-    // Sandbox của Chromium cần user namespace — không có trong container nên
-    // ảnh Docker bật CHROMIUM_NO_SANDBOX=1; chạy local vẫn giữ sandbox.
+    // Chromium sandbox needs user namespace — unavailable in containers, so
+    // Docker image sets CHROMIUM_NO_SANDBOX=1; local runs keep sandbox.
     const args = process.env.CHROMIUM_NO_SANDBOX === "1" ? ["--no-sandbox"] : [];
-    // Launch hỏng thì bỏ luôn promise: giữ lại một promise đã reject nghĩa là
-    // mọi chương sau đều hỏng theo, không bao giờ thử mở lại.
+    // Launch failure: discard promise. Keeping a rejected promise means all
+    // following chapters fail too and never retry.
     browserPromise = chromium.launch({ headless: true, args }).catch((err) => {
       browserPromise = null;
       throw err;
@@ -38,14 +38,14 @@ export async function closeBrowser(): Promise<void> {
   }
   const closing = browserPromise;
   if (!closing) return;
-  // Bỏ tham chiếu trước khi await: trang gọi tới trong lúc đóng phải mở
-  // browser mới chứ không dùng lại cái đang đóng.
+  // Drop reference before await: pages calling during close must open a new
+  // browser, not reuse the one being closed.
   browserPromise = null;
   rendersOnBrowser = 0;
   try {
     await (await closing).close();
   } catch {
-    // Browser đã chết sẵn thì coi như đóng xong.
+    // If browser is already dead, count it as closed.
   }
 }
 
@@ -55,7 +55,7 @@ function armIdleClose(): void {
     idleTimer = null;
     if (openPages === 0) void closeBrowser();
   }, IDLE_CLOSE_MS);
-  // Bộ đếm này không được giữ tiến trình sống.
+  // This timer must not keep the process alive.
   idleTimer.unref();
 }
 
@@ -69,27 +69,26 @@ async function releasePage(): Promise<void> {
 const BROWSER_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 
-// Some sites ship an anti-tool script that blanks the document (and then
-// navigates to about:blank) at random moments — it misfires against a
-// headless browser. Đo trên xtruyen: nội dung về đủ ở ~2.4s rồi bị xoá ở ~4.6s,
-// tức là HTML hợp lệ đã nằm trong tay trước khi trang bị xoá. Nên vòng settle
-// chụp lại bản tốt nhất nó thấy được; trang bị xoá thì dùng bản chụp đó thay vì
-// bỏ cả lượt tải và thử lại. Chỉ khi chưa kịp chụp được gì mới báo lỗi cho
-// extractWithRetry thử lại.
+// Some sites ship anti-tool scripts that blank the document (then navigate to
+// about:blank) at random — misfires on headless. Measured on xtruyen: content
+// arrives ~2.4s, blanked ~4.6s, so valid HTML is in hand before blanking. The
+// settle loop captures the best version it saw; if blanked, use that snapshot
+// instead of discarding the load and retrying. Only if no snapshot yet does error
+// go to extractWithRetry to retry.
 const SETTLE_MIN_MS = 500;
 const SETTLE_MAX_MS = 6000;
 const MIN_RENDERED_HTML_LENGTH = 1500;
-// Đủ chữ để tin là nội dung đã tới, chứ không phải cái vỏ trang. Ngưỡng cũ là
-// 3000 ký tự tuyệt đối, nên chương ngắn không bao giờ thoát sớm được và luôn
-// đốt trọn SETTLE_MAX_MS dù nội dung đã đứng yên từ lâu.
+// Enough text to trust content arrived, not just page shell. Old threshold was
+// 3000 chars absolute, so short chapters never exited early and always burned
+// full SETTLE_MAX_MS even when content was stable long ago.
 const MIN_SETTLED_TEXT = 500;
 
 type PageState = { blanked: boolean; height: number; textLength: number };
 
 /**
- * Trang bị script chống tool xoá trắng trước khi đọc kịp nội dung. Đây là lỗi
- * ngẫu nhiên theo từng lượt tải, không phải site chặn mình, nên bên gọi thử lại
- * được ngay mà không cần chờ backoff (xem extractWithRetry).
+ * Page blanked by anti-tool script before content was read. This is random per
+ * load, not site blocking, so caller can retry immediately without backoff
+ * (see extractWithRetry).
  */
 export class BlankedPageError extends Error {}
 
@@ -101,8 +100,8 @@ export class BlankedPageError extends Error {}
  * handlers and similar copy-blocking scripts have no effect on it.
  */
 export async function renderPageHtml(url: string): Promise<string> {
-  // Đếm trước khi await: giữa lúc chờ browser và lúc mở trang, luồng khác
-  // không được coi là rảnh rồi thay/đóng browser ngay dưới chân mình.
+  // Increment before await: while waiting for browser and opening page, another
+  // thread shouldn't consider it idle and swap/close browser immediately.
   openPages++;
   if (idleTimer) {
     clearTimeout(idleTimer);
@@ -128,7 +127,7 @@ export async function renderPageHtml(url: string): Promise<string> {
       let lastHeight = -1;
       let lastTextLength = -1;
       let stableRounds = 0;
-      // Bản chụp nhiều chữ nhất từng thấy, giữ để cứu lượt tải bị xoá trắng.
+      // Snapshot with most text ever seen; kept to rescue load blanked by script.
       let snapshot = "";
       let snapshotTextLength = 0;
       let blanked = false;
@@ -152,8 +151,8 @@ export async function renderPageHtml(url: string): Promise<string> {
           break;
         }
 
-        // Xét cả lượng chữ chứ không chỉ chiều cao: trang đã đủ chữ mà vẫn còn
-        // ảnh/quảng cáo nong chiều cao thì không phải lý do để chờ tiếp.
+        // Check both text length and height, not just height: page may have enough text
+        // but images/ads still loading growing height — height growth is not reason to wait.
         if (state.height === lastHeight && state.textLength === lastTextLength) stableRounds++;
         else stableRounds = 0;
         lastHeight = state.height;
@@ -161,9 +160,9 @@ export async function renderPageHtml(url: string): Promise<string> {
 
         const hasContent = state.textLength >= MIN_SETTLED_TEXT;
 
-        // Chỉ chụp khi lượng chữ đã NGỪNG TĂNG. Chụp lúc chữ còn đang về sẽ cho
-        // một chương cụt, mà chương cụt lưu vào sách thì tệ hơn hẳn một lần thử
-        // lại — lỗi thì còn nhìn thấy, chương cụt thì không.
+        // Only snapshot when text length has STOPPED GROWING. Snapshotting while text
+        // is still arriving gives a truncated chapter, and saving a truncated chapter is
+        // far worse than retrying — errors are visible, truncated chapters are not.
         if (hasContent && stableRounds >= 1 && state.textLength > snapshotTextLength) {
           snapshot = await page.content().catch(() => snapshot);
           snapshotTextLength = state.textLength;
@@ -175,18 +174,18 @@ export async function renderPageHtml(url: string): Promise<string> {
         await page.waitForTimeout(300);
       }
 
-      // Trang vẫn có thể bị xoá đúng giữa lúc này, nên bản dài hơn mới là bản
-      // đáng tin — trang đã xoá thì page.content() chỉ còn cái vỏ.
+      // Page may still be blanked right now, so longer version is trustworthy —
+      // blanked page has only the shell in page.content().
       const finalHtml = blanked ? "" : await page.content().catch(() => "");
       const html = finalHtml.length >= snapshot.length ? finalHtml : snapshot;
 
       if (html.length < MIN_RENDERED_HTML_LENGTH) {
         if (blanked) {
           throw new BlankedPageError(
-            `Trang bị xoá trắng trước khi kịp đọc nội dung (lỗi tạm thời, thử lại được): ${url}`
+            `Page blanked before content could be read (temporary error, can retry): ${url}`
           );
         }
-        throw new Error(`Trang tải về rỗng (lỗi tạm thời, thử lại được): ${url}`);
+        throw new Error(`Page loaded empty (temporary error, can retry): ${url}`);
       }
       return html;
     } finally {

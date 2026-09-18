@@ -82,7 +82,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   }
 
   if (chapters.length === 0) {
-    throw new Error(`Không tìm thấy danh sách chương tại ${storyUrl} — kiểm tra lại URL truyện`);
+    throw new Error(`No chapter list found at ${storyUrl} — check the story URL again`);
   }
   return { ...meta, chapters };
 }

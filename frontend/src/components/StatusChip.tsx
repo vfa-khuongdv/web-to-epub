@@ -3,11 +3,11 @@ import { Icon, IconName } from "./Icon";
 export type ChipState = "pending" | "running" | "done" | "error" | "new";
 
 const defaults: Record<ChipState, { icon: IconName; label: string; modifier: string }> = {
-  pending: { icon: "clock", label: "Chờ crawl", modifier: "" },
-  running: { icon: "dot", label: "Đang crawl", modifier: "chip-running" },
-  done: { icon: "check", label: "Xong", modifier: "" },
-  error: { icon: "alert", label: "Lỗi", modifier: "chip-error" },
-  new: { icon: "bell", label: "Chương mới", modifier: "chip-new" },
+  pending: { icon: "clock", label: "Pending crawl", modifier: "" },
+  running: { icon: "dot", label: "Crawling", modifier: "chip-running" },
+  done: { icon: "check", label: "Done", modifier: "" },
+  error: { icon: "alert", label: "Error", modifier: "chip-error" },
+  new: { icon: "bell", label: "New chapters", modifier: "chip-new" },
 };
 
 export function StatusChip({ state, label }: { state: ChipState; label?: string }) {

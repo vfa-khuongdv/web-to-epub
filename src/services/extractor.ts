@@ -8,12 +8,11 @@ import { mediaSrc } from "./chapterHtml";
 const CHROME_TOKEN_RE =
   /^(ads?|advert(isement)?s?|banner|sidebar|nav(bar)?|footer|header|comments?|share|social|related|promo|popup|modal|subscribe|newsletter)$/i;
 
-// Some Vietnamese web-novel sites gate a chapter behind an anti-adblock
-// notice instead of returning an error — the page loads fine but the
-// "content" is just this message. Left undetected, it would silently become
-// a nonsense 1-paragraph "chapter" in the exported book instead of a visible
-// failure the user can retry or skip.
-const LOCKED_CONTENT_RE = /nội dung (chương|chapter).{0,20}(đang bị khóa|bị khóa)|vui lòng (tắt|mở lại).{0,30}quảng cáo/i;
+// Some web-novel sites gate a chapter behind an anti-adblock notice instead of
+// returning an error — the page loads fine but the "content" is just this message.
+// Left undetected, it would silently become a nonsense 1-paragraph "chapter" in the
+// exported book instead of a visible failure the user can retry or skip.
+const LOCKED_CONTENT_RE = /content (chapter|chapter).{0,20}(is locked|locked)|please (disable|enable).{0,30}ad/i;
 
 // Thrown when a chapter is locked behind an ad interaction. Retrying can't
 // unlock it, so callers must not spend their retry budget on it.
@@ -55,8 +54,8 @@ function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
       continue;
     }
 
-    // Trước nhánh đệ quy bên dưới: <video> thường có <source> con nên sẽ bị
-    // coi là container và mất nội dung nếu không bắt ở đây.
+    // Catch before the recursion below: <video> usually has <source> children so it
+    // would be treated as a container and lose content if not caught here.
     if (tag === "audio" || tag === "video") {
       const src = mediaSrc(node);
       if (src) blocks.push({ type: tag, src });
@@ -101,12 +100,12 @@ function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
  */
 export function extractChapter(url: string, renderedHtml: string): ExtractedChapter {
   const dom = new JSDOM(renderedHtml, { url });
-  // Capture the raw <title> before Readability runs — parse() heavily
-  // mutates/strips the document and can leave document.title empty.
+  // Capture the raw <title> before Readability runs — parse() heavily mutates/strips
+  // the document and can leave document.title empty.
   const rawTitle = dom.window.document.title?.trim();
-  // Tên chương đầy đủ của một số site nằm ngoài phần Readability giữ lại:
-  // xtruyen để "Quyển 1 Chương 2 : Mở cửa" ở <h2> ngay trên khối nội dung,
-  // còn <title> chỉ có "<tên truyện> - Quyển 1 Chương 2 - XTruyện".
+  // Full chapter titles on some sites sit outside Readability's kept region:
+  // for example, they use "Volume 1 Chapter 2: Opening" in an <h2> right above
+  // the content, while <title> only has "Story Name - Volume 1 Chapter 2 - Site".
   const pageHeading = dom.window.document
     .querySelector(".main-col > h2, .chapter-title")
     ?.textContent?.replace(/\s+/g, " ")
@@ -128,10 +127,10 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   stripChrome(dom.window.document);
 
   const reader = new Readability(dom.window.document, { keepClasses: false });
-  // jsdom giữ nguyên cả cây DOM cho tới khi bộ thu gom dọn tới, mà mỗi chương
-  // dựng hai window (trang gốc + nội dung Readability trả về) và mỗi lần thử
-  // lại dựng thêm một cặp nữa. Readability trả kết quả dưới dạng chuỗi HTML nên
-  // từ đây không ai đụng tới `dom`: đóng ngay, kể cả khi parse ném lỗi.
+  // jsdom keeps the entire DOM tree until garbage collection runs. Each chapter creates
+  // two windows (original page + Readability content) and each retry adds another pair.
+  // Readability returns HTML as a string, so we won't touch `dom` after this — close
+  // immediately even if parse throws.
   let article: ReturnType<Readability["parse"]>;
   try {
     article = reader.parse();
@@ -140,13 +139,13 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   }
 
   if (!article || !article.content) {
-    throw new Error(`Không trích xuất được nội dung chính từ ${url}`);
+    throw new Error(`Could not extract main content from ${url}`);
   }
 
   const contentDom = new JSDOM(article.content, { url });
   const blocks: ContentBlock[] = [];
   try {
-    // Block chỉ chứa chuỗi, không giữ node nào — đóng được ngay sau khi duyệt.
+    // Blocks only hold strings, no nodes — can close immediately after walking.
     walkToBlocks(contentDom.window.document.body, blocks);
   } finally {
     contentDom.window.close();
@@ -155,23 +154,22 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   const bodyText = blocks.map((b) => b.text || "").join(" ");
   if (LOCKED_CONTENT_RE.test(bodyText)) {
     throw new LockedContentError(
-      `Chương này đang bị website khóa nội dung (yêu cầu tắt/mở lại quảng cáo), không thể trích xuất: ${url}`
+      `Chapter is locked behind an ad blocker notice (requires disabling/enabling ads), cannot extract: ${url}`
     );
   }
 
-  // Readability's title heuristic often grabs the page's single <h1>, which
-  // on chapter/serial sites is the story name (identical on every chapter),
-  // not the chapter title. Prefer, in order:
-  //  1. Thẻ tiêu đề chương của chính site (selector nhắm đích, đáng tin nhất
-  //     và là bản đầy đủ: "Chương 1: Quyển 1: Năm bắt đầu ấy").
+  // Readability's title heuristic often grabs the page's single <h1>, which on chapter
+  // sites is the story name (identical on every chapter), not the chapter title.
+  // Prefer, in order:
+  //  1. Site-specific chapter title tag (targeted selector, most reliable,
+  //     and full form: "Chapter 1: Volume 1: Start of Year").
   //  2. A heading found at the very start of the extracted content.
   //  3. The raw <title> tag — usually encodes "Story - Chapter - Site",
-  //     which at least differs per page even if Readability's h1-based
-  //     guess collapses to the story name.
+  //     which at least differs per page even if Readability's guess doesn't.
   //  4. Readability's own title guess, as a last resort.
-  // Heading mở đầu luôn bị lấy ra khỏi nội dung dù có được chọn làm tiêu đề
-  // hay không: nó hoặc là tên chương lặp lại, hoặc là khối chrome của site
-  // (xtruyen chèn banner "X-TRUYỆN ANDROID APP !" ngay đầu bài).
+  // Leading heading is always removed from content whether or not it becomes the title:
+  // it's either the chapter name repeated, or site chrome (e.g., "SITE ANDROID APP!")
+  // inserted at the start.
   const leadingHeadingIndex = blocks.findIndex((b, i) => i < 3 && b.type === "heading");
   const leadingHeading = leadingHeadingIndex >= 0 ? (blocks[leadingHeadingIndex].text as string) : undefined;
   if (leadingHeadingIndex >= 0) blocks.splice(leadingHeadingIndex, 1);

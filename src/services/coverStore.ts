@@ -3,12 +3,12 @@ import path from "path";
 import { fetchWithRetry } from "./toc/http";
 import { DATA_DIR } from "../config/paths";
 
-// Bìa truyện thật thường dưới 500KB; chặn ở 8MB để một URL trỏ sai (ảnh scan,
-// file phim) không làm phình data/.
+// Real story covers are usually under 500KB; cap at 8MB so a wrong URL (scan image,
+// movie file) doesn't bloat data/.
 export const MAX_COVER_BYTES = 8 * 1024 * 1024;
 
-// Mã truyện = sha1(storyUrl).slice(0, 16) (xem storyStore) — chặn mã lạ để
-// không ghi file ra ngoài thư mục bìa.
+// Story ID = sha1(storyUrl).slice(0, 16) (see storyStore) — reject unknown IDs to
+// prevent writing files outside the cover directory.
 const STORY_ID_RE = /^[0-9a-f]{16}$/;
 
 const CONTENT_TYPES: Record<string, string> = {
@@ -23,9 +23,9 @@ export const EXTENSION_BY_TYPE = new Map(Object.entries(CONTENT_TYPES).map(([ext
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 
-// Nhiều CDN ảnh trả content-type chung chung (application/octet-stream) — đã gặp
-// thật với img.xtruyen.vn — nên nhận diện ảnh bằng magic bytes trước, chỉ tin
-// content-type khi không đọc được chữ ký.
+// Many image CDNs return generic content-types (application/octet-stream) —
+// encountered this with img.xtruyen.vn — so identify images by magic bytes first;
+// only trust content-type when the signature can't be read.
 export function sniffImageExtension(bytes: Buffer): string | undefined {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
   if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
@@ -42,11 +42,11 @@ export interface StoredCover {
 }
 
 export interface CoverStore {
-  // Tải bìa về <dataDir>/covers/<id>.<ext> và trả đường dẫn lưu trong DB
-  // ("covers/<id>.jpg"). Bìa đã lưu thì thôi; URL ngoài không tải được (lỗi
-  // mạng, không phải ảnh, quá dung lượng) trả undefined để caller giữ URL gốc.
+  // Download cover to <dataDir>/covers/<id>.<ext> and return the path to store in DB
+  // ("covers/<id>.jpg"). If already saved, do nothing; if an external URL fails to download
+  // (network error, not an image, too large), return undefined so the caller keeps the original URL.
   save(storyId: string, coverUrl: string | undefined, referer?: string): Promise<string | undefined>;
-  // Lưu ảnh người dùng chọn (file tạm multer) thành bìa truyện, thay bìa cũ.
+  // Save the image the user picked (multer temp file) as the story cover, replacing the old one.
   saveUpload(storyId: string, tmpPath: string): Promise<string | undefined>;
   find(storyId: string): StoredCover | undefined;
   remove(storyId: string): Promise<void>;
@@ -94,7 +94,7 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
 
     fs.mkdirSync(coversDir, { recursive: true });
     const filePath = path.join(coversDir, `${storyId}.${extension}`);
-    // Ghi tạm rồi đổi tên: không bao giờ có file bìa dở dang được phục vụ.
+    // Write to temp then rename: never serve an incomplete cover file.
     fs.writeFileSync(`${filePath}.tmp`, bytes);
     fs.renameSync(`${filePath}.tmp`, filePath);
     return path.join("covers", `${storyId}.${extension}`);
@@ -135,8 +135,8 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
   return { save, saveUpload, find, remove };
 }
 
-// epub-gen đọc trực tiếp file nội bộ (đường dẫn lưu trong DB) và tự tải URL
-// ngoài, nên chỉ cần đổi đường dẫn nội bộ thành đường dẫn tuyệt đối.
+// epub-gen reads local files directly (path stored in DB) and fetches external URLs itself,
+// so only convert internal paths to absolute paths.
 export function coverPathForExport(coverUrl: string, dataDir = DATA_DIR): string {
   if (/^https?:/i.test(coverUrl) || path.isAbsolute(coverUrl)) return coverUrl;
   return path.resolve(dataDir, coverUrl);

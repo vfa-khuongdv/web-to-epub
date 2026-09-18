@@ -17,15 +17,14 @@ export interface CrawlJobState {
   total: number;
   errors: number;
   log: CrawlLogLine[];
-  // Ước lượng thời gian còn lại (ms) của lần crawl đang chạy; undefined khi
-  // chưa đủ mẫu hoặc đã xong.
+  // Estimated time remaining (ms) for running crawl; undefined when not enough
+  // samples or crawl is done.
   etaMs?: number;
-  // Trạng thái từng chương của lần crawl đang chạy, theo URL. Backend báo đích
-  // danh chương nào xong ("chapter-done") hoặc hỏng ("error"), thay vì để chỗ
-  // này suy ra từ việc chương kế tiếp bắt đầu — phép suy đó bỏ sót chương cuối,
-  // vì sau nó không còn chương nào bắt đầu nữa. Các view chỉ áp lên chương
-  // chúng còn thấy là pending, nên dữ liệu thật của server luôn thắng sau khi
-  // tải lại.
+  // Status of each chapter in running crawl, by URL. Backend explicitly reports
+  // chapter done ("chapter-done") or failed ("error"), rather than inferring from
+  // next chapter starting — that inference misses the last chapter since nothing
+  // starts after it. Views only overlay pending chapters, so server data always
+  // wins after refetch.
   chapters: Record<string, ChapterLiveState>;
 }
 
@@ -40,9 +39,9 @@ const IDLE: CrawlJobState = {
   chapters: {},
 };
 
-// Crawl vài trăm chương (cộng các lần thử lại) sinh hàng nghìn dòng nhật ký,
-// mà mỗi dòng mới lại sao chép cả mảng và render lại cả danh sách. Chỉ giữ phần
-// cuối — cũng là phần duy nhất người dùng đọc tới.
+// Crawling hundreds of chapters (plus retries) generates thousands of log lines,
+// and each new line copies the whole array and re-renders the list. Keep only
+// the end — also the only part users read.
 const MAX_LOG_LINES = 500;
 
 function appendLog(log: CrawlLogLine[], line: CrawlLogLine): CrawlLogLine[] {
@@ -64,9 +63,9 @@ export type RunCrawl = (
   onEvent?: (event: ProgressEvent) => void
 ) => Promise<void>;
 
-// Chapters the running crawl has finished (or failed) but whose stored status
-// is still `pending`: the views add these on top of the server's own counts, so
-// a crawl in progress shows up without waiting for the final refetch.
+// Chapters the running crawl has finished (or failed) but whose stored status is
+// still `pending`: views add these on top of server's counts, so in-progress crawl
+// shows without waiting for final refetch.
 export function liveCounts(
   chapters: { url: string; status: string }[],
   states: Record<string, ChapterLiveState>
@@ -82,8 +81,8 @@ export function liveCounts(
   return { done, error };
 }
 
-// Sự kiện từ kênh chung: giống sự kiện theo truyện nhưng có thêm storyId, và
-// ảnh chụp đầu kết nối liệt kê mọi crawl đang chạy.
+// Events from shared channel: like per-story events but with added storyId,
+// and initial snapshot listing all running crawls.
 interface LiveSnapshot {
   type: "snapshot";
   crawls?: { storyId: string; cursor: number; total: number; etaMs?: number }[];
@@ -98,7 +97,7 @@ export interface LiveCrawl {
 }
 
 function stamp(): string {
-  return new Date().toLocaleTimeString("vi-VN", { hour12: false });
+  return new Date().toLocaleTimeString("en-US", { hour12: false });
 }
 
 // Streams one crawl run into the docked job strip and hands every event back to
@@ -107,8 +106,8 @@ function stamp(): string {
 // keeps crawling and saving per chapter either way.
 export function useCrawlJob() {
   const [job, setJob] = useState<CrawlJobState>(IDLE);
-  // Truyện nào đang crawl, cho MỌI truyện chứ không riêng truyện đang mở: bảng
-  // thư viện hiện chip "Đang crawl" mà không cần chọn truyện.
+  // Which story is crawling, for ALL stories not just the open story: the library
+  // table shows "Crawling" chip without needing to select story.
   const [live, setLive] = useState<Record<string, LiveCrawl | undefined>>({});
   const liveRef = useRef(live);
   liveRef.current = live;
@@ -117,8 +116,8 @@ export function useCrawlJob() {
 
   const applyEvent = useCallback((event: ProgressEvent, onEvent?: (event: ProgressEvent) => void) => {
     if (event.type === "progress" && event.index !== undefined && event.total) {
-      // `cursor` của backend là số chương đã xong; chỉ khi thiếu (luồng crawl
-      // thủ công vốn tuần tự) mới suy từ vị trí chương.
+      // Backend `cursor` is chapters done; only infer from chapter position when
+      // missing (manual crawl stream is inherently sequential).
       const cursor = event.cursor ?? event.index + 1;
       setJob((j) => ({
         ...j,
@@ -182,7 +181,7 @@ export function useCrawlJob() {
       } catch (err) {
         setJob((j) => ({
           ...j,
-          log: appendLog(j.log, { at: stamp(), text: `Lỗi kết nối: ${(err as Error).message}`, isError: true }),
+          log: appendLog(j.log, { at: stamp(), text: `Connection error: ${(err as Error).message}`, isError: true }),
         }));
       } finally {
         setJob((j) => ({ ...j, running: false }));
@@ -191,9 +190,9 @@ export function useCrawlJob() {
     [applyEvent]
   );
 
-  // Mở kênh realtime chung (một lần cho cả app): mọi crawl đang chạy đều được
-  // đẩy về đây kèm storyId, nên phiên vừa reload — hoặc chưa từng bấm crawl —
-  // vẫn thấy đúng trạng thái của mọi truyện.
+  // Open shared realtime channel (once for app): all running crawls pushed here
+  // with storyId, so a just-reloaded session — or one that never started crawl —
+  // still sees correct status for all stories.
   const subscribe = useCallback(() => {
     liveSource.current?.close();
     const source = new EventSource("/api/stories/live");
@@ -213,8 +212,8 @@ export function useCrawlJob() {
           next[crawl.storyId] = { cursor: crawl.cursor, total: crawl.total, etaMs: crawl.etaMs };
         }
         setLive(next);
-        // Sau khi mất kết nối, ảnh chụp là sự thật: đồng bộ lại truyện đang mở
-        // (crawl có thể đã kết thúc trong lúc không nghe được).
+        // After connection loss, snapshot is truth: resync the open story
+        // (crawl may have finished while listening failed).
         const watched = watchedId.current ? next[watchedId.current] : undefined;
         setJob((j) => ({
           ...j,
@@ -242,7 +241,7 @@ export function useCrawlJob() {
         }));
       }
 
-      // Nhật ký và trạng thái từng chương chỉ thuộc về truyện đang mở.
+      // Log and per-chapter state belong only to the open story.
       if (storyId !== watchedId.current) return;
       if (event.type === "running") {
         const cursor = event.cursor ?? 0;
@@ -257,15 +256,15 @@ export function useCrawlJob() {
       applyEvent(event);
     };
 
-    // EventSource tự kết nối lại khi mất mạng.
+    // EventSource auto-reconnects on network loss.
     return () => {
       source.close();
       if (liveSource.current === source) liveSource.current = null;
     };
   }, [applyEvent]);
 
-  // Chuyển sang xem một truyện: nhật ký bắt đầu lại từ trạng thái hiện tại của
-  // kênh chung (truyện đang crawl thì hiện đúng tiến độ ngay, không chờ sự kiện).
+  // Switch to viewing a story: log resets from shared channel's current state
+  // (crawling stories show correct progress immediately, don't wait for events).
   const attach = useCallback((label: string, storyId: string) => {
     watchedId.current = storyId;
     const current = liveRef.current[storyId];

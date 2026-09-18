@@ -45,14 +45,14 @@ function findUnsupportedUrls(urls: string[]): string[] | null {
 router.post("/extract", async (req, res) => {
   const { urls } = req.body as ExtractRequest;
   if (!Array.isArray(urls) || urls.length === 0) {
-    res.status(400).json({ message: "urls là bắt buộc và phải là mảng không rỗng" });
+    res.status(400).json({ message: "urls is required and must be a non-empty array" });
     return;
   }
 
   const unsupported = findUnsupportedUrls(urls);
   if (unsupported) {
     res.status(400).json({
-      message: `${unsupported.length} URL không thuộc trang được hỗ trợ`,
+      message: `${unsupported.length} URL(s) are from unsupported sites`,
       unsupportedUrls: unsupported,
     });
     return;
@@ -71,8 +71,8 @@ router.post("/extract", async (req, res) => {
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
     const chapter = await extractWithRetry(url, (attempt) => {
-      const attemptSuffix = attempt > 1 ? ` (lần thử ${attempt}/${MAX_ATTEMPTS})` : "";
-      send({ type: "progress", index: i, total: urls.length, url, message: `Đang tải & trích xuất...${attemptSuffix}` });
+      const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
+      send({ type: "progress", index: i, total: urls.length, url, message: `Loading & extracting...${attemptSuffix}` });
     });
     chapters.push(chapter);
     const etaMs = estimateRemainingMs({ startedAt, completed: i + 1, total: urls.length });
@@ -87,16 +87,16 @@ router.post("/extract", async (req, res) => {
   res.end();
 });
 
-// Non-streaming single-URL re-extract, used by the "Thử lại" button in the
+// Non-streaming single-URL re-extract, used by the "Retry" button in the
 // preview UI to recover one failed chapter without re-running the batch.
 router.post("/extract-one", async (req, res) => {
   const { url } = req.body as { url: string };
   if (!url) {
-    res.status(400).json({ message: "url là bắt buộc" });
+    res.status(400).json({ message: "url is required" });
     return;
   }
   if (!findSupportedSite(url)) {
-    res.status(400).json({ message: `Trang này chưa được hỗ trợ: ${url}` });
+    res.status(400).json({ message: `This site is not yet supported: ${url}` });
     return;
   }
   const chapter = await extractWithRetry(url);
@@ -105,19 +105,19 @@ router.post("/extract-one", async (req, res) => {
 
 router.post("/cover-upload", upload.single("cover"), (req, res) => {
   if (!req.file) {
-    res.status(400).json({ message: "Thiếu file cover" });
+    res.status(400).json({ message: "Cover file is required" });
     return;
   }
   res.json({ path: req.file.path });
 });
 
-// Xuất EPUB truyện nhiều ảnh mất hàng chục giây. Một response vừa báo tiến
-// trình vừa trả file nhị phân thì không làm được, nên tách đôi: POST stream
-// NDJSON tiến trình (giống /api/extract) rồi trả về mã tải, client GET mã đó
-// để lấy file. File chờ trong RAM — máy đơn, một tiến trình, như runningCrawls.
+// Exporting EPUB with many images takes tens of seconds. A single response that both
+// reports progress and returns binary data is not feasible, so we split it: POST streams
+// NDJSON progress (like /api/extract) then returns an export ID, client GET that ID
+// to fetch the file. File waits in RAM — single machine, single process, like runningCrawls.
 const EXPORT_TTL_MS = 5 * 60_000;
-// Ảnh nhiều thì tiến trình bắn mỗi ảnh một dòng; gộp lại để không dội hàng nghìn
-// dòng vô ích qua mạng và hàng nghìn lần render ở giao diện.
+// With many images the progress stream sends one line per image; batch them to avoid
+// flooding the network with thousands of useless lines and thousands of re-renders.
 const PROGRESS_INTERVAL_MS = 150;
 
 const pendingExports = new Map<string, { buffer: Buffer; fileName: string }>();
@@ -125,13 +125,13 @@ const pendingExports = new Map<string, { buffer: Buffer; fileName: string }>();
 function stashExport(buffer: Buffer, fileName: string): string {
   const exportId = randomUUID();
   pendingExports.set(exportId, { buffer, fileName });
-  // unref: bản tải chờ hết hạn không được giữ tiến trình sống.
+  // unref: an expired export should not keep the process alive.
   setTimeout(() => pendingExports.delete(exportId), EXPORT_TTL_MS).unref();
   return exportId;
 }
 
-// Dựng sách và stream tiến trình ra response. Lỗi đi trong luồng chứ không phải
-// mã HTTP: header đã gửi từ trước khi biết build có thành công hay không.
+// Build book and stream progress to response. Errors go in the stream, not HTTP status:
+// headers are already sent before we know if the build succeeds.
 async function streamExport(
   res: ExpressResponse,
   metadata: BookMetadata,
@@ -149,8 +149,8 @@ async function streamExport(
   let lastPhase = "";
   const onProgress = (progress: BuildProgress) => {
     const now = Date.now();
-    // Luôn gửi lúc đổi giai đoạn và lúc xong một giai đoạn: nếu để bộ gộp nuốt
-    // mất, giao diện sẽ đứng ở "Đang tải ảnh 651/651…" suốt lúc đóng gói.
+    // Always send when phase changes or when a phase completes: if we skip messages,
+    // the UI will get stuck showing "Loading image 651/651…" during the final zip step.
     const keep = progress.phase !== lastPhase || progress.done === progress.total;
     if (!keep && now - lastSent < PROGRESS_INTERVAL_MS) return;
     lastSent = now;
@@ -166,17 +166,17 @@ async function streamExport(
     );
     send({ type: "done", exportId: stashExport(buffer, fileName), fileName });
   } catch (err) {
-    send({ type: "error", message: err instanceof Error ? err.message : "Lỗi export EPUB" });
+    send({ type: "error", message: err instanceof Error ? err.message : "EPUB export error" });
   }
   res.end();
 }
 
-// Lấy file đã dựng xong. Tải một lần rồi bỏ: không giữ hàng chục MB trong RAM
-// lâu hơn mức cần.
+// Fetch the built file. Download once and remove: don't keep tens of MB in RAM longer
+// than necessary.
 router.get("/exports/:exportId", (req, res) => {
   const pending = pendingExports.get(req.params.exportId);
   if (!pending) {
-    res.status(404).json({ message: "Bản xuất đã hết hạn hoặc đã tải rồi — bấm Xuất EPUB lại" });
+    res.status(404).json({ message: "Export has expired or already been downloaded — click Export EPUB again" });
     return;
   }
   pendingExports.delete(req.params.exportId);
@@ -191,26 +191,26 @@ router.get("/exports/:exportId", (req, res) => {
 router.post("/export", async (req, res) => {
   const { metadata, chapters } = req.body as ExportRequest;
   if (!metadata || !Array.isArray(chapters)) {
-    res.status(400).json({ message: "metadata và chapters là bắt buộc" });
+    res.status(400).json({ message: "metadata and chapters are required" });
     return;
   }
   await streamExport(res, metadata, chapters, epubFileName(metadata.title || "book"));
 });
 
-// Crawl đang chạy theo từng truyện, kèm vị trí hiện tại để phiên mở giữa chừng
-// biết ngay đang ở đâu (xem /stories/:id/live). `startedAt` + `etaMs` phục vụ
-// ước lượng thời gian còn lại.
+// Crawls in progress per story, with current position so a session opened mid-crawl
+// knows exactly where it is (see /stories/:id/live). `startedAt` + `etaMs` are used
+// to estimate remaining time.
 const runningCrawls = new Map<
   string,
   { cursor: number; total: number; startedAt: number; etaMs?: number }
 >();
 
-// Các phiên đang nghe realtime theo truyện. Crawl vẫn tiếp tục sau khi request
-// bắt đầu nó kết thúc, nên phiên vừa reload (hoặc phiên khác) cũng xem được.
+// Sessions listening to live updates per story. Crawl continues after the request that
+// started it ends, so a newly reloaded session (or another session) can still see it.
 const liveSubscribers = new Map<string, Set<ExpressResponse>>();
 
-// Kênh chung: mọi phiên đang mở app đều biết truyện nào đang crawl, kể cả
-// truyện chưa được chọn (bảng thư viện hiện chip "Đang crawl" cho mọi dòng).
+// Shared channel: every session with the app open knows which stories are crawling, even
+// those not yet selected (the library table shows a "Crawling" chip for all rows).
 const liveAllSubscribers = new Set<ExpressResponse>();
 
 function writeSse(res: ExpressResponse, payload: unknown) {
@@ -233,8 +233,8 @@ function publish(storyId: string, event: ProgressEvent) {
   }
 }
 
-// Nạp TOC và lưu truyện — dùng chung cho POST /stories (tạo/cập nhật theo URL)
-// và POST /stories/:id/refresh (nút "Tải N chương mới").
+// Load TOC and save story — used by both POST /stories (create/update from URL)
+// and POST /stories/:id/refresh (the "Load N new chapters" button).
 async function refreshStoryToc(params: {
   existing?: StoredStory;
   storyUrl: string;
@@ -243,8 +243,8 @@ async function refreshStoryToc(params: {
 }): Promise<StoredStory> {
   const toc = await params.adapter.fetchToc(params.storyUrl);
   const story = mergeStory({ existing: params.existing, site: params.site, storyUrl: params.storyUrl, toc });
-  // Tải bìa về data/covers/ khi biết URL truyện; không tải được thì giữ URL gốc
-  // để epub-gen tự lấy lúc export.
+  // Download cover to data/covers/ once we know the story URL; if download fails, keep
+  // the original URL so epub-gen can fetch it during export.
   const savedCover = await coverStore.save(story.id, story.coverUrl, params.storyUrl);
   if (savedCover) story.coverUrl = savedCover;
   await storyStore.save(story);
@@ -254,18 +254,18 @@ async function refreshStoryToc(params: {
 router.post("/stories", async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) {
-    res.status(400).json({ message: "url là bắt buộc" });
+    res.status(400).json({ message: "url is required" });
     return;
   }
   const site = findSupportedSite(url);
   if (!site) {
-    res.status(400).json({ message: `Trang này chưa được hỗ trợ: ${url}` });
+    res.status(400).json({ message: `This site is not yet supported: ${url}` });
     return;
   }
   const adapter = getTocAdapter(url);
   if (!adapter) {
     res.status(400).json({
-      message: `${site.name} chưa hỗ trợ tự động load danh sách chương — hãy nhập URL từng chương ở tab "Crawl thủ công"`,
+      message: `${site.name} does not yet support automatic chapter list loading — enter chapter URLs manually in the "Manual Crawl" tab`,
     });
     return;
   }
@@ -273,18 +273,18 @@ router.post("/stories", async (req, res) => {
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Truyện đang được crawl, không thể cập nhật danh sách chương" });
+    res.status(409).json({ message: "Story is currently crawling, cannot update chapter list" });
     return;
   }
   try {
     const existing = await storyStore.get(id);
     const story = await refreshStoryToc({ existing, storyUrl, site: site.domain, adapter });
-    // Người dùng vừa chủ động nạp TOC: chip "N chương mới" của lần kiểm tra
-    // trước không còn ý nghĩa (chương mới đã thành pending).
+    // User just manually loaded TOC: the "N new chapters" chip from the previous check
+    // is now stale (new chapters became pending).
     await storyStore.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
-    res.status(502).json({ message: err instanceof Error ? err.message : "Không tải được danh sách chương" });
+    res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });
 
@@ -292,9 +292,9 @@ router.get("/stories", async (_req, res) => {
   res.json({ stories: await storyStore.list() });
 });
 
-// Kênh realtime chung: ảnh chụp mọi crawl đang chạy lúc kết nối, sau đó là mọi
-// sự kiện kèm `storyId` — đủ để bảng thư viện biết truyện nào đang crawl mà
-// không cần chọn truyện. Đặt trước /stories/:id để "live" không bị hiểu là id.
+// Shared live channel: snapshot of all running crawls on connect, then all events with
+// `storyId` — enough for the library table to know which stories are crawling without
+// needing to select one. Must come before /stories/:id so "live" isn't treated as an ID.
 router.get("/stories/live", (req, res) => {
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -321,42 +321,42 @@ router.get("/stories/live", (req, res) => {
   });
 });
 
-// Danh sách chương không kèm nội dung: truyện vài nghìn chương đã crawl nặng
-// hàng chục MB nếu gửi cả blocks, trong khi bảng chương chỉ cần tên + trạng
-// thái. Nội dung từng chương lấy riêng ở /stories/:id/chapters/:order.
+// Chapter list without content: a story with thousands of crawled chapters weighs tens
+// of MB if sent with blocks, but the chapter table only needs title + status. Individual
+// chapter content is fetched separately via /stories/:id/chapters/:order.
 router.get("/stories/:id", async (req, res) => {
   const story = await storyStore.getOutline(req.params.id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   res.json({ story });
 });
 
-// Ảnh bìa đã tải về cho giao diện xem trước; truyện chưa có bìa trả 404 để
-// frontend hiện khung trống thay vì ảnh vỡ.
+// Downloaded cover image for the preview; if no cover exists, return 404 so
+// frontend shows an empty placeholder instead of a broken image.
 router.get("/stories/:id/cover", (req, res) => {
   const cover = coverStore.find(req.params.id);
   if (!cover) {
-    res.status(404).json({ message: "Truyện chưa có ảnh bìa" });
+    res.status(404).json({ message: "No cover image for this story" });
     return;
   }
   res.type(cover.contentType);
   res.sendFile(cover.filePath);
 });
 
-// Lưu thông tin sách người dùng sửa trong khung chi tiết (multipart vì có thể
-// kèm ảnh bìa mới). Không đụng tới chapter nên lưu được giữa chừng lúc crawl.
+// Save book metadata edited by user in the detail panel (multipart because a new
+// cover image may be included). Does not touch chapters, so can save mid-crawl.
 router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
   const { id } = req.params;
   const story = await storyStore.get(id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   const { title, author, language } = req.body as { title?: string; author?: string; language?: string };
   if (!title?.trim()) {
-    res.status(400).json({ message: "Tên sách là bắt buộc" });
+    res.status(400).json({ message: "Book title is required" });
     return;
   }
 
@@ -364,7 +364,7 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
   if (req.file) {
     const savedCover = await coverStore.saveUpload(id, req.file.path);
     if (!savedCover) {
-      res.status(400).json({ message: "File bìa không hợp lệ — chỉ nhận JPG, PNG, WebP hoặc GIF" });
+      res.status(400).json({ message: "Invalid cover file — only JPG, PNG, WebP, or GIF accepted" });
       return;
     }
     coverUrl = savedCover;
@@ -379,23 +379,23 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
   res.json({ story: await storyStore.getOutline(id) });
 });
 
-// Nội dung một chương, tải khi người dùng mở chương đó ra xem/sửa.
+// One chapter's content, fetched when user opens it to view/edit.
 router.get("/stories/:id/chapters/:order", async (req, res) => {
   const order = Number(req.params.order);
   if (!Number.isInteger(order)) {
-    res.status(400).json({ message: "Số thứ tự chương không hợp lệ" });
+    res.status(400).json({ message: "Invalid chapter order" });
     return;
   }
   const chapter = await storyStore.getChapter(req.params.id, order);
   if (!chapter) {
-    res.status(404).json({ message: "Không tìm thấy chương" });
+    res.status(404).json({ message: "Chapter not found" });
     return;
   }
   res.json({ chapter });
 });
 
-// Xuất EPUB cho truyện đã lưu: nội dung lấy thẳng từ DB, client chỉ gửi những
-// chương nó đang sửa dở — không phải tải cả truyện về rồi đẩy ngược lên.
+// Export EPUB for saved story: content comes straight from DB, client only sends
+// chapters it's editing — no need to download the entire story and push it back.
 router.post("/stories/:id/export", async (req, res) => {
   const { id } = req.params;
   const { metadata, chapters } = req.body as {
@@ -403,13 +403,13 @@ router.post("/stories/:id/export", async (req, res) => {
     chapters?: { order: number; title?: string; contentHtml?: string }[];
   };
   if (!metadata || !Array.isArray(chapters)) {
-    res.status(400).json({ message: "metadata và chapters là bắt buộc" });
+    res.status(400).json({ message: "metadata and chapters are required" });
     return;
   }
 
   const story = await storyStore.get(id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
 
@@ -418,10 +418,10 @@ router.post("/stories/:id/export", async (req, res) => {
     const included: ExportChapter[] = [];
     for (const wanted of chapters) {
       const stored = byOrder.get(wanted.order);
-      // Chương client gửi kèm nội dung (đang sửa dở) thì dùng bản đó; còn lại
-      // dựng từ block đã lưu.
-      // Chuỗi rỗng (chương mở ra nhưng tải nội dung hỏng) cũng rơi về bản
-      // trong DB, để không lẳng lặng xuất ra chương trắng.
+      // If client sends content for a chapter (still editing it), use that; otherwise
+      // build from saved blocks.
+      // Empty string (chapter opened but content failed to load) also falls back to DB
+      // so we don't silently export blank chapters.
       const contentHtml = wanted.contentHtml || (stored ? blocksToHtml(stored.blocks ?? []) : "");
       if (!contentHtml) continue;
       included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
@@ -429,51 +429,51 @@ router.post("/stories/:id/export", async (req, res) => {
 
     await streamExport(res, metadata, included, epubFileName(metadata.title || story.title || "book"));
   } catch (err) {
-    res.status(500).json({ message: err instanceof Error ? err.message : "Lỗi export EPUB" });
+    res.status(500).json({ message: err instanceof Error ? err.message : "EPUB export error" });
   }
 });
 
-// Sửa tên và nội dung một chương. Nội dung crawl về thường lẫn thông tin thừa
-// của trang nguồn (lời web, quảng cáo, tên chương lặp lại), nên người dùng dọn
-// lại trong khung soạn thảo rồi lưu đè bản đã sửa.
+// Edit chapter title and content. Crawled content often mixes junk from the source site
+// (web frame, ads, repeated chapter name), so user cleans it in the editor and saves
+// to override the fetched version.
 router.patch("/stories/:id/chapters/:order", async (req, res) => {
   const { id } = req.params;
   const order = Number(req.params.order);
   if (!Number.isInteger(order)) {
-    res.status(400).json({ message: "Số thứ tự chương không hợp lệ" });
+    res.status(400).json({ message: "Invalid chapter order" });
     return;
   }
-  // Crawl đang chạy sẽ ghi đè chương bằng bản vừa trích xuất, nên chặn sửa để
-  // người dùng không mất công dọn xong rồi bị đè mất.
+  // Active crawl will overwrite the chapter with newly extracted content, so block edits
+  // to prevent user losing work after cleaning it up.
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Truyện đang được crawl, không sửa được chương" });
+    res.status(409).json({ message: "Story is currently crawling, cannot edit chapters" });
     return;
   }
 
   const chapter = await storyStore.getChapter(id, order);
   if (!chapter) {
-    res.status(404).json({ message: "Không tìm thấy chương" });
+    res.status(404).json({ message: "Chapter not found" });
     return;
   }
 
   const { title, contentHtml } = req.body as { title?: string; contentHtml?: string };
   if (!title?.trim()) {
-    res.status(400).json({ message: "Tên chương là bắt buộc" });
+    res.status(400).json({ message: "Chapter title is required" });
     return;
   }
   if (typeof contentHtml !== "string") {
-    res.status(400).json({ message: "Nội dung chương là bắt buộc" });
+    res.status(400).json({ message: "Chapter content is required" });
     return;
   }
 
   const blocks = htmlToBlocks(contentHtml);
   if (blocks.length === 0) {
-    res.status(400).json({ message: "Nội dung chương không được để trống" });
+    res.status(400).json({ message: "Chapter content cannot be empty" });
     return;
   }
 
-  // Chương crawl lỗi mà người dùng tự dán nội dung vào coi như đã xong: nó được
-  // tính vào sách và "Crawl tiếp" không crawl lại để ghi đè nữa.
+  // A failed crawl where user manually pastes content is marked done: it counts toward
+  // the book and "Continue crawl" won't re-crawl and overwrite it.
   const updated: StoredChapter = {
     ...chapter,
     title: title.trim(),
@@ -487,21 +487,21 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
 
 router.delete("/stories/:id", async (req, res) => {
   if (runningCrawls.has(req.params.id)) {
-    res.status(409).json({ message: "Truyện đang được crawl, không thể xoá" });
+    res.status(409).json({ message: "Story is currently crawling, cannot delete" });
     return;
   }
   const removed = await storyStore.remove(req.params.id);
   if (!removed) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   await coverStore.remove(req.params.id);
   res.json({ ok: true });
 });
 
-// Kênh realtime cho một truyện: mọi thay đổi của crawl đang chạy được đẩy cho
-// các phiên đang mở truyện đó — không cần reload, không cần polling. Khi kết
-// nối, phiên mới nhận ngay ảnh chụp trạng thái (đang crawl tới đâu, hay rảnh).
+// Live channel for one story: every crawl change is pushed to sessions viewing it — no
+// reload, no polling needed. On connect, new sessions immediately get a snapshot
+// (crawl position or idle state).
 router.get("/stories/:id/live", (req, res) => {
   const { id } = req.params;
   res.writeHead(200, {
@@ -522,7 +522,7 @@ router.get("/stories/:id/live", (req, res) => {
   subs.add(res);
   liveSubscribers.set(id, subs);
 
-  // Giữ kết nối sống qua proxy và báo cho client biết server còn đó.
+  // Keep connection alive through proxies and signal to client that server is still there.
   const beat = setInterval(() => {
     if (!res.destroyed && !res.writableEnded) res.write(": ping\n\n");
   }, 20_000);
@@ -534,40 +534,40 @@ router.get("/stories/:id/live", (req, res) => {
   });
 });
 
-// Bật/tắt theo dõi chương mới cho một truyện.
+// Enable/disable watching for new chapters of a story.
 router.post("/stories/:id/watch", async (req, res) => {
   const { id } = req.params;
   const { watching } = req.body as { watching?: unknown };
   if (typeof watching !== "boolean") {
-    res.status(400).json({ message: "watching phải là true hoặc false" });
+    res.status(400).json({ message: "watching must be true or false" });
     return;
   }
   const story = await storyStore.getOutline(id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   await storyStore.setWatching(id, watching);
   res.json({ story: await storyStore.getOutline(id) });
 });
 
-// Kiểm tra TOC hiện tại xem truyện có chương mới không. Chỉ đếm và lưu kết
-// quả — không thêm chương vào thư viện, người dùng bấm "Tải N chương mới" mới
-// nạp thật (qua /stories/:id/refresh).
+// Check current TOC to see if the story has new chapters. Only counts and saves result —
+// doesn't add chapters to library; user clicks "Load N new chapters" to actually load
+// them (via /stories/:id/refresh).
 router.post("/stories/:id/check", async (req, res) => {
   const { id } = req.params;
   const story = await storyStore.getOutline(id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   const adapter = getTocAdapter(story.storyUrl);
   if (!adapter) {
-    res.status(400).json({ message: "Truyện này không có adapter mục lục để kiểm tra" });
+    res.status(400).json({ message: "This story has no TOC adapter for checking" });
     return;
   }
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Truyện đang được crawl" });
+    res.status(409).json({ message: "Story is currently crawling" });
     return;
   }
 
@@ -578,31 +578,31 @@ router.post("/stories/:id/check", async (req, res) => {
     await storyStore.setCheckResult(id, { newChapterCount, checkedAt, error: null });
     res.json({ newChapterCount, lastCheckedAt: checkedAt, checkError: null });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Không kiểm tra được chương mới";
-    // Giữ nguyên số chương mới + lần kiểm tra thành công trước đó; chỉ ghi nhận
-    // lỗi lần này để giao diện hiện cảnh báo.
+    const message = err instanceof Error ? err.message : "Could not check for new chapters";
+    // Keep previous new chapter count and last successful check; just record this error
+    // so the UI can show a warning.
     await storyStore.setCheckResult(id, { error: message });
     res.status(502).json({ message });
   }
 });
 
-// Nạp lại TOC cho truyện đã có: chương cũ giữ nguyên nội dung/trạng thái,
-// chương mới thành pending. Dùng cho nút "Tải N chương mới" ở chi tiết truyện.
+// Reload TOC for existing story: old chapters keep their content/status, new ones become
+// pending. Used by the "Load N new chapters" button in story detail.
 router.post("/stories/:id/refresh", async (req, res) => {
   const { id } = req.params;
   const existing = await storyStore.get(id);
   if (!existing) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   const site = findSupportedSite(existing.storyUrl);
   const adapter = getTocAdapter(existing.storyUrl);
   if (!site || !adapter) {
-    res.status(400).json({ message: "Truyện này không có adapter mục lục" });
+    res.status(400).json({ message: "This story has no TOC adapter" });
     return;
   }
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Truyện đang được crawl, không thể cập nhật danh sách chương" });
+    res.status(409).json({ message: "Story is currently crawling, cannot update chapter list" });
     return;
   }
 
@@ -616,22 +616,22 @@ router.post("/stories/:id/refresh", async (req, res) => {
     await storyStore.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
-    res.status(502).json({ message: err instanceof Error ? err.message : "Không tải được danh sách chương" });
+    res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });
 
 router.post("/stories/:id/crawl", async (req, res) => {
   const { id } = req.params;
-  // getOutline chứ không phải get: vòng lặp dưới chỉ cần url/thứ tự/trạng thái,
-  // trong khi get() parse luôn nội dung của mọi chương đã crawl — truyện vài
-  // trăm chương là hàng chục MB nằm trong RAM suốt cả lần crawl mà không dùng.
+  // Use getOutline not get: the loop below only needs url/order/status, while get()
+  // parses content for every crawled chapter — a story with hundreds of chapters is
+  // tens of MB sitting in RAM for the whole crawl unused.
   const story: StoredStory | undefined = await storyStore.getOutline(id);
   if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
+    res.status(404).json({ message: "Story not found" });
     return;
   }
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Truyện đang được crawl" });
+    res.status(409).json({ message: "Story is currently crawling" });
     return;
   }
 
@@ -640,9 +640,9 @@ router.post("/stories/:id/crawl", async (req, res) => {
     : undefined;
   const plan = chaptersToCrawl(story, orders);
 
-  // Trả lời ngay rồi crawl ở hậu trường: tiến trình đẩy qua kênh realtime nên
-  // phiên vừa bấm (và mọi phiên khác đang mở truyện) thấy giống hệt nhau, kể cả
-  // sau khi reload.
+  // Return immediately and crawl in background: progress is pushed via the live channel
+  // so the requesting session (and any other sessions viewing this story) sees updates
+  // in real time, even after reload.
   res.status(202).json({ started: true, total: plan.length });
 
   const send = (event: ProgressEvent) => publish(id, event);
@@ -650,13 +650,13 @@ router.post("/stories/:id/crawl", async (req, res) => {
   const startedAt = Date.now();
   runningCrawls.set(id, { cursor: 0, total: plan.length, startedAt });
   try {
-    // Bìa chỉ được tải về một lần (lần crawl sau bỏ qua vì file đã có): truyện
-    // tạo trước khi có tính năng này sẽ tự có bìa ở lần "Crawl tiếp" kế tiếp.
+    // Cover is downloaded only once (subsequent crawls skip because file exists): stories
+    // created before this feature will get their cover on the next "Continue crawl".
     const savedCover = await coverStore.save(id, story.coverUrl, story.storyUrl);
     if (savedCover && savedCover !== story.coverUrl) {
       story.coverUrl = savedCover;
-      // Đọc lại trước khi ghi: người dùng có thể vừa bấm "Lưu thông tin" trong
-      // lúc crawl chạy — không được ghi đè bằng bản cũ trong bộ nhớ.
+      // Re-read before saving: user may have just clicked "Save metadata" during crawl —
+      // don't overwrite with the stale in-memory copy.
       const fresh = await storyStore.get(id);
       if (fresh) {
         await storyStore.updateMeta(id, {
@@ -669,8 +669,8 @@ router.post("/stories/:id/crawl", async (req, res) => {
     }
 
     for (let i = 0; i < plan.length; i++) {
-      // Trước khi chương i xong, số chương hoàn tất là i — ETA giữ nguyên ước
-      // lượng của chương trước cho tới khi có số liệu mới.
+      // Before chapter i completes, completed count is i — ETA keeps the previous chapter's
+      // estimate until we have new data.
       runningCrawls.set(id, {
         cursor: i + 1,
         total: plan.length,
@@ -679,8 +679,8 @@ router.post("/stories/:id/crawl", async (req, res) => {
       });
       const chapter = plan[i];
       const extracted = await extractWithRetry(chapter.url, (attempt) => {
-        const attemptSuffix = attempt > 1 ? ` (lần thử ${attempt}/${MAX_ATTEMPTS})` : "";
-        send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: `Đang tải & trích xuất...${attemptSuffix}` });
+        const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
+        send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: `Loading & extracting...${attemptSuffix}` });
       });
 
       const stored = story.chapters.find((c) => c.order === chapter.order);
@@ -690,8 +690,8 @@ router.post("/stories/:id/crawl", async (req, res) => {
         stored.blocks = extracted.error ? undefined : extracted.blocks;
         if (!extracted.error) stored.title = pickChapterTitle(stored.title, extracted.title, stored.url);
         await storyStore.saveChapter(story.id, stored);
-        // Lưu xong thì nhả nội dung: `stored` nằm trong story.chapters nên giữ
-        // lại nghĩa là cả truyện tích trong bộ nhớ tới lúc crawl xong.
+        // Release content after saving: `stored` lives in story.chapters so holding it means
+        // keeping the entire story in memory until crawl completes.
         stored.blocks = undefined;
       }
 
@@ -699,15 +699,15 @@ router.post("/stories/:id/crawl", async (req, res) => {
       if (extracted.error) {
         send({ type: "error", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: extracted.error, etaMs });
       } else {
-        // Báo đích danh chương vừa xong thay vì để giao diện tự suy.
+        // Report which chapter just finished instead of letting the UI guess.
         send({ type: "chapter-done", index: i, cursor: i + 1, total: plan.length, url: chapter.url, etaMs });
       }
     }
     send({ type: "done", total: plan.length });
   } catch (err) {
-    // Express 4 không bắt các promise rejection trong async handler — tự xử lý
-    // để một lỗi giữa chừng (vd. save thất bại) không giết process.
-    const message = err instanceof Error ? err.message : "Lỗi không xác định khi crawl";
+    // Express 4 doesn't catch promise rejections in async handlers — handle manually
+    // so a mid-crawl error (e.g., save failed) doesn't crash the process.
+    const message = err instanceof Error ? err.message : "Unknown crawl error";
     publish(id, { type: "error", message });
   } finally {
     runningCrawls.delete(id);
