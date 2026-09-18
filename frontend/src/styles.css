@@ -751,6 +751,19 @@
     background: var(--color-row-hover);
   }
 
+  /* Chương dài hơn màn hình thì thanh nút nằm tít dưới đáy khung soạn thảo:
+     sửa một câu ở đầu chương cũng phải cuộn hết chương mới bấm được Lưu. Dính
+     vào đáy vùng cuộn để nút luôn trong tầm tay — cùng lý do hàng tiêu đề ở
+     trên dính vào đầu bảng. Chương ngắn thì sticky không làm gì, thanh nút nằm
+     đúng chỗ cũ. Nền phải đặc, nếu không chữ cuộn qua sẽ lộ ra sau các nút. */
+  .chapter-actions {
+    position: sticky;
+    bottom: 0;
+    z-index: 1;
+    padding: 8px 0;
+    background: var(--color-row-hover);
+  }
+
   .export-progress {
     color: var(--color-ink-2);
     font-size: 12px;

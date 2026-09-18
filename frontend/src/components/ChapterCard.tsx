@@ -361,7 +361,7 @@ export default function ChapterCard({
                 )}
 
                 {onSave && (
-                <div className="mt-2 flex flex-wrap items-center gap-2">
+                <div className="chapter-actions mt-2 flex flex-wrap items-center gap-2">
                   <button
                     type="button"
                     className="btn btn-tiny"
