@@ -11,11 +11,11 @@ chặn bôi đen, copy hay chuột phải.
 > nhập, paywall hay DRM — chương bị khóa sẽ báo lỗi rõ ràng thay vì tìm cách
 > vượt qua.
 
-![Giao diện Web to EPUB](frontend/.impeccable/review/desktop.png)
+![Giao diện Web to EPUB](docs/screenshots/giao-dien.png)
 
 Giao diện tối (bấm icon trên thanh tiêu đề để đổi, hoặc để "tự động" theo hệ điều hành):
 
-![Giao diện tối](frontend/.impeccable/review/desktop-dark.png)
+![Giao diện tối](docs/screenshots/giao-dien-toi.png)
 
 ## Mục lục
 
