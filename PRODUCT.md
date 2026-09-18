@@ -52,7 +52,7 @@ truthfully claim.
   because extraction is a best-effort heuristic.
 - TOC auto-loading (paste one story URL, get every chapter as `pending`) is
   available for `truyenfull.live`, `truyenfull.vn`, `truyencom.com`, and
-  `xtruyen.vn`; `metruyenchu.com` requires manual chapter URLs.
+  `xtruyen.vn`.
 
 ## Capabilities and Constraints
 

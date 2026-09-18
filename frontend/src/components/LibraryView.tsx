@@ -432,9 +432,6 @@ export default function LibraryView({
                   thấy đang ở đâu.
                 </li>
               </ol>
-              <p>
-                Với metruyenchu.com (chưa có mục lục tự động), dán URL từng chương ở tab Crawl thủ công.
-              </p>
             </div>
           ) : sorted.length === 0 ? (
             <div className="empty">

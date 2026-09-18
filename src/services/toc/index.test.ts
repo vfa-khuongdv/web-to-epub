@@ -10,8 +10,7 @@ describe("getTocAdapter", () => {
     expect(getTocAdapter("https://www.wattpad.com/story/44634431-pumpkin-patch-princess")?.domains).toContain("wattpad.com");
   });
 
-  it("trả undefined cho site không có adapter (metruyenchu, site lạ)", () => {
-    expect(getTocAdapter("https://metruyenchu.com/truyen/a/")).toBeUndefined();
+  it("trả undefined cho site không có adapter", () => {
     expect(getTocAdapter("https://example.com/a/")).toBeUndefined();
   });
 

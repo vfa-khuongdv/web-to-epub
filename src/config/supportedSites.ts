@@ -12,7 +12,6 @@ export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "xtruyen.vn", name: "XTruyện" },
   { domain: "truyenfull.vn", name: "TruyenFull" },
   { domain: "truyenfull.live", name: "TruyenFull" }, // truyenfull.vn's current mirror domain
-  { domain: "metruyenchu.com", name: "Mê Truyện Chữ" },
   { domain: "truyencom.com", name: "Đọc Truyện" }, // dtruyen.com's current domain
   { domain: "wattpad.com", name: "Wattpad" }, // tiếng Anh; chương trả phí (Paid Stories) không hỗ trợ
 ];

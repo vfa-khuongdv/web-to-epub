@@ -34,14 +34,6 @@ describe("findSupportedSite", () => {
     expect(findSupportedSite("https://www.truyenfull.live/truyen/a/")?.domain).toBe("truyenfull.live");
   });
 
-  it("nhận metruyenchu.com", () => {
-    expect(findSupportedSite("https://metruyenchu.com/truyen/a/")).toEqual({
-      domain: "metruyenchu.com",
-      name: "Mê Truyện Chữ",
-    });
-    expect(findSupportedSite("https://www.metruyenchu.com/truyen/a/")?.domain).toBe("metruyenchu.com");
-  });
-
   it("nhận truyencom.com", () => {
     expect(findSupportedSite("https://truyencom.com/de-ba.27/")).toEqual({
       domain: "truyencom.com",

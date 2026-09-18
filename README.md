@@ -72,7 +72,6 @@ thêm domain mới chỉ cần sửa file này.
 | `truyenfull.live` / `truyenfull.vn` | ✅ (ghép các trang TOC) | Đã test thực tế |
 | `truyencom.com` | ✅ (ghép các trang TOC) | |
 | `wattpad.com` | ✅ (API nội bộ `/api/v3/stories/<id>`) | Chương trả phí không hỗ trợ |
-| `metruyenchu.com` | ❌ | Nhập URL từng chương ở tab "Crawl thủ công" |
 
 ## Cài đặt
 
@@ -136,7 +135,7 @@ UI có hai tab:
 4. Bấm "Xuất EPUB" — sách gồm mọi chương đã có nội dung.
 
 **Crawl thủ công** — dán trực tiếp danh sách URL từng chương (mỗi dòng một
-URL), dùng cho trang chưa có adapter mục lục như `metruyenchu.com`.
+URL).
 
 Chương lỗi hiển thị khung đỏ kèm nút "Thử lại" riêng và nút "Nhập nội dung thủ
 công" để tự dán nội dung vào.
