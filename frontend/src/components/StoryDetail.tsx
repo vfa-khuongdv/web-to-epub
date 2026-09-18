@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchChapterContent, fetchStory, saveChapterEdit, saveStoryMeta, startStoryCrawl } from "../api";
+import { fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveStoryMeta, setStoryWatch, startStoryCrawl } from "../api";
 import { blocksToHtml } from "../blocksToHtml";
+import { formatEta } from "../formatEta";
+import { timeAgo } from "../timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../useCrawlJob";
 import { exportProgressLabel, useEpubExport } from "../useEpubExport";
@@ -49,7 +51,7 @@ export default function StoryDetail({
   job: CrawlJobState;
   attach: (label: string, storyId: string) => () => void;
   clearChapters: () => void;
-  onStoryChanged: () => void;
+  onStoryChanged: () => void | Promise<void>;
   onClear: () => void;
 }) {
   const [chapters, setChapters] = useState<ChapterState[]>(() =>
@@ -68,6 +70,7 @@ export default function StoryDetail({
   const coverInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [chapterPage, setChapterPage] = useState(1);
+  const [loadingNew, setLoadingNew] = useState(false);
   const { isExporting, progress, exportStoryBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
@@ -89,6 +92,13 @@ export default function StoryDetail({
     story.chapters.filter((c) => c.status === "done").length + live.done;
   const pendingCount = story.chapters.length - doneCount - errorCount;
   const remaining = pendingCount + errorCount;
+
+  // Tốc độ suy từ ETA: eta = thời-gian-trung-bình × số-chương-còn-lại, nên
+  // số-chương-còn-lại / ETA chính là chương/phút — không cần field riêng.
+  const etaText =
+    job.running && job.etaMs !== undefined && job.total > job.cursor
+      ? `còn ${formatEta(job.etaMs)} · ${Math.max(1, Math.round((job.total - job.cursor) / (job.etaMs / 60_000)))} ch/phút`
+      : null;
 
   // Tra theo Map thay vì find() trong vòng lặp: find() biến mỗi lần vẽ bảng
   // thành O(n²) — với 2468 chương là vài triệu phép so sánh.
@@ -162,6 +172,33 @@ export default function StoryDetail({
     try {
       await startStoryCrawl(story.id, orders);
       runOrders.current = orders;
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  // "Tải N chương mới": nạp lại TOC (chương mới thành pending) rồi crawl toàn
+  // bộ chương chưa xong — đúng các chương vừa thêm. Chỉ chạy khi người dùng bấm.
+  async function handleLoadNew() {
+    setError(null);
+    setLoadingNew(true);
+    try {
+      await refreshStoryToc(story.id);
+      // Chờ cha nạp lại prop story để bảng chương có danh sách mới trước khi crawl.
+      await onStoryChanged();
+      await handleCrawl();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setLoadingNew(false);
+    }
+  }
+
+  async function handleWatchToggle() {
+    setError(null);
+    try {
+      await setStoryWatch(story.id, !story.watching);
+      await onStoryChanged();
     } catch (err) {
       setError((err as Error).message);
     }
@@ -278,7 +315,28 @@ export default function StoryDetail({
             {errorCount > 0 && <span className="font-semibold text-error">{errorCount} lỗi</span>}
             {remaining === 0 && <span>Mọi chương đã crawl xong</span>}
           </p>
+          {etaText && <p className="mt-1.5 text-xs text-ink-2">{etaText}</p>}
+          {story.watching && (
+            <p className="mt-1.5 text-xs text-ink-3">
+              {story.lastCheckedAt ? `Kiểm tra lần cuối ${timeAgo(story.lastCheckedAt)}` : "Chưa kiểm tra lần nào"}
+            </p>
+          )}
         </div>
+
+        {story.newChapterCount > 0 && (
+          <div className="banner banner-new">
+            <Icon name="bell" size={14} />
+            <p className="min-w-0">Có {story.newChapterCount} chương mới kể từ lần crawl trước.</p>
+            <button
+              type="button"
+              className="btn btn-tiny ml-auto"
+              disabled={loadingNew || job.running}
+              onClick={handleLoadNew}
+            >
+              {loadingNew ? "Đang tải chương mới…" : `Tải ${story.newChapterCount} chương mới`}
+            </button>
+          </div>
+        )}
 
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -299,6 +357,16 @@ export default function StoryDetail({
               {progress ? exportProgressLabel(progress) : "Đang chuẩn bị…"}
             </span>
           )}
+          <button
+            type="button"
+            className="btn"
+            aria-pressed={story.watching}
+            title={story.watching ? "Bỏ theo dõi chương mới" : "Kiểm tra chương mới khi mở app"}
+            onClick={handleWatchToggle}
+          >
+            <Icon name="bell" size={13} className={story.watching ? "text-select" : undefined} />
+            {story.watching ? "Đang theo dõi" : "Theo dõi chương mới"}
+          </button>
           <button type="button" className="btn" disabled={saving} onClick={handleSave}>
             <Icon name={saved ? "check" : "upload"} size={13} />
             {saving ? "Đang lưu…" : saved ? "Đã lưu" : "Lưu thông tin"}

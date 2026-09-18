@@ -112,6 +112,40 @@ export async function deleteStory(id: string): Promise<void> {
   if (!res.ok) throw new Error(await readJsonError(res, "Không xoá được truyện"));
 }
 
+// Bật/tắt theo dõi chương mới cho một truyện.
+export async function setStoryWatch(id: string, watching: boolean): Promise<StoredStory> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/watch`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ watching }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không đổi được trạng thái theo dõi"));
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
+export interface StoryCheckResult {
+  newChapterCount: number;
+  lastCheckedAt?: string;
+  checkError?: string;
+}
+
+// Kiểm tra TOC xem truyện có chương mới; throw message khi không fetch được TOC
+// (số liệu lần kiểm tra thành công trước đó vẫn được server giữ nguyên).
+export async function checkStoryUpdates(id: string): Promise<StoryCheckResult> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/check`, { method: "POST" });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không kiểm tra được chương mới"));
+  return (await res.json()) as StoryCheckResult;
+}
+
+// Nạp lại TOC cho truyện đã có: chương mới thành pending, chương cũ giữ nguyên.
+export async function refreshStoryToc(id: string): Promise<StoredStory> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/refresh`, { method: "POST" });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được danh sách chương mới"));
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
 export async function uploadCover(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("cover", file);

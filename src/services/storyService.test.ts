@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { StoredStory } from "../types";
 import { TocResult } from "./toc/types";
-import { chaptersToCrawl, mergeStory, pickChapterTitle, toExtractedChapter } from "./storyService";
+import { chaptersToCrawl, countNewChapters, mergeStory, pickChapterTitle, toExtractedChapter } from "./storyService";
 
 const toc: TocResult = {
   title: "Truyện A",
@@ -24,6 +24,8 @@ function existingStory(overrides: Partial<StoredStory> = {}): StoredStory {
       { order: 1, url: "https://example.com/a/chuong-1/", title: "Chương 1 (sửa)", status: "done", blocks: [{ type: "paragraph", text: "x" }] },
       { order: 2, url: "https://example.com/a/chuong-2/", title: "Chương 2", status: "error", error: "timeout" },
     ],
+    watching: false,
+    newChapterCount: 0,
     createdAt: "2026-09-01T00:00:00.000Z",
     updatedAt: "2026-09-01T00:00:00.000Z",
     ...overrides,
@@ -57,6 +59,53 @@ describe("mergeStory", () => {
     expect(merged.title).toBe("Tên người dùng sửa");
     expect(merged.author).toBe("Tác giả sửa");
     expect(merged.language).toBe("en");
+  });
+
+  it("mang cờ theo dõi và kết quả kiểm tra từ truyện cũ", () => {
+    const merged = mergeStory({
+      existing: existingStory({
+        watching: true,
+        newChapterCount: 3,
+        lastCheckedAt: "2026-09-18T00:00:00.000Z",
+        checkError: "mạng lỗi",
+      }),
+      site: "example.com",
+      storyUrl: "https://example.com/a/",
+      toc,
+    });
+    expect(merged.watching).toBe(true);
+    expect(merged.newChapterCount).toBe(3);
+    expect(merged.lastCheckedAt).toBe("2026-09-18T00:00:00.000Z");
+    expect(merged.checkError).toBe("mạng lỗi");
+  });
+
+  it("truyện tạo mới mặc định không theo dõi", () => {
+    const merged = mergeStory({ site: "example.com", storyUrl: "https://example.com/a/", toc });
+    expect(merged.watching).toBe(false);
+    expect(merged.newChapterCount).toBe(0);
+    expect(merged.lastCheckedAt).toBeUndefined();
+    expect(merged.checkError).toBeUndefined();
+  });
+});
+
+describe("countNewChapters", () => {
+  const stored = [{ url: "https://example.com/a/chuong-1/" }, { url: "https://example.com/a/chuong-2/" }];
+
+  it("đếm URL có trong TOC mà thư viện chưa có", () => {
+    expect(
+      countNewChapters(stored, [
+        { url: "https://example.com/a/chuong-1/", title: "Chương 1" },
+        { url: "https://example.com/a/chuong-2/", title: "Chương 2" },
+        { url: "https://example.com/a/chuong-3/", title: "Chương 3" },
+        { url: "https://example.com/a/chuong-4/", title: "Chương 4" },
+      ])
+    ).toBe(2);
+  });
+
+  it("trả 0 khi TOC trùng hết, ngắn hơn hoặc rỗng", () => {
+    expect(countNewChapters(stored, stored.map((c) => ({ ...c, title: "x" })))).toBe(0);
+    expect(countNewChapters(stored, [{ url: "https://example.com/a/chuong-1/", title: "Chương 1" }])).toBe(0);
+    expect(countNewChapters(stored, [])).toBe(0);
   });
 });
 

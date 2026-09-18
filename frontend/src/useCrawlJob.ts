@@ -17,6 +17,9 @@ export interface CrawlJobState {
   total: number;
   errors: number;
   log: CrawlLogLine[];
+  // Ước lượng thời gian còn lại (ms) của lần crawl đang chạy; undefined khi
+  // chưa đủ mẫu hoặc đã xong.
+  etaMs?: number;
   // Trạng thái từng chương của lần crawl đang chạy, theo URL. Backend báo đích
   // danh chương nào xong ("chapter-done") hoặc hỏng ("error"), thay vì để chỗ
   // này suy ra từ việc chương kế tiếp bắt đầu — phép suy đó bỏ sót chương cuối,
@@ -83,7 +86,7 @@ export function liveCounts(
 // ảnh chụp đầu kết nối liệt kê mọi crawl đang chạy.
 interface LiveSnapshot {
   type: "snapshot";
-  crawls?: { storyId: string; cursor: number; total: number }[];
+  crawls?: { storyId: string; cursor: number; total: number; etaMs?: number }[];
 }
 
 type LiveEvent = (ProgressEvent & { storyId?: string }) | LiveSnapshot;
@@ -91,6 +94,7 @@ type LiveEvent = (ProgressEvent & { storyId?: string }) | LiveSnapshot;
 export interface LiveCrawl {
   cursor: number;
   total: number;
+  etaMs?: number;
 }
 
 function stamp(): string {
@@ -124,6 +128,7 @@ export function useCrawlJob() {
         cursor,
         total: event.total!,
         pct: (cursor / event.total!) * 100,
+        etaMs: event.etaMs ?? j.etaMs,
         chapters: event.url ? advanceChapterStates(j.chapters, event.url, "running") : j.chapters,
         log: appendLog(j.log, {
           at: stamp(),
@@ -139,6 +144,7 @@ export function useCrawlJob() {
         cursor,
         total: event.total!,
         errors: j.errors + 1,
+        etaMs: event.etaMs ?? j.etaMs,
         chapters: event.url ? advanceChapterStates(j.chapters, event.url, "error") : j.chapters,
         log: appendLog(j.log, {
           at: stamp(),
@@ -155,10 +161,11 @@ export function useCrawlJob() {
         cursor: total > 0 ? cursor : j.cursor,
         total: total || j.total,
         pct: total > 0 ? (cursor / total) * 100 : j.pct,
+        etaMs: event.etaMs ?? j.etaMs,
         chapters: event.url ? advanceChapterStates(j.chapters, event.url, "done") : j.chapters,
       }));
     } else if (event.type === "done") {
-      setJob((j) => ({ ...j, cursor: j.total, pct: 100 }));
+      setJob((j) => ({ ...j, cursor: j.total, pct: 100, etaMs: undefined }));
     }
     onEvent?.(event);
   }, []);
@@ -203,7 +210,7 @@ export function useCrawlJob() {
       if (event.type === "snapshot") {
         const next: Record<string, LiveCrawl | undefined> = {};
         for (const crawl of event.crawls ?? []) {
-          next[crawl.storyId] = { cursor: crawl.cursor, total: crawl.total };
+          next[crawl.storyId] = { cursor: crawl.cursor, total: crawl.total, etaMs: crawl.etaMs };
         }
         setLive(next);
         // Sau khi mất kết nối, ảnh chụp là sự thật: đồng bộ lại truyện đang mở
@@ -215,6 +222,7 @@ export function useCrawlJob() {
           cursor: watched?.cursor ?? j.cursor,
           total: watched?.total ?? j.total,
           pct: watched && watched.total > 0 ? (watched.cursor / watched.total) * 100 : j.pct,
+          etaMs: watched?.etaMs,
         }));
         return;
       }
@@ -229,6 +237,7 @@ export function useCrawlJob() {
           [storyId]: {
             cursor: event.cursor ?? l[storyId]?.cursor ?? 0,
             total: event.total ?? l[storyId]?.total ?? 0,
+            etaMs: event.etaMs ?? l[storyId]?.etaMs,
           },
         }));
       }
@@ -267,6 +276,7 @@ export function useCrawlJob() {
       cursor: current?.cursor ?? 0,
       total: current?.total ?? 0,
       pct: current && current.total > 0 ? (current.cursor / current.total) * 100 : 0,
+      etaMs: current?.etaMs,
     });
     return () => {
       if (watchedId.current === storyId) watchedId.current = null;

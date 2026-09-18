@@ -13,6 +13,21 @@ function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Ước lượng thời gian còn lại theo tốc độ trung bình của các chương đã xong
+// trong lần crawl hiện tại. Dưới 3 chương mẫu quá ít (một chương chậm/retry
+// làm sai lệch hẳn) nên trả undefined để giao diện không hiện số nhiễu.
+export function estimateRemainingMs(input: {
+  startedAt: number;
+  completed: number;
+  total: number;
+  now?: number;
+}): number | undefined {
+  const now = input.now ?? Date.now();
+  const elapsed = now - input.startedAt;
+  if (input.completed < 3 || input.completed >= input.total || elapsed <= 0) return undefined;
+  return Math.round((elapsed / input.completed) * (input.total - input.completed));
+}
+
 // Trang bị script chống tool xoá trắng là chuyện ngẫu nhiên của từng lượt tải,
 // không phải site đang chặn mình — đo được khoảng một nửa số lượt tải xtruyen
 // dính, và lượt tải ngay sau đó thường qua. Chờ vài giây rồi mới tải lại gần

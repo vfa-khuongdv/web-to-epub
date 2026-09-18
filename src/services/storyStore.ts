@@ -28,6 +28,15 @@ export interface StoryStore {
   // Thay thông tin sách (tên/tác giả/ngôn ngữ/bìa) mà không đụng tới chapter —
   // dùng cho nút "Lưu thông tin". Trường bỏ trống nghĩa là xoá giá trị cũ.
   updateMeta(id: string, meta: StoryMeta): Promise<boolean>;
+  // Bật/tắt theo dõi chương mới. Tắt thì xoá số chương mới và lỗi kiểm tra
+  // (giữ lastCheckedAt để hiển thị "kiểm tra lần cuối").
+  setWatching(id: string, watching: boolean): Promise<boolean>;
+  // Ghi kết quả kiểm tra TOC; trường vắng mặt giữ nguyên giá trị cũ,
+  // `error: null` xoá lỗi.
+  setCheckResult(
+    id: string,
+    result: { newChapterCount?: number; checkedAt?: string; error?: string | null }
+  ): Promise<boolean>;
   remove(id: string): Promise<boolean>;
 }
 
@@ -41,6 +50,10 @@ interface StoryRow {
   author: string | null;
   language: string | null;
   cover_url: string | null;
+  watching: number;
+  new_chapter_count: number;
+  last_checked_at: string | null;
+  check_error: string | null;
   created_at: string;
   updated_at: string;
 }
@@ -69,6 +82,10 @@ export function createStoryStore(baseDir: string): StoryStore {
       author TEXT,
       language TEXT,
       cover_url TEXT,
+      watching INTEGER NOT NULL DEFAULT 0,
+      new_chapter_count INTEGER NOT NULL DEFAULT 0,
+      last_checked_at TEXT,
+      check_error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -84,11 +101,19 @@ export function createStoryStore(baseDir: string): StoryStore {
     );
   `);
 
-  // DB tạo trước khi có cột language vẫn phải mở được (dữ liệu thật của người
+  // DB tạo trước khi có các cột mới vẫn phải mở được (dữ liệu thật của người
   // dùng), nên thêm cột còn thiếu thay vì bắt tạo lại DB.
   const storyColumns = db.prepare("PRAGMA table_info(stories)").all() as unknown as { name: string }[];
-  if (!storyColumns.some((column) => column.name === "language")) {
-    db.exec("ALTER TABLE stories ADD COLUMN language TEXT");
+  const hasColumn = (name: string) => storyColumns.some((column) => column.name === name);
+  const addColumnIfMissing: [string, string][] = [
+    ["language", "language TEXT"],
+    ["watching", "watching INTEGER NOT NULL DEFAULT 0"],
+    ["new_chapter_count", "new_chapter_count INTEGER NOT NULL DEFAULT 0"],
+    ["last_checked_at", "last_checked_at TEXT"],
+    ["check_error", "check_error TEXT"],
+  ];
+  for (const [name, definition] of addColumnIfMissing) {
+    if (!hasColumn(name)) db.exec(`ALTER TABLE stories ADD COLUMN ${definition}`);
   }
 
   const upsertStory = db.prepare(`
@@ -123,6 +148,7 @@ export function createStoryStore(baseDir: string): StoryStore {
   const selectChapter = db.prepare(`SELECT * FROM chapters WHERE story_id = ? AND "order" = ?`);
   const selectSummaries = db.prepare(`
     SELECT s.id, s.story_url, s.site, s.title, s.updated_at,
+           s.watching, s.new_chapter_count, s.last_checked_at, s.check_error,
            COUNT(c."order") AS chapter_count,
            COALESCE(SUM(c.status = 'done'), 0) AS done_count,
            COALESCE(SUM(c.status = 'error'), 0) AS error_count
@@ -135,6 +161,20 @@ export function createStoryStore(baseDir: string): StoryStore {
   const touchStory = db.prepare(`UPDATE stories SET updated_at = ? WHERE id = ?`);
   const updateStoryMeta = db.prepare(`
     UPDATE stories SET title = ?, author = ?, language = ?, cover_url = ?, updated_at = ?
+    WHERE id = ?
+  `);
+  const setStoryWatching = db.prepare(`
+    UPDATE stories
+    SET watching = ?,
+        new_chapter_count = CASE WHEN ? = 1 THEN new_chapter_count ELSE 0 END,
+        check_error = CASE WHEN ? = 1 THEN check_error ELSE NULL END
+    WHERE id = ?
+  `);
+  const setStoryCheckResult = db.prepare(`
+    UPDATE stories
+    SET new_chapter_count = COALESCE(?, new_chapter_count),
+        last_checked_at = COALESCE(?, last_checked_at),
+        check_error = CASE WHEN ? = 1 THEN ? ELSE check_error END
     WHERE id = ?
   `);
 
@@ -175,6 +215,10 @@ export function createStoryStore(baseDir: string): StoryStore {
         chapterCount: Number(row.chapter_count),
         doneCount: Number(row.done_count),
         errorCount: Number(row.error_count),
+        watching: row.watching === 1,
+        newChapterCount: Number(row.new_chapter_count),
+        lastCheckedAt: row.last_checked_at ?? undefined,
+        checkError: row.check_error ?? undefined,
         updatedAt: row.updated_at,
       }));
     },
@@ -192,6 +236,10 @@ export function createStoryStore(baseDir: string): StoryStore {
         author: story.author ?? undefined,
         language: story.language ?? undefined,
         coverUrl: story.cover_url ?? undefined,
+        watching: story.watching === 1,
+        newChapterCount: Number(story.new_chapter_count),
+        lastCheckedAt: story.last_checked_at ?? undefined,
+        checkError: story.check_error ?? undefined,
         chapters: rows.map((row) => ({
           order: row.order,
           url: row.url,
@@ -218,6 +266,10 @@ export function createStoryStore(baseDir: string): StoryStore {
         author: story.author ?? undefined,
         language: story.language ?? undefined,
         coverUrl: story.cover_url ?? undefined,
+        watching: story.watching === 1,
+        newChapterCount: Number(story.new_chapter_count),
+        lastCheckedAt: story.last_checked_at ?? undefined,
+        checkError: story.check_error ?? undefined,
         chapters: rows.map((row) => ({
           order: row.order,
           url: row.url,
@@ -278,6 +330,30 @@ export function createStoryStore(baseDir: string): StoryStore {
         id
       );
       return Number(result.changes) > 0;
+    },
+
+    async setWatching(id: string, watching: boolean): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
+      const flag = watching ? 1 : 0;
+      return Number(setStoryWatching.run(flag, flag, flag, id).changes) > 0;
+    },
+
+    async setCheckResult(
+      id: string,
+      result: { newChapterCount?: number; checkedAt?: string; error?: string | null }
+    ): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
+      // `undefined` bind thành NULL + COALESCE để giữ giá trị cũ; riêng error
+      // cần cờ riêng vì `null` là "xoá lỗi" chứ không phải "giữ nguyên".
+      const setError = result.error !== undefined ? 1 : 0;
+      const updated = setStoryCheckResult.run(
+        result.newChapterCount ?? null,
+        result.checkedAt ?? null,
+        setError,
+        result.error ?? null,
+        id
+      );
+      return Number(updated.changes) > 0;
     },
 
     async saveChapter(id: string, chapter: StoredChapter): Promise<void> {

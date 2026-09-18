@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWattpadChapter } from "./chapters/wattpad";
-import { extractWithRetry } from "./crawl";
+import { estimateRemainingMs, extractWithRetry } from "./crawl";
 import { LockedContentError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
@@ -189,5 +189,33 @@ describe("extractWithRetry", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+});
+
+describe("estimateRemainingMs", () => {
+  const base = { startedAt: 0, total: 10 };
+
+  it("trả undefined khi chưa đủ mẫu (dưới 3 chương)", () => {
+    expect(estimateRemainingMs({ ...base, completed: 0, now: 10_000 })).toBeUndefined();
+    expect(estimateRemainingMs({ ...base, completed: 2, now: 10_000 })).toBeUndefined();
+  });
+
+  it("trả undefined khi đã xong hết", () => {
+    expect(estimateRemainingMs({ ...base, completed: 10, now: 100_000 })).toBeUndefined();
+    expect(estimateRemainingMs({ ...base, completed: 11, now: 100_000 })).toBeUndefined();
+  });
+
+  it("trả undefined khi chưa trôi qua thời gian nào", () => {
+    expect(estimateRemainingMs({ ...base, completed: 3, now: 0 })).toBeUndefined();
+  });
+
+  it("ước lượng theo tốc độ trung bình của các chương đã xong", () => {
+    // 3 chương trong 30 giây → 10 giây/chương, còn 7 chương → 70 giây.
+    expect(estimateRemainingMs({ ...base, completed: 3, now: 30_000 })).toBe(70_000);
+  });
+
+  it("làm tròn mili giây", () => {
+    // 3 chương trong 20 giây → ~6.67 giây/chương, còn 7 → ~46.67 giây.
+    expect(estimateRemainingMs({ ...base, completed: 3, now: 20_000 })).toBe(46_667);
   });
 });

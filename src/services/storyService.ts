@@ -1,6 +1,6 @@
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { storyId } from "./storyStore";
-import { TocResult } from "./toc/types";
+import { TocChapter, TocResult } from "./toc/types";
 
 export function mergeStory(params: {
   existing?: StoredStory;
@@ -31,6 +31,12 @@ export function mergeStory(params: {
     author: params.existing?.author ?? params.toc.author,
     language: params.existing?.language,
     coverUrl: params.toc.coverUrl ?? params.existing?.coverUrl,
+    // Thông tin theo dõi không nằm trong TOC; giữ nguyên của truyện cũ (save()
+    // cũng không ghi 4 field này nên giá trị thật vẫn nằm trong DB).
+    watching: params.existing?.watching ?? false,
+    newChapterCount: params.existing?.newChapterCount ?? 0,
+    lastCheckedAt: params.existing?.lastCheckedAt,
+    checkError: params.existing?.checkError,
     chapters,
     createdAt: params.existing?.createdAt || now,
     updatedAt: now,
@@ -43,6 +49,13 @@ export function chaptersToCrawl(story: StoredStory, orders?: number[]): StoredCh
     return story.chapters.filter((c) => wanted.has(c.order)).sort((a, b) => a.order - b.order);
   }
   return story.chapters.filter((c) => c.status !== "done").sort((a, b) => a.order - b.order);
+}
+
+// Chương mới = URL có trong TOC hiện tại mà thư viện chưa từng thấy. Chương
+// đổi URL cũng tính là mới; chương biến mất khỏi TOC không được tính.
+export function countNewChapters(stored: { url: string }[], toc: TocChapter[]): number {
+  const known = new Set(stored.map((c) => c.url));
+  return toc.reduce((count, chapter) => (known.has(chapter.url) ? count : count + 1), 0);
 }
 
 export function toExtractedChapter(chapter: StoredChapter): ExtractedChapter {

@@ -10,8 +10,8 @@ Trạng thái: Chờ duyệt spec
    tự so TOC hiện tại với thư viện và báo "N chương mới" — bấm một nút là nạp
    TOC rồi crawl đúng các chương còn thiếu.
 2. **ETA thời gian còn lại**: trong lúc crawl, hiện thời gian dự kiến còn lại
-   (kèm tốc độ chương/phút ở chi tiết truyện) ở JobStrip, bảng thư viện và chi
-   tiết truyện — để một job chạy hàng chục phút vẫn dễ theo dõi.
+   (kèm tốc độ chương/phút ở chi tiết truyện) ở JobStrip và chi tiết truyện — để
+   một job chạy hàng chục phút vẫn dễ theo dõi.
 
 Ngoài phạm vi (non-goals):
 
@@ -87,8 +87,8 @@ export function estimateRemainingMs(input: {
     event `done`/`idle` xoá ETA; snapshot và `attach` cũng nạp ETA.
 - Hiển thị:
   - `JobStrip`: cạnh `12/150 chương` thêm `· còn ~18 phút` khi có ETA.
-  - `LibraryView`: giữ nguyên chip `Đang crawl 12/150`, thêm dòng chữ nhỏ
-    `còn ~18 phút` dưới chip khi `live[s.id]?.etaMs` có giá trị.
+  - `LibraryView`: chip trạng thái giữ nguyên (`Đang crawl 12/150`), không thêm
+    ETA (quyết định khi review: ETA chỉ ở thanh tiến độ và chi tiết truyện).
   - `StoryDetail`: cạnh "chương đã crawl", khi `job.running && job.etaMs` hiện
     `còn ~18 phút · 12 ch/phút`; tốc độ suy từ
     `(job.total - job.cursor) / (etaMs / 60000)`, không thêm field backend.
@@ -220,8 +220,8 @@ Unit test (vitest, cạnh source):
 
 Verify tay:
 
-1. Crawl một truyện ~10 chương: thấy `còn ~… phút` ở JobStrip, bảng thư viện
-   và chi tiết; reload tab giữa chừng thấy ETA ngay; crawl xong ETA biến mất.
+1. Crawl một truyện ~10 chương: thấy `còn ~… phút` ở JobStrip và chi tiết
+   truyện; reload tab giữa chừng thấy ETA ngay; crawl xong ETA biến mất.
 2. Bật theo dõi một truyện đã crawl xong → bấm "Kiểm tra chương mới" → không có
    chương mới thì count = 0, `last_checked_at` cập nhật.
 3. Xoá vài dòng `chapters` của một truyện test trong DB (hoặc dùng truyện có TOC
@@ -249,8 +249,8 @@ Verify tay:
 
 ## 6. Tiêu chí thành công
 
-- Trong lúc crawl, ETA hiện ở cả ba chỗ, cập nhật theo từng chương, ẩn khi
-  chưa đủ mẫu hoặc đã xong; tab reload vẫn thấy ngay.
+- Trong lúc crawl, ETA hiện ở thanh tiến độ và chi tiết truyện, cập nhật theo
+  từng chương, ẩn khi chưa đủ mẫu hoặc đã xong; tab reload vẫn thấy ngay.
 - Truyện được theo dõi được kiểm tra khi mở app và khi bấm nút; chương mới hiện
   chip/banner kèm số lượng chính xác; một nút nạp TOC + crawl đúng phần thiếu;
   truyện không theo dõi không bị đụng tới.

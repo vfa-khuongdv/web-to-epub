@@ -32,6 +32,8 @@ function makeStory(overrides: Partial<StoredStory> = {}): StoredStory {
     ],
     createdAt: "2026-09-17T00:00:00.000Z",
     updatedAt: "2026-09-17T00:00:00.000Z",
+    watching: false,
+    newChapterCount: 0,
     ...overrides,
   };
 }
@@ -219,6 +221,121 @@ describe("createStoryStore", () => {
 
   it("updateMeta từ chối id path traversal", async () => {
     expect(await store.updateMeta("../../evil", { title: "X" })).toBe(false);
+  });
+
+  it("setWatching bật thì giữ kết quả kiểm tra, tắt thì xoá số chương mới + lỗi", async () => {
+    const story = makeStory();
+    await store.save(story);
+    await store.setCheckResult(story.id, { newChapterCount: 3, checkedAt: "2026-09-18T00:00:00.000Z" });
+
+    expect(await store.setWatching(story.id, true)).toBe(true);
+    let loaded = await store.get(story.id);
+    expect(loaded).toMatchObject({ watching: true, newChapterCount: 3, lastCheckedAt: "2026-09-18T00:00:00.000Z" });
+
+    expect(await store.setWatching(story.id, false)).toBe(true);
+    loaded = await store.get(story.id);
+    expect(loaded).toMatchObject({ watching: false, newChapterCount: 0 });
+    // Lần kiểm tra gần nhất vẫn giữ để hiển thị; chỉ số chương mới và lỗi bị xoá.
+    expect(loaded?.lastCheckedAt).toBe("2026-09-18T00:00:00.000Z");
+    expect(loaded?.checkError).toBeUndefined();
+  });
+
+  it("setWatching trả false khi không tìm thấy truyện", async () => {
+    expect(await store.setWatching(storyId("https://example.com/khong-co/"), true)).toBe(false);
+  });
+
+  it("setCheckResult cập nhật từng phần, undefined giữ nguyên, null xoá lỗi", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    await store.setCheckResult(story.id, { error: "mạng lỗi" });
+    let loaded = await store.get(story.id);
+    expect(loaded?.checkError).toBe("mạng lỗi");
+    expect(loaded?.lastCheckedAt).toBeUndefined();
+
+    await store.setCheckResult(story.id, { newChapterCount: 2, checkedAt: "2026-09-18T01:00:00.000Z", error: null });
+    loaded = await store.get(story.id);
+    expect(loaded).toMatchObject({ newChapterCount: 2, lastCheckedAt: "2026-09-18T01:00:00.000Z" });
+    expect(loaded?.checkError).toBeUndefined();
+
+    await store.setCheckResult(story.id, { error: "lỗi mới" });
+    loaded = await store.get(story.id);
+    expect(loaded).toMatchObject({
+      newChapterCount: 2,
+      lastCheckedAt: "2026-09-18T01:00:00.000Z",
+      checkError: "lỗi mới",
+    });
+  });
+
+  it("save không ghi đè thông tin theo dõi", async () => {
+    const story = makeStory();
+    await store.save(story);
+    await store.setWatching(story.id, true);
+    await store.setCheckResult(story.id, { newChapterCount: 5, checkedAt: "2026-09-18T00:00:00.000Z" });
+
+    story.chapters.push({
+      order: 4,
+      url: "https://example.com/truyen-a/chuong-4/",
+      title: "Chương 4",
+      status: "pending",
+    });
+    story.watching = false;
+    story.newChapterCount = 0;
+    await store.save(story);
+
+    const loaded = await store.get(story.id);
+    expect(loaded).toMatchObject({ watching: true, newChapterCount: 5, lastCheckedAt: "2026-09-18T00:00:00.000Z" });
+    expect(loaded?.chapters).toHaveLength(4);
+  });
+
+  it("list trả thông tin theo dõi", async () => {
+    const story = makeStory();
+    await store.save(story);
+    await store.setWatching(story.id, true);
+    await store.setCheckResult(story.id, { newChapterCount: 4 });
+
+    const [summary] = await store.list();
+    expect(summary).toMatchObject({ watching: true, newChapterCount: 4 });
+    expect(summary.lastCheckedAt).toBeUndefined();
+  });
+
+  it("tự thêm cột theo dõi cho DB tạo bởi bản cũ", async () => {
+    const legacyDir = await mkdtemp(path.join(os.tmpdir(), "story-store-legacy-watch-"));
+    const legacyDb = new DatabaseSync(path.join(legacyDir, "stories.db"));
+    legacyDb.exec(`
+      CREATE TABLE stories (
+        id TEXT PRIMARY KEY,
+        story_url TEXT NOT NULL,
+        site TEXT NOT NULL,
+        title TEXT NOT NULL,
+        author TEXT,
+        cover_url TEXT,
+        created_at TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+      CREATE TABLE chapters (
+        story_id TEXT NOT NULL,
+        "order" INTEGER NOT NULL,
+        url TEXT NOT NULL,
+        title TEXT NOT NULL,
+        status TEXT NOT NULL,
+        error TEXT,
+        blocks TEXT,
+        PRIMARY KEY (story_id, "order")
+      );
+    `);
+    legacyDb.close();
+
+    const legacy = createStoryStore(legacyDir);
+    const story = makeStory();
+    await legacy.save(story);
+
+    const loaded = await legacy.get(story.id);
+    expect(loaded).toMatchObject({ watching: false, newChapterCount: 0 });
+    expect(loaded?.lastCheckedAt).toBeUndefined();
+    expect(loaded?.checkError).toBeUndefined();
+
+    await rm(legacyDir, { recursive: true, force: true });
   });
 
   it("tự thêm cột language cho DB tạo bởi bản cũ", async () => {

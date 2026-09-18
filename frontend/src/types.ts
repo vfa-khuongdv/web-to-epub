@@ -31,6 +31,9 @@ export interface ProgressEvent {
   url?: string;
   message?: string;
   chapters?: ExtractedChapter[];
+  // Thời gian còn lại ước lượng (ms) cho lần crawl đang chạy; vắng mặt khi
+  // chưa đủ mẫu để ước lượng.
+  etaMs?: number;
 }
 
 export interface BookMetadata {
@@ -59,6 +62,10 @@ export interface StoredStory {
   author?: string;
   language?: string;
   coverUrl?: string;
+  watching: boolean;
+  newChapterCount: number;
+  lastCheckedAt?: string;
+  checkError?: string;
   chapters: StoredChapter[];
   createdAt: string;
   updatedAt: string;
@@ -72,5 +79,9 @@ export interface StorySummary {
   chapterCount: number;
   doneCount: number;
   errorCount: number;
+  watching: boolean;
+  newChapterCount: number;
+  lastCheckedAt?: string;
+  checkError?: string;
   updatedAt: string;
 }

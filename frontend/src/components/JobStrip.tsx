@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ProgressBar } from "./ProgressBar";
 import { CrawlJobState } from "../useCrawlJob";
+import { formatEta } from "../formatEta";
 
 export function JobStrip({ job }: { job: CrawlJobState }) {
   const [open, setOpen] = useState(false);
@@ -76,6 +77,7 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
               {job.cursor}/{job.total} chương
             </span>
           )}
+          {job.running && job.etaMs !== undefined && <span>· còn {formatEta(job.etaMs)}</span>}
           {job.errors > 0 && (
             <span className="bad">
               {job.errors} lỗi

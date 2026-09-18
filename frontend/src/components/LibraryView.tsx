@@ -1,32 +1,22 @@
 import { useEffect, useRef, useState } from "react";
-import { createStory, deleteStory, fetchStories, fetchStory } from "../api";
+import { checkStoryUpdates, createStory, deleteStory, fetchStories, fetchStory, setStoryWatch } from "../api";
 import { isSupportedUrl } from "../isSupportedUrl";
+import { timeAgo } from "../timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
 import { CrawlJobState, LiveCrawl, liveCounts } from "../useCrawlJob";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
 import StoryDetail from "./StoryDetail";
 
-function timeAgo(iso: string): string {
-  const then = new Date(iso).getTime();
-  if (Number.isNaN(then)) return "—";
-  const minutes = Math.floor((Date.now() - then) / 60000);
-  if (minutes < 1) return "vừa xong";
-  if (minutes < 60) return `${minutes} phút trước`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours} giờ trước`;
-  const days = Math.floor(hours / 24);
-  if (days < 7) return `${days} ngày trước`;
-  return new Date(then).toLocaleDateString("vi-VN");
-}
-
 // Trạng thái crawl của cả truyện, gộp số đã lưu với crawl đang chạy: còn
 // chương chờ thì báo còn bao nhiêu, hết chương chờ là crawl xong (kèm số lỗi
-// nếu có) — để nhìn danh sách là biết truyện nào đã crawl đủ.
+// nếu có) — để nhìn danh sách là biết truyện nào đã crawl đủ. Truyện theo dõi
+// có chương mới được ưu tiên báo trước phần còn lại vì cần người dùng bấm.
 function crawlStatus(
   total: number,
   done: number,
   errors: number,
+  newChapterCount: number,
   crawling?: LiveCrawl
 ): { state: ChipState; label: string } {
   if (crawling) {
@@ -34,6 +24,9 @@ function crawlStatus(
       state: "running",
       label: crawling.total > 0 ? `Đang crawl ${crawling.cursor}/${crawling.total}` : "Đang crawl",
     };
+  }
+  if (newChapterCount > 0) {
+    return { state: "new", label: `${newChapterCount} chương mới` };
   }
   const remaining = total - done - errors;
   if (remaining > 0) return { state: "pending", label: `Còn ${remaining} chương` };
@@ -151,6 +144,8 @@ export default function LibraryView({
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [page, setPage] = useState(1);
+  const [checking, setChecking] = useState(false);
+  const checkedOnOpen = useRef(false);
 
   async function loadStories() {
     try {
@@ -160,9 +155,49 @@ export default function LibraryView({
     }
   }
 
+  // Kiểm tra TOC các truyện đang theo dõi, tối đa 2 truyện song song; kết quả
+  // nào về thì cập nhật dòng đó ngay, lỗi giữ số cũ và hiện cảnh báo.
+  async function runChecks(targets: StorySummary[]) {
+    if (targets.length === 0) return;
+    setChecking(true);
+    const queue = [...targets];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const story = queue.shift();
+        if (!story) break;
+        try {
+          const result = await checkStoryUpdates(story.id);
+          setStories((current) =>
+            current.map((s) => (s.id === story.id ? { ...s, ...result, checkError: undefined } : s))
+          );
+        } catch (err) {
+          const message = (err as Error).message;
+          // Truyện đang crawl thì server từ chối kiểm tra — chip crawl đã thay thế.
+          if (/đang được crawl/.test(message)) continue;
+          setStories((current) =>
+            current.map((s) => (s.id === story.id ? { ...s, checkError: message } : s))
+          );
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, targets.length) }, worker));
+    setChecking(false);
+    await loadStories();
+  }
+
   useEffect(() => {
     loadStories().finally(() => setLoading(false));
   }, []);
+
+  // Mở app: kiểm tra một lần cho các truyện đang theo dõi (không chạy nền,
+  // không hẹn giờ). Truyện đang crawl bị bỏ qua — server cũng chặn.
+  useEffect(() => {
+    if (loading || checkedOnOpen.current) return;
+    checkedOnOpen.current = true;
+    const targets = stories.filter((s) => s.watching && !live[s.id]);
+    if (targets.length > 0) void runChecks(targets);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, stories, live]);
 
   // Truyện đang chọn đã có StoryDetail tải lại khi crawl xong; truyện khác thì
   // không, nên tự tải lại khi một truyện rời kênh realtime để chip trạng thái
@@ -217,6 +252,24 @@ export default function LibraryView({
       setConfirmDelete(null);
       if (selected?.id === id) setSelected(null);
       await loadStories();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  // Bật/tắt theo dõi rồi tải lại danh sách: server xoá số chương mới + lỗi khi
+  // tắt, nên state cục bộ phải theo bản đã lưu chứ không tự đoán.
+  async function handleWatchToggle(story: StorySummary) {
+    try {
+      await setStoryWatch(story.id, !story.watching);
+      await loadStories();
+      if (selected?.id === story.id) {
+        try {
+          setSelected(await fetchStory(story.id));
+        } catch {
+          /* loadStories đã hiện lỗi */
+        }
+      }
     } catch (err) {
       setError((err as Error).message);
     }
@@ -278,7 +331,7 @@ export default function LibraryView({
       errors,
       remaining: s.chapterCount - done - errors,
       crawling,
-      status: crawlStatus(s.chapterCount, done, errors, crawling),
+      status: crawlStatus(s.chapterCount, done, errors, s.newChapterCount, crawling),
     };
   });
 
@@ -322,8 +375,25 @@ export default function LibraryView({
       <section className="pane">
         <div className="pane-head">
           <h2>Truyện của tôi</h2>
-          <span className="end text-xs text-ink-2">
-            {stories.length === 0 ? "" : needle ? `${filtered.length}/${stories.length} truyện` : `${stories.length} truyện`}
+          <span className="end flex items-center gap-2 text-xs text-ink-2">
+            {stories.some((s) => s.watching) && (
+              <button
+                type="button"
+                className="btn btn-tiny btn-quiet"
+                disabled={checking}
+                onClick={() => runChecks(stories.filter((s) => s.watching && !live[s.id]))}
+              >
+                <Icon
+                  name={checking ? "dot" : "retry"}
+                  size={12}
+                  className={checking ? "animate-pulse" : undefined}
+                />
+                {checking ? "Đang kiểm tra…" : "Kiểm tra chương mới"}
+              </button>
+            )}
+            <span>
+              {stories.length === 0 ? "" : needle ? `${filtered.length}/${stories.length} truyện` : `${stories.length} truyện`}
+            </span>
           </span>
         </div>
 
@@ -517,6 +587,12 @@ export default function LibraryView({
                     </td>
                     <td>
                       <StatusChip state={s.status.state} label={s.status.label} />
+                      {s.checkError && (
+                        <span className="mt-1 flex items-center gap-1 text-xs text-error" title={s.checkError}>
+                          <Icon name="alert" size={11} />
+                          Lỗi kiểm tra
+                        </span>
+                      )}
                     </td>
                     <td className="dim">{timeAgo(s.updatedAt)}</td>
                     <td onClick={(e) => e.stopPropagation()}>
@@ -538,16 +614,28 @@ export default function LibraryView({
                           </button>
                         </span>
                       ) : (
-                        <button
-                          type="button"
-                          className="btn btn-quiet btn-tiny"
-                          title={s.crawling ? "Đang crawl, chưa xoá được" : "Xoá truyện khỏi thư viện"}
-                          aria-label={`Xoá ${s.title}`}
-                          disabled={!!s.crawling}
-                          onClick={() => setConfirmDelete(s.id)}
-                        >
-                          <Icon name="trash" size={13} />
-                        </button>
+                        <span className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            className="btn btn-quiet btn-tiny"
+                            title={s.watching ? "Bỏ theo dõi chương mới" : "Theo dõi chương mới"}
+                            aria-label={s.watching ? `Bỏ theo dõi ${s.title}` : `Theo dõi ${s.title}`}
+                            aria-pressed={s.watching}
+                            onClick={() => handleWatchToggle(s)}
+                          >
+                            <Icon name="bell" size={13} className={s.watching ? "text-select" : undefined} />
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-quiet btn-tiny"
+                            title={s.crawling ? "Đang crawl, chưa xoá được" : "Xoá truyện khỏi thư viện"}
+                            aria-label={`Xoá ${s.title}`}
+                            disabled={!!s.crawling}
+                            onClick={() => setConfirmDelete(s.id)}
+                          >
+                            <Icon name="trash" size={13} />
+                          </button>
+                        </span>
                       )}
                     </td>
                   </tr>

@@ -3,15 +3,16 @@ import { Response as ExpressResponse, Router } from "express";
 import multer from "multer";
 import os from "os";
 import path from "path";
-import { MAX_ATTEMPTS, extractWithRetry } from "../services/crawl";
+import { MAX_ATTEMPTS, estimateRemainingMs, extractWithRetry } from "../services/crawl";
 import { createCoverStore, coverPathForExport } from "../services/coverStore";
 import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
 import { DATA_DIR } from "../config/paths";
 import { storyId, storyStore } from "../services/storyStore";
 import { blocksToHtml, htmlToBlocks } from "../services/chapterHtml";
-import { chaptersToCrawl, mergeStory, pickChapterTitle } from "../services/storyService";
+import { chaptersToCrawl, countNewChapters, mergeStory, pickChapterTitle } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
+import { TocAdapter } from "../services/toc/types";
 import {
   BookMetadata,
   ExportChapter,
@@ -65,6 +66,7 @@ router.post("/extract", async (req, res) => {
 
   const send = (event: ProgressEvent) => res.write(JSON.stringify(event) + "\n");
   const chapters: ExtractedChapter[] = [];
+  const startedAt = Date.now();
 
   for (let i = 0; i < urls.length; i++) {
     const url = urls[i];
@@ -73,10 +75,11 @@ router.post("/extract", async (req, res) => {
       send({ type: "progress", index: i, total: urls.length, url, message: `Đang tải & trích xuất...${attemptSuffix}` });
     });
     chapters.push(chapter);
+    const etaMs = estimateRemainingMs({ startedAt, completed: i + 1, total: urls.length });
     if (chapter.error) {
-      send({ type: "error", index: i, total: urls.length, url, message: chapter.error });
+      send({ type: "error", index: i, total: urls.length, url, message: chapter.error, etaMs });
     } else {
-      send({ type: "chapter-done", index: i, cursor: i + 1, total: urls.length, url });
+      send({ type: "chapter-done", index: i, cursor: i + 1, total: urls.length, url, etaMs });
     }
   }
 
@@ -195,8 +198,12 @@ router.post("/export", async (req, res) => {
 });
 
 // Crawl đang chạy theo từng truyện, kèm vị trí hiện tại để phiên mở giữa chừng
-// biết ngay đang ở đâu (xem /stories/:id/live).
-const runningCrawls = new Map<string, { cursor: number; total: number }>();
+// biết ngay đang ở đâu (xem /stories/:id/live). `startedAt` + `etaMs` phục vụ
+// ước lượng thời gian còn lại.
+const runningCrawls = new Map<
+  string,
+  { cursor: number; total: number; startedAt: number; etaMs?: number }
+>();
 
 // Các phiên đang nghe realtime theo truyện. Crawl vẫn tiếp tục sau khi request
 // bắt đầu nó kết thúc, nên phiên vừa reload (hoặc phiên khác) cũng xem được.
@@ -226,6 +233,24 @@ function publish(storyId: string, event: ProgressEvent) {
   }
 }
 
+// Nạp TOC và lưu truyện — dùng chung cho POST /stories (tạo/cập nhật theo URL)
+// và POST /stories/:id/refresh (nút "Tải N chương mới").
+async function refreshStoryToc(params: {
+  existing?: StoredStory;
+  storyUrl: string;
+  site: string;
+  adapter: TocAdapter;
+}): Promise<StoredStory> {
+  const toc = await params.adapter.fetchToc(params.storyUrl);
+  const story = mergeStory({ existing: params.existing, site: params.site, storyUrl: params.storyUrl, toc });
+  // Tải bìa về data/covers/ khi biết URL truyện; không tải được thì giữ URL gốc
+  // để epub-gen tự lấy lúc export.
+  const savedCover = await coverStore.save(story.id, story.coverUrl, params.storyUrl);
+  if (savedCover) story.coverUrl = savedCover;
+  await storyStore.save(story);
+  return story;
+}
+
 router.post("/stories", async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) {
@@ -251,15 +276,12 @@ router.post("/stories", async (req, res) => {
     res.status(409).json({ message: "Truyện đang được crawl, không thể cập nhật danh sách chương" });
     return;
   }
-  const existing = await storyStore.get(id);
   try {
-    const toc = await adapter.fetchToc(storyUrl);
-    const story = mergeStory({ existing, site: site.domain, storyUrl, toc });
-    // Tải bìa về data/covers/ ngay khi biết URL truyện; không tải được thì giữ
-    // URL gốc để epub-gen tự lấy lúc export.
-    const savedCover = await coverStore.save(story.id, story.coverUrl, storyUrl);
-    if (savedCover) story.coverUrl = savedCover;
-    await storyStore.save(story);
+    const existing = await storyStore.get(id);
+    const story = await refreshStoryToc({ existing, storyUrl, site: site.domain, adapter });
+    // Người dùng vừa chủ động nạp TOC: chip "N chương mới" của lần kiểm tra
+    // trước không còn ý nghĩa (chương mới đã thành pending).
+    await storyStore.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : "Không tải được danh sách chương" });
@@ -512,6 +534,92 @@ router.get("/stories/:id/live", (req, res) => {
   });
 });
 
+// Bật/tắt theo dõi chương mới cho một truyện.
+router.post("/stories/:id/watch", async (req, res) => {
+  const { id } = req.params;
+  const { watching } = req.body as { watching?: unknown };
+  if (typeof watching !== "boolean") {
+    res.status(400).json({ message: "watching phải là true hoặc false" });
+    return;
+  }
+  const story = await storyStore.getOutline(id);
+  if (!story) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  await storyStore.setWatching(id, watching);
+  res.json({ story: await storyStore.getOutline(id) });
+});
+
+// Kiểm tra TOC hiện tại xem truyện có chương mới không. Chỉ đếm và lưu kết
+// quả — không thêm chương vào thư viện, người dùng bấm "Tải N chương mới" mới
+// nạp thật (qua /stories/:id/refresh).
+router.post("/stories/:id/check", async (req, res) => {
+  const { id } = req.params;
+  const story = await storyStore.getOutline(id);
+  if (!story) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  const adapter = getTocAdapter(story.storyUrl);
+  if (!adapter) {
+    res.status(400).json({ message: "Truyện này không có adapter mục lục để kiểm tra" });
+    return;
+  }
+  if (runningCrawls.has(id)) {
+    res.status(409).json({ message: "Truyện đang được crawl" });
+    return;
+  }
+
+  try {
+    const toc = await adapter.fetchToc(story.storyUrl);
+    const newChapterCount = countNewChapters(story.chapters, toc.chapters);
+    const checkedAt = new Date().toISOString();
+    await storyStore.setCheckResult(id, { newChapterCount, checkedAt, error: null });
+    res.json({ newChapterCount, lastCheckedAt: checkedAt, checkError: null });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Không kiểm tra được chương mới";
+    // Giữ nguyên số chương mới + lần kiểm tra thành công trước đó; chỉ ghi nhận
+    // lỗi lần này để giao diện hiện cảnh báo.
+    await storyStore.setCheckResult(id, { error: message });
+    res.status(502).json({ message });
+  }
+});
+
+// Nạp lại TOC cho truyện đã có: chương cũ giữ nguyên nội dung/trạng thái,
+// chương mới thành pending. Dùng cho nút "Tải N chương mới" ở chi tiết truyện.
+router.post("/stories/:id/refresh", async (req, res) => {
+  const { id } = req.params;
+  const existing = await storyStore.get(id);
+  if (!existing) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  const site = findSupportedSite(existing.storyUrl);
+  const adapter = getTocAdapter(existing.storyUrl);
+  if (!site || !adapter) {
+    res.status(400).json({ message: "Truyện này không có adapter mục lục" });
+    return;
+  }
+  if (runningCrawls.has(id)) {
+    res.status(409).json({ message: "Truyện đang được crawl, không thể cập nhật danh sách chương" });
+    return;
+  }
+
+  try {
+    const story = await refreshStoryToc({
+      existing,
+      storyUrl: existing.storyUrl,
+      site: site.domain,
+      adapter,
+    });
+    await storyStore.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
+    res.json({ story });
+  } catch (err) {
+    res.status(502).json({ message: err instanceof Error ? err.message : "Không tải được danh sách chương" });
+  }
+});
+
 router.post("/stories/:id/crawl", async (req, res) => {
   const { id } = req.params;
   // getOutline chứ không phải get: vòng lặp dưới chỉ cần url/thứ tự/trạng thái,
@@ -539,7 +647,8 @@ router.post("/stories/:id/crawl", async (req, res) => {
 
   const send = (event: ProgressEvent) => publish(id, event);
 
-  runningCrawls.set(id, { cursor: 0, total: plan.length });
+  const startedAt = Date.now();
+  runningCrawls.set(id, { cursor: 0, total: plan.length, startedAt });
   try {
     // Bìa chỉ được tải về một lần (lần crawl sau bỏ qua vì file đã có): truyện
     // tạo trước khi có tính năng này sẽ tự có bìa ở lần "Crawl tiếp" kế tiếp.
@@ -560,7 +669,14 @@ router.post("/stories/:id/crawl", async (req, res) => {
     }
 
     for (let i = 0; i < plan.length; i++) {
-      runningCrawls.set(id, { cursor: i + 1, total: plan.length });
+      // Trước khi chương i xong, số chương hoàn tất là i — ETA giữ nguyên ước
+      // lượng của chương trước cho tới khi có số liệu mới.
+      runningCrawls.set(id, {
+        cursor: i + 1,
+        total: plan.length,
+        startedAt,
+        etaMs: estimateRemainingMs({ startedAt, completed: i, total: plan.length }),
+      });
       const chapter = plan[i];
       const extracted = await extractWithRetry(chapter.url, (attempt) => {
         const attemptSuffix = attempt > 1 ? ` (lần thử ${attempt}/${MAX_ATTEMPTS})` : "";
@@ -579,11 +695,12 @@ router.post("/stories/:id/crawl", async (req, res) => {
         stored.blocks = undefined;
       }
 
+      const etaMs = estimateRemainingMs({ startedAt, completed: i + 1, total: plan.length });
       if (extracted.error) {
-        send({ type: "error", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: extracted.error });
+        send({ type: "error", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: extracted.error, etaMs });
       } else {
         // Báo đích danh chương vừa xong thay vì để giao diện tự suy.
-        send({ type: "chapter-done", index: i, cursor: i + 1, total: plan.length, url: chapter.url });
+        send({ type: "chapter-done", index: i, cursor: i + 1, total: plan.length, url: chapter.url, etaMs });
       }
     }
     send({ type: "done", total: plan.length });

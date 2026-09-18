@@ -48,6 +48,12 @@ Giao diện tối (bấm icon trên thanh tiêu đề để đổi, hoặc để
   còn bao nhiêu chương, tìm theo tên (gõ không dấu vẫn ra), bấm tiêu đề cột để
   sắp xếp — giữ Shift để thêm tiêu chí phụ — phân trang, và chọn nhiều truyện
   để xoá một lượt.
+- **Theo dõi chương mới** — bật chuông cho truyện đang đọc; khi mở app, công cụ
+  tự kiểm tra mục lục và báo "N chương mới" (kèm nút kiểm tra tay). Bấm "Tải N
+  chương mới" để nạp lại mục lục và crawl đúng phần còn thiếu — không có tiến
+  trình nền, không tự crawl.
+- **Ước lượng thời gian còn lại** — trong lúc crawl, ETA và tốc độ chương/phút
+  hiện ở thanh tiến độ và chi tiết truyện.
 - **Mở nhanh cả truyện nghìn chương** — danh sách chương không kèm nội dung,
   mở chương nào mới tải chương đó; bảng chương phân trang 100 chương/trang.
 - **Xử lý chương lỗi** — thử lại riêng từng chương, hoặc tự dán nội dung cho
@@ -165,6 +171,9 @@ Backend phục vụ cả frontend đã build lẫn REST API dưới `/api`.
 | `GET` | `/api/stories/:id/chapters/:order` | Nội dung một chương, tải khi người dùng mở chương ra |
 | `POST` | `/api/stories/:id/crawl` | `{ orders? }` — crawl ở hậu trường, trả `202` ngay |
 | `POST` | `/api/stories/:id/meta` | Lưu tên sách / tác giả / ngôn ngữ / ảnh bìa (multipart khi kèm ảnh) |
+| `POST` | `/api/stories/:id/watch` | `{ watching }` — bật/tắt theo dõi chương mới |
+| `POST` | `/api/stories/:id/check` | Kiểm tra mục lục, trả `{ newChapterCount, lastCheckedAt, checkError }` |
+| `POST` | `/api/stories/:id/refresh` | Nạp lại mục lục cho truyện đã có — chương cũ giữ nguyên nội dung, chương mới thành `pending` |
 | `PATCH` | `/api/stories/:id/chapters/:order` | `{ title, contentHtml }` — lưu tên & nội dung người dùng đã sửa cho một chương |
 | `GET` | `/api/stories/:id/cover` | Ảnh bìa đã lưu |
 | `GET` | `/api/stories/live` | **SSE** — tiến độ mọi truyện đang crawl (kèm `storyId`) |
@@ -286,6 +295,13 @@ thành một đoạn chứa link về nguồn, thay vì mất hẳn.
   báo lỗi rõ ràng.
 - **Nút "Load more"** chưa được click tự động; hiện chỉ tự scroll để kích hoạt
   lazy-load qua scroll event.
+- **Theo dõi chương mới chỉ chạy khi app đang mở** — mỗi truyện theo dõi tốn
+  một lần fetch mục lục, tối đa 2 truyện song song, không có tiến trình nền.
+  Phát hiện dựa trên URL chương: chương đổi URL vẫn tính là mới, chương bị xoá
+  khỏi mục lục không được báo.
+- **ETA là ước lượng** theo tốc độ trung bình của lần crawl hiện tại — chương
+  chậm hoặc retry làm số đổi; chỉ hiện sau vài chương và không giữ qua restart
+  server.
 - **Bảng (`<table>`)** bị làm phẳng thành các đoạn văn rời rạc.
 - **Không có đăng nhập tự động** — trang yêu cầu đăng nhập thì nằm ngoài phạm vi.
 - **Tên chương phụ thuộc mục lục của site.** Mục lục `xtruyen.vn` chỉ trả phần

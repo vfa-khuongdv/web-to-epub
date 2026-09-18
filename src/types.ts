@@ -48,6 +48,9 @@ export interface ProgressEvent {
   url?: string;
   message?: string;
   chapters?: ExtractedChapter[];
+  // Thời gian còn lại ước lượng (ms) cho lần crawl đang chạy; vắng mặt khi
+  // chưa đủ mẫu để ước lượng (xem estimateRemainingMs).
+  etaMs?: number;
 }
 
 export type ChapterStatus = "pending" | "done" | "error";
@@ -69,6 +72,12 @@ export interface StoredStory {
   author?: string;
   language?: string; // ngôn ngữ sách, dùng cho EPUB; mặc định "vi" ở giao diện
   coverUrl?: string;
+  // Theo dõi chương mới: bật thì app kiểm tra TOC khi mở; kết quả lần kiểm tra
+  // gần nhất (số chương mới + lỗi nếu có) lưu lại để hiện chip trong thư viện.
+  watching: boolean;
+  newChapterCount: number;
+  lastCheckedAt?: string; // ISO, lần kiểm tra thành công gần nhất
+  checkError?: string;
   chapters: StoredChapter[];
   createdAt: string; // ISO
   updatedAt: string; // ISO
@@ -82,5 +91,9 @@ export interface StorySummary {
   chapterCount: number;
   doneCount: number;
   errorCount: number;
+  watching: boolean;
+  newChapterCount: number;
+  lastCheckedAt?: string;
+  checkError?: string;
   updatedAt: string;
 }

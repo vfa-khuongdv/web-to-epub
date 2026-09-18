@@ -439,6 +439,12 @@
     color: var(--color-error);
   }
 
+  .chip-new {
+    border-color: var(--color-select-deep);
+    background: var(--color-select-soft);
+    color: var(--color-select-deep);
+  }
+
   .bar {
     height: 6px;
     border: 1px solid var(--color-rule);
@@ -639,6 +645,13 @@
     color: var(--color-error);
     font-size: 12.5px;
     overflow-wrap: anywhere;
+  }
+
+  .banner-new {
+    align-items: center;
+    border-color: var(--color-select-deep);
+    background: var(--color-select-soft);
+    color: var(--color-select-deep);
   }
 
   .banner svg {
