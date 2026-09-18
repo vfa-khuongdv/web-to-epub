@@ -8,10 +8,19 @@ import { buildEpub, contentDisposition, epubFileName } from "../services/epubBui
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
 import { DATA_DIR } from "../config/paths";
 import { storyId, storyStore } from "../services/storyStore";
-import { htmlToBlocks } from "../services/chapterHtml";
+import { blocksToHtml, htmlToBlocks } from "../services/chapterHtml";
 import { chaptersToCrawl, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
-import { ExportRequest, ExtractedChapter, ExtractRequest, ProgressEvent, StoredChapter, StoredStory } from "../types";
+import {
+  BookMetadata,
+  ExportChapter,
+  ExportRequest,
+  ExtractedChapter,
+  ExtractRequest,
+  ProgressEvent,
+  StoredChapter,
+  StoredStory,
+} from "../types";
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -223,8 +232,11 @@ router.get("/stories/live", (req, res) => {
   });
 });
 
+// Danh sách chương không kèm nội dung: truyện vài nghìn chương đã crawl nặng
+// hàng chục MB nếu gửi cả blocks, trong khi bảng chương chỉ cần tên + trạng
+// thái. Nội dung từng chương lấy riêng ở /stories/:id/chapters/:order.
 router.get("/stories/:id", async (req, res) => {
-  const story = await storyStore.get(req.params.id);
+  const story = await storyStore.getOutline(req.params.id);
   if (!story) {
     res.status(404).json({ message: "Không tìm thấy truyện" });
     return;
@@ -275,7 +287,70 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
     language: language?.trim() || undefined,
     coverUrl,
   });
-  res.json({ story: await storyStore.get(id) });
+  res.json({ story: await storyStore.getOutline(id) });
+});
+
+// Nội dung một chương, tải khi người dùng mở chương đó ra xem/sửa.
+router.get("/stories/:id/chapters/:order", async (req, res) => {
+  const order = Number(req.params.order);
+  if (!Number.isInteger(order)) {
+    res.status(400).json({ message: "Số thứ tự chương không hợp lệ" });
+    return;
+  }
+  const chapter = await storyStore.getChapter(req.params.id, order);
+  if (!chapter) {
+    res.status(404).json({ message: "Không tìm thấy chương" });
+    return;
+  }
+  res.json({ chapter });
+});
+
+// Xuất EPUB cho truyện đã lưu: nội dung lấy thẳng từ DB, client chỉ gửi những
+// chương nó đang sửa dở — không phải tải cả truyện về rồi đẩy ngược lên.
+router.post("/stories/:id/export", async (req, res) => {
+  const { id } = req.params;
+  const { metadata, chapters } = req.body as {
+    metadata?: BookMetadata;
+    chapters?: { order: number; title?: string; contentHtml?: string }[];
+  };
+  if (!metadata || !Array.isArray(chapters)) {
+    res.status(400).json({ message: "metadata và chapters là bắt buộc" });
+    return;
+  }
+
+  const story = await storyStore.get(id);
+  if (!story) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+
+  try {
+    const byOrder = new Map(story.chapters.map((c) => [c.order, c]));
+    const included: ExportChapter[] = [];
+    for (const wanted of chapters) {
+      const stored = byOrder.get(wanted.order);
+      // Chương client gửi kèm nội dung (đang sửa dở) thì dùng bản đó; còn lại
+      // dựng từ block đã lưu.
+      // Chuỗi rỗng (chương mở ra nhưng tải nội dung hỏng) cũng rơi về bản
+      // trong DB, để không lẳng lặng xuất ra chương trắng.
+      const contentHtml = wanted.contentHtml || (stored ? blocksToHtml(stored.blocks ?? []) : "");
+      if (!contentHtml) continue;
+      included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
+    }
+
+    const buffer = await buildEpub(
+      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl) : undefined },
+      included
+    );
+    res.writeHead(200, {
+      "Content-Type": "application/epub+zip",
+      "Content-Disposition": contentDisposition(epubFileName(metadata.title || story.title || "book")),
+      "Content-Length": buffer.length,
+    });
+    res.end(buffer);
+  } catch (err) {
+    res.status(500).json({ message: err instanceof Error ? err.message : "Lỗi export EPUB" });
+  }
 });
 
 // Sửa tên và nội dung một chương. Nội dung crawl về thường lẫn thông tin thừa
@@ -295,12 +370,7 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
     return;
   }
 
-  const story = await storyStore.get(id);
-  if (!story) {
-    res.status(404).json({ message: "Không tìm thấy truyện" });
-    return;
-  }
-  const chapter = story.chapters.find((c) => c.order === order);
+  const chapter = await storyStore.getChapter(id, order);
   if (!chapter) {
     res.status(404).json({ message: "Không tìm thấy chương" });
     return;

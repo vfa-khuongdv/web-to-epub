@@ -12,17 +12,22 @@ export function PendingChapterRow({
   title,
   url,
   state = "pending",
+  includeColumn = false,
 }: {
   order: number;
   title: string;
   url: string;
   state?: ChipState;
+  // Giữ đúng số cột với bảng đang dùng nó (xem ChapterCardProps.included).
+  includeColumn?: boolean;
 }) {
   return (
     <tr>
-      <td className="w-9 pr-1">
-        <input type="checkbox" className="checkbox" disabled aria-label={`Chương ${order} chưa crawl`} />
-      </td>
+      {includeColumn && (
+        <td className="w-9 pr-1">
+          <input type="checkbox" className="checkbox" disabled aria-label={`Chương ${order} chưa crawl`} />
+        </td>
+      )}
       <td className="num w-11">
         <b>{order}</b>
       </td>
@@ -54,13 +59,18 @@ interface ChapterCardProps {
   chapter: ExtractedChapter;
   order: number;
   title: string;
-  included: boolean;
+  // Vắng mặt ở tab thư viện: truyện đã lưu thì xuất hết chương đã crawl, không
+  // có gì để chọn. Tab "Crawl thủ công" vẫn cần vì người dùng dán từng chương.
+  included?: boolean;
   onTitleChange: (title: string) => void;
-  onIncludedChange: (included: boolean) => void;
+  onIncludedChange?: (included: boolean) => void;
   onRetry: () => void;
   retrying: boolean;
   retriedOnce: boolean;
   onBodyChange: (html: string) => void;
+  // Nội dung chương không còn đi kèm danh sách chương: mở chương nào thì tải
+  // chương đó. Vắng mặt ở tab "Crawl thủ công" vì nội dung đã có sẵn trong RAM.
+  loadBody?: () => Promise<string>;
   // Vắng mặt ở tab "Crawl thủ công": chương chưa nằm trong thư viện nên không
   // có gì để lưu vào, chỉ sửa tạm rồi xuất EPUB.
   onSave?: (title: string, contentHtml: string) => Promise<void>;
@@ -98,6 +108,7 @@ export default function ChapterCard({
   retrying,
   retriedOnce,
   onBodyChange,
+  loadBody,
   onSave,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
@@ -118,6 +129,9 @@ export default function ChapterCard({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [loadingBody, setLoadingBody] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const loadedBody = useRef(false);
   // Tăng lên để remount khung soạn thảo — cách duy nhất ép một vùng
   // contentEditable không kiểm soát nhận lại nội dung cũ khi hoàn tác.
   const [editorKey, setEditorKey] = useState(0);
@@ -144,14 +158,37 @@ export default function ChapterCard({
         setHtml(live);
         onBodyChange(live);
       }
+      setOpen(false);
+      return;
     }
-    setOpen((o) => !o);
+    setOpen(true);
+    void loadOnce();
+  }
+
+  // Tải nội dung đúng một lần cho mỗi lần dựng thẻ: đóng rồi mở lại không gọi
+  // thêm request, và bản người dùng đang sửa dở không bị ghi đè.
+  async function loadOnce() {
+    if (!loadBody || loadedBody.current) return;
+    loadedBody.current = true;
+    setLoadError(null);
+    setLoadingBody(true);
+    try {
+      const loaded = await loadBody();
+      setHtml(loaded);
+      setSavedHtml(loaded);
+      setEditorKey((k) => k + 1);
+    } catch (err) {
+      loadedBody.current = false;
+      setLoadError((err as Error).message);
+    } finally {
+      setLoadingBody(false);
+    }
   }
 
   function enterManualMode() {
     setManualMode(true);
     setOpen(true);
-    onIncludedChange(true);
+    onIncludedChange?.(true);
   }
 
   async function handleSave() {
@@ -186,16 +223,18 @@ export default function ChapterCard({
   return (
     <>
       <tr>
-        <td className="w-9 pr-1">
-          <input
-            type="checkbox"
-            className="checkbox"
-            checked={included}
-            disabled={failed}
-            onChange={(e) => onIncludedChange(e.target.checked)}
-            aria-label={`Đưa chương ${order} vào sách`}
-          />
-        </td>
+        {onIncludedChange && (
+          <td className="w-9 pr-1">
+            <input
+              type="checkbox"
+              className="checkbox"
+              checked={included}
+              disabled={failed}
+              onChange={(e) => onIncludedChange(e.target.checked)}
+              aria-label={`Đưa chương ${order} vào sách`}
+            />
+          </td>
+        )}
         <td className="num w-11">
           <b>{order}</b>
         </td>
@@ -238,7 +277,7 @@ export default function ChapterCard({
 
       {open && (
         <tr className="chapter-open" id={panelId}>
-          <td colSpan={5}>
+          <td colSpan={onIncludedChange ? 5 : 4}>
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
               <span className="break-all">
                 Nguồn:{" "}
@@ -289,6 +328,13 @@ export default function ChapterCard({
                     }}
                   />
                 </div>
+                {loadingBody && <p className="mt-2 text-xs text-ink-3">Đang tải nội dung chương…</p>}
+                {loadError && (
+                  <div className="banner mt-2">
+                    <Icon name="alert" size={14} />
+                    <p className="min-w-0">{loadError}</p>
+                  </div>
+                )}
                 <div
                   key={editorKey}
                   className="chapter-body"

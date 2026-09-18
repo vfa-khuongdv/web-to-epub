@@ -105,3 +105,18 @@ export function htmlToBlocks(html: string): ContentBlock[] {
   walk(JSDOM.fragment(html), blocks);
   return blocks;
 }
+
+/**
+ * Chiều ngược lại: dựng HTML chương từ block đã lưu. Giữ đúng cách frontend
+ * dựng (frontend/src/blocksToHtml.ts) để EPUB xuất từ server giống hệt bản
+ * xuất từ nội dung đang mở trên giao diện.
+ */
+export function blocksToHtml(blocks: ContentBlock[]): string {
+  return blocks
+    .map((block) => {
+      if (block.type === "heading") return `<h${block.level || 2}>${block.text}</h${block.level || 2}>`;
+      if (block.type === "image") return `<img src="${block.src}" alt="${block.alt || ""}" />`;
+      return `<p>${block.text}</p>`;
+    })
+    .join("\n");
+}

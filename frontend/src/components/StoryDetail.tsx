@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchStory, saveChapterEdit, saveStoryMeta, startStoryCrawl } from "../api";
+import { fetchChapterContent, fetchStory, saveChapterEdit, saveStoryMeta, startStoryCrawl } from "../api";
 import { blocksToHtml } from "../blocksToHtml";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../useCrawlJob";
@@ -7,12 +7,15 @@ import { useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
 
+// Truyện dài vài nghìn chương: dựng hết một lúc là hàng chục nghìn node DOM,
+// mỗi lần bấm một ô tick cũng phải vẽ lại từng ấy dòng.
+const CHAPTERS_PER_PAGE = 100;
+
 interface ChapterState {
   id: string;
   order: number;
   data: ExtractedChapter;
   title: string;
-  included: boolean;
   retrying: boolean;
   version: number;
   retriedOnce: boolean;
@@ -28,7 +31,6 @@ function toChapterState(chapter: StoredChapter, version: number): ChapterState {
     order: chapter.order,
     data,
     title: chapter.title,
-    included: chapter.status === "done",
     retrying: false,
     version,
     retriedOnce: chapter.status === "error",
@@ -65,7 +67,8 @@ export default function StoryDetail({
   const [saved, setSaved] = useState(false);
   const coverInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
-  const { isExporting, exportBook } = useEpubExport();
+  const [chapterPage, setChapterPage] = useState(1);
+  const { isExporting, exportStoryBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -86,6 +89,16 @@ export default function StoryDetail({
     story.chapters.filter((c) => c.status === "done").length + live.done;
   const pendingCount = story.chapters.length - doneCount - errorCount;
   const remaining = pendingCount + errorCount;
+
+  // Tra theo Map thay vì find() trong vòng lặp: find() biến mỗi lần vẽ bảng
+  // thành O(n²) — với 2468 chương là vài triệu phép so sánh.
+  const stateByOrder = new Map(chapters.map((c) => [c.order, c]));
+  const chapterPageCount = Math.max(1, Math.ceil(story.chapters.length / CHAPTERS_PER_PAGE));
+  const currentChapterPage = Math.min(chapterPage, chapterPageCount);
+  const visibleChapters = story.chapters.slice(
+    (currentChapterPage - 1) * CHAPTERS_PER_PAGE,
+    currentChapterPage * CHAPTERS_PER_PAGE
+  );
 
   // Truyện đang mở được nghe qua kênh realtime: crawl do phiên này hay phiên
   // khác bắt đầu đều cập nhật trực tiếp vào bảng chương.
@@ -190,14 +203,18 @@ export default function StoryDetail({
   async function handleExport() {
     setError(null);
     try {
+      // Chỉ gửi chương đang sửa dở; chương chưa mở thì server tự dựng từ DB,
+      // khỏi phải tải cả truyện về rồi đẩy ngược lên.
+      // Sách gồm mọi chương đã có nội dung; chương lỗi chưa dọn thì bỏ qua.
       const payload = chapters
-        .filter((c) => c.included)
-        .map((c) => ({
-          title: c.title,
-          includeInBook: true,
-          contentHtml: bodies.current.get(c.id) ?? blocksToHtml(c.data.blocks),
-        }));
-      await exportBook({ title: bookTitle || story.title, author: author || "Unknown", language, coverUrl }, payload, null);
+        .filter((c) => !c.data.error)
+        .map((c) => ({ order: c.order, title: c.title, contentHtml: bodies.current.get(c.id) }));
+      await exportStoryBook(
+        story.id,
+        { title: bookTitle || story.title, author: author || "Unknown", language, coverUrl },
+        payload,
+        null
+      );
     } catch (err) {
       setError((err as Error).message);
     }
@@ -343,7 +360,6 @@ export default function StoryDetail({
         <table className="tbl">
           <thead>
             <tr>
-              <th className="w-9" />
               <th className="num w-11">#</th>
               <th>Chương</th>
               <th className="w-32">Trạng thái</th>
@@ -351,8 +367,8 @@ export default function StoryDetail({
             </tr>
           </thead>
           <tbody>
-            {story.chapters.map((sc) => {
-              const c = chapters.find((x) => x.order === sc.order);
+            {visibleChapters.map((sc) => {
+              const c = stateByOrder.get(sc.order);
               if (!c) {
                 return (
                   <PendingChapterRow
@@ -370,17 +386,14 @@ export default function StoryDetail({
                   chapter={c.data}
                   order={c.order}
                   title={c.title}
-                  included={c.included}
                   retrying={c.retrying}
                   retriedOnce={c.retriedOnce}
                   onTitleChange={(title) =>
                     setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)))
                   }
-                  onIncludedChange={(included) =>
-                    setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, included } : x)))
-                  }
                   onRetry={() => handleCrawl([c.order])}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
+                  loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {
                     const updated = await saveChapterEdit(story.id, c.order, { title, contentHtml });
                     // Lấy lại đúng bản server đã chuẩn hoá để lúc xuất EPUB
@@ -392,9 +405,8 @@ export default function StoryDetail({
                           ? {
                               ...x,
                               title: updated.title,
+                              // Chương từng lỗi nay đã có nội dung -> vào sách.
                               data: { sourceUrl: updated.url, title: updated.title, blocks: updated.blocks ?? [] },
-                              // Chương từng lỗi nay đã có nội dung -> tick vào sách.
-                              included: x.data.error ? true : x.included,
                             }
                           : x
                       )
@@ -406,6 +418,36 @@ export default function StoryDetail({
             })}
           </tbody>
         </table>
+
+        {chapterPageCount > 1 && (
+          <div className="flex items-center gap-2 border-t border-rule px-3 py-2 text-xs text-ink-2">
+            <span>
+              Chương {(currentChapterPage - 1) * CHAPTERS_PER_PAGE + 1}–
+              {Math.min(currentChapterPage * CHAPTERS_PER_PAGE, story.chapters.length)} / {story.chapters.length}
+            </span>
+            <span className="ml-auto flex items-center gap-1.5">
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                disabled={currentChapterPage <= 1}
+                onClick={() => setChapterPage(currentChapterPage - 1)}
+              >
+                Trước
+              </button>
+              <span>
+                Trang {currentChapterPage}/{chapterPageCount}
+              </span>
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                disabled={currentChapterPage >= chapterPageCount}
+                onClick={() => setChapterPage(currentChapterPage + 1)}
+              >
+                Sau
+              </button>
+            </span>
+          </div>
+        )}
       </div>
     </section>
   );

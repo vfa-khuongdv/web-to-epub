@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { htmlToBlocks } from "./chapterHtml";
+import { blocksToHtml, htmlToBlocks } from "./chapterHtml";
 
 describe("htmlToBlocks", () => {
   it("giữ nguyên đoạn văn và định dạng inline bên trong", () => {
@@ -83,5 +83,25 @@ describe("htmlToBlocks", () => {
   it("trả mảng rỗng khi nội dung trống", () => {
     expect(htmlToBlocks("")).toEqual([]);
     expect(htmlToBlocks("<p><br></p>")).toEqual([]);
+  });
+});
+
+describe("blocksToHtml", () => {
+  it("dựng lại đoạn văn, heading và ảnh", () => {
+    expect(
+      blocksToHtml([
+        { type: "heading", level: 3, text: "Chương 1" },
+        { type: "paragraph", text: "Đoạn <b>đậm</b>" },
+        { type: "image", src: "https://img.example/1.jpg", alt: "Ảnh" },
+      ])
+    ).toBe('<h3>Chương 1</h3>\n<p>Đoạn <b>đậm</b></p>\n<img src="https://img.example/1.jpg" alt="Ảnh" />');
+  });
+
+  it("đi vòng qua htmlToBlocks vẫn ra đúng block ban đầu", () => {
+    const blocks = [
+      { type: "paragraph" as const, text: "Một" },
+      { type: "paragraph" as const, text: "Hai" },
+    ];
+    expect(htmlToBlocks(blocksToHtml(blocks))).toEqual(blocks);
   });
 });

@@ -358,6 +358,7 @@ export default function ManualCrawlView({
                   {chapters.map((c) =>
                     c.data === null ? (
                       <PendingChapterRow
+                        includeColumn
                         key={`pending-${c.order}-${c.version}`}
                         order={c.order}
                         title={c.title}

@@ -123,6 +123,37 @@ export async function uploadCover(file: File): Promise<string> {
   return data.path as string;
 }
 
+// Nội dung một chương, tải khi người dùng mở chương ra xem/sửa (chi tiết truyện
+// không còn kèm nội dung để tránh tải hàng chục MB mỗi lần mở truyện).
+export async function fetchChapterContent(storyId: string, order: number): Promise<StoredChapter> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`);
+  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được nội dung chương"));
+  const data = await res.json();
+  return data.chapter as StoredChapter;
+}
+
+// Xuất EPUB cho truyện đã lưu: chỉ gửi chương nào đang sửa dở, phần còn lại
+// server dựng từ nội dung trong DB.
+export interface StoryExportChapter {
+  order: number;
+  title: string;
+  contentHtml?: string;
+}
+
+export async function exportStoryEpub(
+  storyId: string,
+  metadata: BookMetadata,
+  chapters: StoryExportChapter[]
+): Promise<Blob> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/export`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ metadata, chapters }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, "Export thất bại"));
+  return res.blob();
+}
+
 export interface ExportChapterPayload {
   title: string;
   includeInBook: boolean;

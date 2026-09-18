@@ -81,6 +81,26 @@ describe("createStoryStore", () => {
     expect(loaded?.updatedAt).toBe("2026-09-18T00:00:00.000Z");
   });
 
+  it("getOutline trả đủ chapter nhưng không kèm nội dung", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    const outline = await store.getOutline(story.id);
+    expect(outline?.title).toBe("Truyện A");
+    expect(outline?.chapters.map((c) => c.order)).toEqual([1, 2, 3]);
+    expect(outline?.chapters.every((c) => c.blocks === undefined)).toBe(true);
+    // Trạng thái và lỗi vẫn phải còn: bảng chương dựa vào đó.
+    expect(outline?.chapters[2]).toMatchObject({ status: "error", error: "Trang bị xoá trắng" });
+  });
+
+  it("getChapter trả nội dung của đúng một chương", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    expect(await store.getChapter(story.id, 1)).toEqual(story.chapters[0]);
+    expect(await store.getChapter(story.id, 99)).toBeUndefined();
+  });
+
   it("save đồng bộ danh sách chapter: chapter bị bỏ khỏi TOC sẽ bị xoá", async () => {
     const story = makeStory();
     await store.save(story);

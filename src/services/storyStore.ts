@@ -19,6 +19,10 @@ export interface StoryMeta {
 export interface StoryStore {
   list(): Promise<StorySummary[]>;
   get(id: string): Promise<StoredStory | undefined>;
+  // Như get() nhưng bỏ nội dung chương: truyện vài nghìn chương đã crawl nặng
+  // hàng chục MB, trong khi giao diện chỉ cần danh sách + trạng thái.
+  getOutline(id: string): Promise<StoredStory | undefined>;
+  getChapter(storyId: string, order: number): Promise<StoredChapter | undefined>;
   save(story: StoredStory): Promise<void>;
   saveChapter(storyId: string, chapter: StoredChapter): Promise<void>;
   // Thay thông tin sách (tên/tác giả/ngôn ngữ/bìa) mà không đụng tới chapter —
@@ -113,6 +117,10 @@ export function createStoryStore(baseDir: string): StoryStore {
   const deleteChapters = db.prepare(`DELETE FROM chapters WHERE story_id = ?`);
   const selectStory = db.prepare(`SELECT * FROM stories WHERE id = ?`);
   const selectChapters = db.prepare(`SELECT * FROM chapters WHERE story_id = ? ORDER BY "order"`);
+  const selectChapterOutlines = db.prepare(
+    `SELECT "order", url, title, status, error FROM chapters WHERE story_id = ? ORDER BY "order"`
+  );
+  const selectChapter = db.prepare(`SELECT * FROM chapters WHERE story_id = ? AND "order" = ?`);
   const selectSummaries = db.prepare(`
     SELECT s.id, s.story_url, s.site, s.title, s.updated_at,
            COUNT(c."order") AS chapter_count,
@@ -194,6 +202,45 @@ export function createStoryStore(baseDir: string): StoryStore {
         })),
         createdAt: story.created_at,
         updatedAt: story.updated_at,
+      };
+    },
+
+    async getOutline(id: string): Promise<StoredStory | undefined> {
+      if (!STORY_ID_RE.test(id)) return undefined;
+      const story = selectStory.get(id) as unknown as StoryRow | undefined;
+      if (!story) return undefined;
+      const rows = selectChapterOutlines.all(id) as unknown as Omit<ChapterRow, "blocks" | "story_id">[];
+      return {
+        id: story.id,
+        storyUrl: story.story_url,
+        site: story.site,
+        title: story.title,
+        author: story.author ?? undefined,
+        language: story.language ?? undefined,
+        coverUrl: story.cover_url ?? undefined,
+        chapters: rows.map((row) => ({
+          order: row.order,
+          url: row.url,
+          title: row.title,
+          status: row.status as StoredChapter["status"],
+          error: row.error ?? undefined,
+        })),
+        createdAt: story.created_at,
+        updatedAt: story.updated_at,
+      };
+    },
+
+    async getChapter(storyId: string, order: number): Promise<StoredChapter | undefined> {
+      if (!STORY_ID_RE.test(storyId) || !Number.isInteger(order)) return undefined;
+      const row = selectChapter.get(storyId, order) as unknown as ChapterRow | undefined;
+      if (!row) return undefined;
+      return {
+        order: row.order,
+        url: row.url,
+        title: row.title,
+        status: row.status as StoredChapter["status"],
+        error: row.error ?? undefined,
+        blocks: row.blocks ? (JSON.parse(row.blocks) as ContentBlock[]) : undefined,
       };
     },
 
