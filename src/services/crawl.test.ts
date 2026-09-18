@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWattpadChapter } from "./chapters/wattpad";
 import { extractWithRetry } from "./crawl";
 import { LockedContentError } from "./extractor";
-import { renderPageHtml } from "./renderer";
+import { BlankedPageError, renderPageHtml } from "./renderer";
 
 vi.mock("./chapters/wattpad", async (importOriginal) => {
   const actual = await importOriginal<typeof import("./chapters/wattpad")>();
@@ -14,10 +14,15 @@ vi.mock("./extractor", async (importOriginal) => {
   return { ...actual, extractChapter: vi.fn() };
 });
 
-vi.mock("./renderer", () => ({ renderPageHtml: vi.fn() }));
+vi.mock("./renderer", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./renderer")>();
+  return { ...actual, renderPageHtml: vi.fn() };
+});
 
 const WATTPAD_URL = "https://www.wattpad.com/148415654-pumpkin-patch-princess-chapter-two-visiting";
-const OTHER_URL = "https://truyenfull.live/a/chuong-1/";
+// xtruyen dựng nội dung bằng JS nên không có fetcher riêng — đây là site đi
+// đường renderer + extractor chung.
+const OTHER_URL = "https://xtruyen.vn/truyen/a/chuong-1/";
 
 describe("extractWithRetry", () => {
   beforeEach(() => {
@@ -62,6 +67,27 @@ describe("extractWithRetry", () => {
 
       expect(chapter.error).toBeUndefined();
       expect(fetchWattpadChapter).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("trang bị xoá trắng thì thử lại gần như ngay, không chờ backoff", async () => {
+    vi.useFakeTimers();
+    try {
+      const { extractChapter } = await import("./extractor");
+      vi.mocked(renderPageHtml)
+        .mockRejectedValueOnce(new BlankedPageError("Trang bị xoá trắng"))
+        .mockResolvedValueOnce("<html>rendered</html>");
+      vi.mocked(extractChapter).mockReturnValue({ sourceUrl: OTHER_URL, title: "Chương 1", blocks: [] });
+
+      const promise = extractWithRetry(OTHER_URL);
+      // Chỉ nhích 300ms: backoff cũ (1000ms) sẽ khiến lượt thử thứ hai chưa chạy.
+      await vi.advanceTimersByTimeAsync(300);
+      const chapter = await promise;
+
+      expect(chapter.error).toBeUndefined();
+      expect(renderPageHtml).toHaveBeenCalledTimes(2);
     } finally {
       vi.useRealTimers();
     }

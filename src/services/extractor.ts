@@ -128,7 +128,16 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   stripChrome(dom.window.document);
 
   const reader = new Readability(dom.window.document, { keepClasses: false });
-  const article = reader.parse();
+  // jsdom giữ nguyên cả cây DOM cho tới khi bộ thu gom dọn tới, mà mỗi chương
+  // dựng hai window (trang gốc + nội dung Readability trả về) và mỗi lần thử
+  // lại dựng thêm một cặp nữa. Readability trả kết quả dưới dạng chuỗi HTML nên
+  // từ đây không ai đụng tới `dom`: đóng ngay, kể cả khi parse ném lỗi.
+  let article: ReturnType<Readability["parse"]>;
+  try {
+    article = reader.parse();
+  } finally {
+    dom.window.close();
+  }
 
   if (!article || !article.content) {
     throw new Error(`Không trích xuất được nội dung chính từ ${url}`);
@@ -136,7 +145,12 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
 
   const contentDom = new JSDOM(article.content, { url });
   const blocks: ContentBlock[] = [];
-  walkToBlocks(contentDom.window.document.body, blocks);
+  try {
+    // Block chỉ chứa chuỗi, không giữ node nào — đóng được ngay sau khi duyệt.
+    walkToBlocks(contentDom.window.document.body, blocks);
+  } finally {
+    contentDom.window.close();
+  }
 
   const bodyText = blocks.map((b) => b.text || "").join(" ");
   if (LOCKED_CONTENT_RE.test(bodyText)) {

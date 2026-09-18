@@ -17,11 +17,12 @@ export interface CrawlJobState {
   total: number;
   errors: number;
   log: CrawlLogLine[];
-  // Live state per chapter URL for the run in progress: the backend only sends
-  // per-attempt progress and per-failure errors, so a chapter counts as done
-  // once the next chapter's progress arrives without an error for it. Views
-  // apply this only to chapters they still show as pending, so the server's
-  // own data always wins once it is refetched.
+  // Trạng thái từng chương của lần crawl đang chạy, theo URL. Backend báo đích
+  // danh chương nào xong ("chapter-done") hoặc hỏng ("error"), thay vì để chỗ
+  // này suy ra từ việc chương kế tiếp bắt đầu — phép suy đó bỏ sót chương cuối,
+  // vì sau nó không còn chương nào bắt đầu nữa. Các view chỉ áp lên chương
+  // chúng còn thấy là pending, nên dữ liệu thật của server luôn thắng sau khi
+  // tải lại.
   chapters: Record<string, ChapterLiveState>;
 }
 
@@ -36,21 +37,22 @@ const IDLE: CrawlJobState = {
   chapters: {},
 };
 
+// Crawl vài trăm chương (cộng các lần thử lại) sinh hàng nghìn dòng nhật ký,
+// mà mỗi dòng mới lại sao chép cả mảng và render lại cả danh sách. Chỉ giữ phần
+// cuối — cũng là phần duy nhất người dùng đọc tới.
+const MAX_LOG_LINES = 500;
+
+function appendLog(log: CrawlLogLine[], line: CrawlLogLine): CrawlLogLine[] {
+  const next = [...log, line];
+  return next.length > MAX_LOG_LINES ? next.slice(-MAX_LOG_LINES) : next;
+}
+
 export function advanceChapterStates(
   states: Record<string, ChapterLiveState>,
   url: string,
   next: ChapterLiveState
 ): Record<string, ChapterLiveState> {
-  const updated: Record<string, ChapterLiveState> = { ...states };
-  if (next === "running") {
-    // Anything still marked running is a chapter the crawl has moved past;
-    // an error would have marked it already.
-    for (const [key, value] of Object.entries(updated)) {
-      if (value === "running" && key !== url) updated[key] = "done";
-    }
-  }
-  updated[url] = next;
-  return updated;
+  return { ...states, [url]: next };
 }
 
 export type RunCrawl = (
@@ -111,7 +113,9 @@ export function useCrawlJob() {
 
   const applyEvent = useCallback((event: ProgressEvent, onEvent?: (event: ProgressEvent) => void) => {
     if (event.type === "progress" && event.index !== undefined && event.total) {
-      const cursor = event.index + 1;
+      // `cursor` của backend là số chương đã xong; chỉ khi thiếu (luồng crawl
+      // thủ công vốn tuần tự) mới suy từ vị trí chương.
+      const cursor = event.cursor ?? event.index + 1;
       setJob((j) => ({
         ...j,
         // A progress event means a crawl is running — including one another
@@ -121,13 +125,14 @@ export function useCrawlJob() {
         total: event.total!,
         pct: (cursor / event.total!) * 100,
         chapters: event.url ? advanceChapterStates(j.chapters, event.url, "running") : j.chapters,
-        log: [
-          ...j.log,
-          { at: stamp(), text: `[${cursor}/${event.total}] ${event.url} — ${event.message}`, isError: false },
-        ],
+        log: appendLog(j.log, {
+          at: stamp(),
+          text: `[${cursor}/${event.total}] ${event.url} — ${event.message}`,
+          isError: false,
+        }),
       }));
     } else if (event.type === "error" && event.index !== undefined && event.total) {
-      const cursor = event.index + 1;
+      const cursor = event.cursor ?? event.index + 1;
       setJob((j) => ({
         ...j,
         running: true,
@@ -135,10 +140,22 @@ export function useCrawlJob() {
         total: event.total!,
         errors: j.errors + 1,
         chapters: event.url ? advanceChapterStates(j.chapters, event.url, "error") : j.chapters,
-        log: [
-          ...j.log,
-          { at: stamp(), text: `[${cursor}/${event.total}] ${event.url} — ${event.message}`, isError: true },
-        ],
+        log: appendLog(j.log, {
+          at: stamp(),
+          text: `[${cursor}/${event.total}] ${event.url} — ${event.message}`,
+          isError: true,
+        }),
+      }));
+    } else if (event.type === "chapter-done") {
+      const cursor = event.cursor ?? 0;
+      const total = event.total ?? 0;
+      setJob((j) => ({
+        ...j,
+        running: true,
+        cursor: total > 0 ? cursor : j.cursor,
+        total: total || j.total,
+        pct: total > 0 ? (cursor / total) * 100 : j.pct,
+        chapters: event.url ? advanceChapterStates(j.chapters, event.url, "done") : j.chapters,
       }));
     } else if (event.type === "done") {
       setJob((j) => ({ ...j, cursor: j.total, pct: 100 }));
@@ -158,7 +175,7 @@ export function useCrawlJob() {
       } catch (err) {
         setJob((j) => ({
           ...j,
-          log: [...j.log, { at: stamp(), text: `Lỗi kết nối: ${(err as Error).message}`, isError: true }],
+          log: appendLog(j.log, { at: stamp(), text: `Lỗi kết nối: ${(err as Error).message}`, isError: true }),
         }));
       } finally {
         setJob((j) => ({ ...j, running: false }));

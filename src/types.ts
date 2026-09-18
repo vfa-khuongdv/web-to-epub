@@ -38,7 +38,10 @@ export interface ExportRequest {
 }
 
 export interface ProgressEvent {
-  type: "progress" | "done" | "error" | "running" | "idle";
+  // "chapter-done": xong một chương (kèm `url`). Báo đích danh thay vì để giao
+  // diện suy ra từ việc chương sau bắt đầu — phép suy đó không đánh dấu được
+  // chương cuối cùng. "done" vẫn là xong cả lần crawl.
+  type: "progress" | "done" | "error" | "chapter-done" | "running" | "idle";
   index?: number;
   cursor?: number;
   total?: number;

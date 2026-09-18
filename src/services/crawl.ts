@@ -1,7 +1,7 @@
 import { ExtractedChapter } from "../types";
 import { getChapterFetcher } from "./chapters";
 import { extractChapter, LockedContentError } from "./extractor";
-import { renderPageHtml } from "./renderer";
+import { BlankedPageError, renderPageHtml } from "./renderer";
 
 // Some sites' anti-tool scripts blank the page at random (see renderer.ts),
 // and a cold browser session can take ~10 loads before it settles down, so
@@ -11,6 +11,17 @@ export const MAX_ATTEMPTS = 12;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// Trang bị script chống tool xoá trắng là chuyện ngẫu nhiên của từng lượt tải,
+// không phải site đang chặn mình — đo được khoảng một nửa số lượt tải xtruyen
+// dính, và lượt tải ngay sau đó thường qua. Chờ vài giây rồi mới tải lại gần
+// như là chờ không, nên loại lỗi này thử lại gần như ngay. Các lỗi khác (mạng
+// chập chờn, site trả 429/5xx) vẫn giữ backoff tăng dần.
+const BLANKED_RETRY_MS = 300;
+
+function retryDelayMs(err: unknown, attempt: number): number {
+  return err instanceof BlankedPageError ? BLANKED_RETRY_MS : Math.min(1000 * attempt, 3000);
 }
 
 // Retries render+extract a few times before giving up — some sites finish
@@ -39,7 +50,7 @@ export async function extractWithRetry(
       // instead of burning the whole retry budget on it. (The preview UI
       // still offers a manual retry per chapter.)
       if (err instanceof LockedContentError) break;
-      if (attempt < MAX_ATTEMPTS) await sleep(Math.min(1000 * attempt, 3000));
+      if (attempt < MAX_ATTEMPTS) await sleep(retryDelayMs(err, attempt));
     }
   }
   return { sourceUrl: url, title: url, blocks: [], error: lastError };

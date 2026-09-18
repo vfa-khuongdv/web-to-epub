@@ -6,8 +6,13 @@ describe("getChapterFetcher", () => {
     expect(getChapterFetcher("https://www.wattpad.com/148415654-a")?.domains).toContain("wattpad.com");
   });
 
-  it("trả undefined cho site dùng renderer chung (truyenfull, site lạ)", () => {
-    expect(getChapterFetcher("https://truyenfull.live/a/chuong-1/")).toBeUndefined();
+  it("chọn fetcher truyenfull cho cả hai tên miền", () => {
+    expect(getChapterFetcher("https://truyenfull.live/a/chuong-1/")?.domains).toContain("truyenfull.live");
+    expect(getChapterFetcher("https://truyenfull.vn/a/chuong-1/")?.domains).toContain("truyenfull.vn");
+  });
+
+  it("trả undefined cho site dùng renderer chung (xtruyen, site lạ)", () => {
+    expect(getChapterFetcher("https://xtruyen.vn/truyen/a/chuong-1/")).toBeUndefined();
     expect(getChapterFetcher("https://example.com/a/")).toBeUndefined();
   });
 

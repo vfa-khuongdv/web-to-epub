@@ -75,6 +75,8 @@ router.post("/extract", async (req, res) => {
     chapters.push(chapter);
     if (chapter.error) {
       send({ type: "error", index: i, total: urls.length, url, message: chapter.error });
+    } else {
+      send({ type: "chapter-done", index: i, cursor: i + 1, total: urls.length, url });
     }
   }
 
@@ -512,7 +514,10 @@ router.get("/stories/:id/live", (req, res) => {
 
 router.post("/stories/:id/crawl", async (req, res) => {
   const { id } = req.params;
-  const story: StoredStory | undefined = await storyStore.get(id);
+  // getOutline chứ không phải get: vòng lặp dưới chỉ cần url/thứ tự/trạng thái,
+  // trong khi get() parse luôn nội dung của mọi chương đã crawl — truyện vài
+  // trăm chương là hàng chục MB nằm trong RAM suốt cả lần crawl mà không dùng.
+  const story: StoredStory | undefined = await storyStore.getOutline(id);
   if (!story) {
     res.status(404).json({ message: "Không tìm thấy truyện" });
     return;
@@ -569,10 +574,16 @@ router.post("/stories/:id/crawl", async (req, res) => {
         stored.blocks = extracted.error ? undefined : extracted.blocks;
         if (!extracted.error) stored.title = pickChapterTitle(stored.title, extracted.title, stored.url);
         await storyStore.saveChapter(story.id, stored);
+        // Lưu xong thì nhả nội dung: `stored` nằm trong story.chapters nên giữ
+        // lại nghĩa là cả truyện tích trong bộ nhớ tới lúc crawl xong.
+        stored.blocks = undefined;
       }
 
       if (extracted.error) {
         send({ type: "error", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: extracted.error });
+      } else {
+        // Báo đích danh chương vừa xong thay vì để giao diện tự suy.
+        send({ type: "chapter-done", index: i, cursor: i + 1, total: plan.length, url: chapter.url });
       }
     }
     send({ type: "done", total: plan.length });
