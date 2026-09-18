@@ -75,4 +75,93 @@ describe("extractWithRetry", () => {
     expect(chapter.error).toMatch(/trả phí/);
     expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
   });
+
+  it("hết MAX_ATTEMPTS trả chapter có error, không throw", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchWattpadChapter).mockRejectedValue(new Error(" lỗi mạng "));
+
+      const promise = extractWithRetry(WATTPAD_URL);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const chapter = await promise;
+
+      expect(chapter.sourceUrl).toBe(WATTPAD_URL);
+      expect(chapter.error).toBe(" lỗi mạng ");
+      expect(chapter.blocks).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("gọi onAttempt với số thứ tự thử từ 1", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchWattpadChapter)
+        .mockRejectedValueOnce(new Error("a"))
+        .mockResolvedValueOnce({ sourceUrl: WATTPAD_URL, title: "OK", blocks: [] });
+
+      const attempts: number[] = [];
+      const promise = extractWithRetry(WATTPAD_URL, (n) => attempts.push(n));
+      await vi.advanceTimersByTimeAsync(1000);
+      await promise;
+
+      expect(attempts).toEqual([1, 2]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renderer lỗi tạm thời → thử lại rồi thành công", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(renderPageHtml)
+        .mockRejectedValueOnce(new Error("Trang bị xoá trắng"))
+        .mockResolvedValueOnce("<html>rendered</html>");
+      const { extractChapter } = await import("./extractor");
+      vi.mocked(extractChapter).mockReturnValue({ sourceUrl: OTHER_URL, title: "Chương", blocks: [] });
+
+      const promise = extractWithRetry(OTHER_URL);
+      await vi.advanceTimersByTimeAsync(1000);
+      const chapter = await promise;
+
+      expect(chapter.error).toBeUndefined();
+      expect(renderPageHtml).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("renderer lỗi liên tục → trả chapter có error sau khi hết retries", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(renderPageHtml).mockRejectedValue(new Error("Trang tải về rỗng"));
+
+      const promise = extractWithRetry(OTHER_URL);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const chapter = await promise;
+
+      expect(chapter.sourceUrl).toBe(OTHER_URL);
+      expect(chapter.error).toMatch(/rỗng/);
+      expect(chapter.blocks).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("onAttempt được gọi đúng số lần cho renderer fallback", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(renderPageHtml).mockRejectedValue(new Error("fail"));
+      const attempts: number[] = [];
+      const promise = extractWithRetry(OTHER_URL, (n) => attempts.push(n));
+      await vi.advanceTimersByTimeAsync(60_000);
+      await promise;
+
+      expect(attempts.length).toBeGreaterThan(1);
+      expect(attempts[0]).toBe(1);
+      expect(attempts[attempts.length - 1]).toBe(attempts.length);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
