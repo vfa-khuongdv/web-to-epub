@@ -86,6 +86,31 @@ describe("htmlToBlocks", () => {
   });
 });
 
+describe("htmlToBlocks — audio/video", () => {
+  it("nhận thẻ audio và video thành block riêng", () => {
+    expect(
+      htmlToBlocks(
+        '<p>Nghe:</p><audio controls src="https://a.example/1.mp3">Tệp âm thanh</audio>' +
+          '<video controls src="https://a.example/1.mp4">Tệp video</video>'
+      )
+    ).toEqual([
+      { type: "paragraph", text: "Nghe:" },
+      { type: "audio", src: "https://a.example/1.mp3" },
+      { type: "video", src: "https://a.example/1.mp4" },
+    ]);
+  });
+
+  it("lấy src từ thẻ source con khi thẻ media không có src", () => {
+    expect(
+      htmlToBlocks('<video controls><source src="https://a.example/1.webm" type="video/webm"></video>')
+    ).toEqual([{ type: "video", src: "https://a.example/1.webm" }]);
+  });
+
+  it("bỏ thẻ media không có nguồn nào", () => {
+    expect(htmlToBlocks("<audio controls></audio>")).toEqual([]);
+  });
+});
+
 describe("blocksToHtml", () => {
   it("dựng lại đoạn văn, heading và ảnh", () => {
     expect(
@@ -101,6 +126,20 @@ describe("blocksToHtml", () => {
     const blocks = [
       { type: "paragraph" as const, text: "Một" },
       { type: "paragraph" as const, text: "Hai" },
+    ];
+    expect(htmlToBlocks(blocksToHtml(blocks))).toEqual(blocks);
+  });
+
+  it("dựng thẻ media có controls để trình đọc hiện nút play", () => {
+    expect(blocksToHtml([{ type: "audio", src: "https://a.example/1.mp3" }])).toBe(
+      '<audio controls src="https://a.example/1.mp3">Tệp âm thanh</audio>'
+    );
+  });
+
+  it("block audio/video đi vòng qua htmlToBlocks vẫn nguyên vẹn", () => {
+    const blocks = [
+      { type: "audio" as const, src: "https://a.example/1.mp3" },
+      { type: "video" as const, src: "https://a.example/1.mp4" },
     ];
     expect(htmlToBlocks(blocksToHtml(blocks))).toEqual(blocks);
   });

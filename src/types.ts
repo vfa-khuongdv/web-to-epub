@@ -1,10 +1,10 @@
-export type BlockType = "heading" | "paragraph" | "image";
+export type BlockType = "heading" | "paragraph" | "image" | "audio" | "video";
 
 export interface ContentBlock {
   type: BlockType;
   level?: number; // for headings: 1-6
   text?: string; // for heading/paragraph, HTML-safe text
-  src?: string; // for image
+  src?: string; // for image/audio/video
   alt?: string; // for image
 }
 

@@ -3,7 +3,7 @@ import { fetchChapterContent, fetchStory, saveChapterEdit, saveStoryMeta, startS
 import { blocksToHtml } from "../blocksToHtml";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../useCrawlJob";
-import { useEpubExport } from "../useEpubExport";
+import { exportProgressLabel, useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
 
@@ -68,7 +68,7 @@ export default function StoryDetail({
   const coverInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [chapterPage, setChapterPage] = useState(1);
-  const { isExporting, exportStoryBook } = useEpubExport();
+  const { isExporting, progress, exportStoryBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -294,6 +294,11 @@ export default function StoryDetail({
             <Icon name="download" size={14} />
             {isExporting ? "Đang xuất…" : "Xuất EPUB"}
           </button>
+          {isExporting && (
+            <span className="export-progress" role="status">
+              {progress ? exportProgressLabel(progress) : "Đang chuẩn bị…"}
+            </span>
+          )}
           <button type="button" className="btn" disabled={saving} onClick={handleSave}>
             <Icon name={saved ? "check" : "upload"} size={13} />
             {saving ? "Đang lưu…" : saved ? "Đã lưu" : "Lưu thông tin"}

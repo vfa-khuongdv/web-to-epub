@@ -222,7 +222,7 @@ export default function ChapterCard({
 
   return (
     <>
-      <tr>
+      <tr className={open ? "row-open" : undefined}>
         {onIncludedChange && (
           <td className="w-9 pr-1">
             <input

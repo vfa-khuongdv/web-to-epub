@@ -1,10 +1,11 @@
+import { randomUUID } from "crypto";
 import { Response as ExpressResponse, Router } from "express";
 import multer from "multer";
 import os from "os";
 import path from "path";
 import { MAX_ATTEMPTS, extractWithRetry } from "../services/crawl";
 import { createCoverStore, coverPathForExport } from "../services/coverStore";
-import { buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
+import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
 import { DATA_DIR } from "../config/paths";
 import { storyId, storyStore } from "../services/storyStore";
@@ -105,26 +106,90 @@ router.post("/cover-upload", upload.single("cover"), (req, res) => {
   res.json({ path: req.file.path });
 });
 
+// Xuất EPUB truyện nhiều ảnh mất hàng chục giây. Một response vừa báo tiến
+// trình vừa trả file nhị phân thì không làm được, nên tách đôi: POST stream
+// NDJSON tiến trình (giống /api/extract) rồi trả về mã tải, client GET mã đó
+// để lấy file. File chờ trong RAM — máy đơn, một tiến trình, như runningCrawls.
+const EXPORT_TTL_MS = 5 * 60_000;
+// Ảnh nhiều thì tiến trình bắn mỗi ảnh một dòng; gộp lại để không dội hàng nghìn
+// dòng vô ích qua mạng và hàng nghìn lần render ở giao diện.
+const PROGRESS_INTERVAL_MS = 150;
+
+const pendingExports = new Map<string, { buffer: Buffer; fileName: string }>();
+
+function stashExport(buffer: Buffer, fileName: string): string {
+  const exportId = randomUUID();
+  pendingExports.set(exportId, { buffer, fileName });
+  // unref: bản tải chờ hết hạn không được giữ tiến trình sống.
+  setTimeout(() => pendingExports.delete(exportId), EXPORT_TTL_MS).unref();
+  return exportId;
+}
+
+// Dựng sách và stream tiến trình ra response. Lỗi đi trong luồng chứ không phải
+// mã HTTP: header đã gửi từ trước khi biết build có thành công hay không.
+async function streamExport(
+  res: ExpressResponse,
+  metadata: BookMetadata,
+  chapters: ExportChapter[],
+  fileName: string
+): Promise<void> {
+  res.writeHead(200, {
+    "Content-Type": "application/x-ndjson; charset=utf-8",
+    "Cache-Control": "no-cache",
+    "X-Accel-Buffering": "no",
+  });
+  const send = (event: unknown) => res.write(`${JSON.stringify(event)}\n`);
+
+  let lastSent = 0;
+  let lastPhase = "";
+  const onProgress = (progress: BuildProgress) => {
+    const now = Date.now();
+    // Luôn gửi lúc đổi giai đoạn và lúc xong một giai đoạn: nếu để bộ gộp nuốt
+    // mất, giao diện sẽ đứng ở "Đang tải ảnh 651/651…" suốt lúc đóng gói.
+    const keep = progress.phase !== lastPhase || progress.done === progress.total;
+    if (!keep && now - lastSent < PROGRESS_INTERVAL_MS) return;
+    lastSent = now;
+    lastPhase = progress.phase;
+    send({ type: "progress", ...progress });
+  };
+
+  try {
+    const buffer = await buildEpub(
+      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl) : undefined },
+      chapters,
+      onProgress
+    );
+    send({ type: "done", exportId: stashExport(buffer, fileName), fileName });
+  } catch (err) {
+    send({ type: "error", message: err instanceof Error ? err.message : "Lỗi export EPUB" });
+  }
+  res.end();
+}
+
+// Lấy file đã dựng xong. Tải một lần rồi bỏ: không giữ hàng chục MB trong RAM
+// lâu hơn mức cần.
+router.get("/exports/:exportId", (req, res) => {
+  const pending = pendingExports.get(req.params.exportId);
+  if (!pending) {
+    res.status(404).json({ message: "Bản xuất đã hết hạn hoặc đã tải rồi — bấm Xuất EPUB lại" });
+    return;
+  }
+  pendingExports.delete(req.params.exportId);
+  res.writeHead(200, {
+    "Content-Type": "application/epub+zip",
+    "Content-Disposition": contentDisposition(pending.fileName),
+    "Content-Length": pending.buffer.length,
+  });
+  res.end(pending.buffer);
+});
+
 router.post("/export", async (req, res) => {
   const { metadata, chapters } = req.body as ExportRequest;
   if (!metadata || !Array.isArray(chapters)) {
     res.status(400).json({ message: "metadata và chapters là bắt buộc" });
     return;
   }
-  try {
-    const buffer = await buildEpub(
-      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl) : undefined },
-      chapters
-    );
-    res.writeHead(200, {
-      "Content-Type": "application/epub+zip",
-      "Content-Disposition": contentDisposition(epubFileName(metadata.title || "book")),
-      "Content-Length": buffer.length,
-    });
-    res.end(buffer);
-  } catch (err) {
-    res.status(500).json({ message: err instanceof Error ? err.message : "Lỗi export EPUB" });
-  }
+  await streamExport(res, metadata, chapters, epubFileName(metadata.title || "book"));
 });
 
 // Crawl đang chạy theo từng truyện, kèm vị trí hiện tại để phiên mở giữa chừng
@@ -338,16 +403,7 @@ router.post("/stories/:id/export", async (req, res) => {
       included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
     }
 
-    const buffer = await buildEpub(
-      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl) : undefined },
-      included
-    );
-    res.writeHead(200, {
-      "Content-Type": "application/epub+zip",
-      "Content-Disposition": contentDisposition(epubFileName(metadata.title || story.title || "book")),
-      "Content-Length": buffer.length,
-    });
-    res.end(buffer);
+    await streamExport(res, metadata, included, epubFileName(metadata.title || story.title || "book"));
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "Lỗi export EPUB" });
   }

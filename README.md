@@ -56,6 +56,9 @@ Giao diện tối (bấm icon trên thanh tiêu đề để đổi, hoặc để
   → tối; để tự động thì bám theo cài đặt hệ điều hành.
 - **EPUB chuẩn** — TOC (NCX + nav), metadata, ảnh bìa, ảnh trong chương được
   tải về và nhúng thẳng vào file.
+- **Audio/video trong chương** — thẻ `<audio>`/`<video>` của trang nguồn được
+  tải về và nhúng vào EPUB, phát ngay trong máy đọc sách hỗ trợ (Apple Books,
+  Thorium, Calibre). Kindle không phát được nên ở đó hiện link về nguồn.
 - **Chạy được ở 3 dạng** — server Node, container Docker, hoặc app macOS.
 
 ## Trang được hỗ trợ
@@ -259,6 +262,14 @@ lấy từ magic bytes chứ không đoán từ URL. Lý do: `epub-gen` đoán b
 `mime.getType(url)` nên URL không có đuôi (rất phổ biến với CDN ảnh) cho ra file
 `<id>.null` kèm `media-type=""` — máy đọc sách không hiện được ảnh và file EPUB
 sai chuẩn. Ảnh tải hỏng thì bỏ hẳn thẻ `<img>` thay vì để lại tham chiếu gãy.
+
+**Audio/video** đi xa hơn một bước: `epub-gen` không biết gì về chúng — nó chỉ
+đóng gói thẻ `<img>`, còn `controls` (thứ duy nhất làm hiện nút play) thì bị bộ
+lọc thuộc tính của nó xoá. Nên file media được tải về trước, `src` trỏ vào
+`media/<n>.<ext>` trong sách, rồi sau khi `epub-gen` đóng gói xong thì file EPUB
+được mở ra vá lại: thêm file media, khai `<item>` trong manifest và trả
+`controls` về chỗ cũ. File quá 50MB hoặc tải hỏng (link streaming, host chặn)
+thành một đoạn chứa link về nguồn, thay vì mất hẳn.
 
 ## Giới hạn đã biết
 

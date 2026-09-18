@@ -4,7 +4,7 @@ import { blocksToHtml } from "../blocksToHtml";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { ExtractedChapter, SupportedSite } from "../types";
 import { CrawlJobState, RunCrawl } from "../useCrawlJob";
-import { useEpubExport } from "../useEpubExport";
+import { exportProgressLabel, useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
 
@@ -52,7 +52,7 @@ export default function ManualCrawlView({
   const [chapters, setChapters] = useState<ChapterState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [badUrls, setBadUrls] = useState<string[]>([]);
-  const { isExporting, exportBook } = useEpubExport();
+  const { isExporting, progress, exportBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -303,6 +303,11 @@ export default function ManualCrawlView({
               <Icon name="download" size={13} />
               {isExporting ? "Đang xuất…" : "Xuất EPUB"}
             </button>
+            {isExporting && (
+              <span className="export-progress" role="status">
+                {progress ? exportProgressLabel(progress) : "Đang chuẩn bị…"}
+              </span>
+            )}
           </span>
         </div>
 

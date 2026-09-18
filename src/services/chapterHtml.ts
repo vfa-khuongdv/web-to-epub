@@ -7,7 +7,7 @@ const ELEMENT_NODE = 1;
 // Thẻ mở một khối mới. Mọi thẻ khác (b, i, em, strong, a, span, code, br…) là
 // inline và được giữ nguyên bên trong đoạn văn.
 const BLOCK_RE =
-  /^(address|article|aside|blockquote|dd|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|img|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)$/;
+  /^(address|article|aside|audio|blockquote|dd|div|dl|dt|figcaption|figure|footer|h[1-6]|header|hr|img|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul|video)$/;
 
 // Rác không bao giờ nên đi vào sách, kể cả khi người dùng dán nguyên một khối
 // HTML copy từ trang nguồn.
@@ -32,6 +32,14 @@ function pushParagraphs(html: string, blocks: ContentBlock[]): void {
     const text = part.trim();
     if (hasText(text)) blocks.push({ type: "paragraph", text });
   }
+}
+
+// <audio>/<video> mang URL ở thuộc tính src, hoặc ở <source> con khi trang cho
+// nhiều định dạng — lấy cái đầu tiên, EPUB chỉ đóng gói được một file mỗi thẻ.
+export function mediaSrc(el: Element): string | undefined {
+  const own = el.getAttribute("src")?.trim();
+  if (own) return own;
+  return el.querySelector("source")?.getAttribute("src")?.trim() || undefined;
 }
 
 function isBlock(el: Element): boolean {
@@ -82,6 +90,12 @@ function walk(root: ParentNode, blocks: ContentBlock[]): void {
       continue;
     }
 
+    if (tag === "audio" || tag === "video") {
+      const src = mediaSrc(el);
+      if (src) blocks.push({ type: tag, src });
+      continue;
+    }
+
     // Khối lồng khối (div bọc p, figure bọc img…): đi tiếp vào trong thay vì
     // gộp cả cụm thành một đoạn.
     if (Array.from(el.children).some(isBlock)) {
@@ -106,6 +120,15 @@ export function htmlToBlocks(html: string): ContentBlock[] {
   return blocks;
 }
 
+// `controls` là thứ duy nhất làm thẻ media hiện ra nút play — cả trong khung
+// soạn thảo lẫn trong EPUB. Nội dung bên trong thẻ là phần dự phòng cho trình
+// đọc không phát được (Kindle), đồng thời giữ thẻ không rỗng để cheerio của
+// epub-gen không rút gọn thành <audio/> — dạng vài trình đọc parse sai.
+export function mediaTag(type: "audio" | "video", src: string): string {
+  const label = type === "audio" ? "Tệp âm thanh" : "Tệp video";
+  return `<${type} controls src="${src}">${label}</${type}>`;
+}
+
 /**
  * Chiều ngược lại: dựng HTML chương từ block đã lưu. Giữ đúng cách frontend
  * dựng (frontend/src/blocksToHtml.ts) để EPUB xuất từ server giống hệt bản
@@ -116,6 +139,7 @@ export function blocksToHtml(blocks: ContentBlock[]): string {
     .map((block) => {
       if (block.type === "heading") return `<h${block.level || 2}>${block.text}</h${block.level || 2}>`;
       if (block.type === "image") return `<img src="${block.src}" alt="${block.alt || ""}" />`;
+      if (block.type === "audio" || block.type === "video") return mediaTag(block.type, block.src || "");
       return `<p>${block.text}</p>`;
     })
     .join("\n");

@@ -60,6 +60,8 @@ interface FetchWithRetryOptions {
   fetchImpl?: typeof fetch;
   sleepImpl?: (ms: number) => Promise<void>;
   maxAttempts?: number;
+  // Tải file lớn (audio/video nhúng vào EPUB) không xong trong 15 giây mặc định.
+  timeoutMs?: number;
 }
 
 // Các site bị Cloudflare giới hạn tần suất (429) khi bị bắn nhiều request
@@ -73,11 +75,12 @@ export async function fetchWithRetry(
   const fetchImpl = options.fetchImpl ?? fetch;
   const sleepImpl = options.sleepImpl ?? sleep;
   const maxAttempts = options.maxAttempts ?? MAX_ATTEMPTS;
+  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 
   for (let attempt = 1; ; attempt++) {
     let res: Response;
     try {
-      res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS) });
+      res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
     } catch (err) {
       const code = networkErrorCode(err);
       if (code && RETRIABLE_NETWORK_CODES.has(code) && attempt < NETWORK_ATTEMPTS) {

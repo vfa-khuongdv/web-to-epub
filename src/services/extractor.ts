@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { ContentBlock, ExtractedChapter } from "../types";
+import { mediaSrc } from "./chapterHtml";
 
 // Matches whole class/id tokens for common chrome (nav/ads/sidebar/etc), not
 // substrings — a class like "gradient" or "loading" must NOT match "ad".
@@ -54,7 +55,20 @@ function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
       continue;
     }
 
+    // Trước nhánh đệ quy bên dưới: <video> thường có <source> con nên sẽ bị
+    // coi là container và mất nội dung nếu không bắt ở đây.
+    if (tag === "audio" || tag === "video") {
+      const src = mediaSrc(node);
+      if (src) blocks.push({ type: tag, src });
+      continue;
+    }
+
     if (tag === "figure") {
+      const media = node.querySelector("audio, video");
+      if (media) {
+        const src = mediaSrc(media);
+        if (src) blocks.push({ type: media.tagName.toLowerCase() as "audio" | "video", src });
+      }
       const img = node.querySelector("img");
       if (img && (img as HTMLImageElement).src) {
         blocks.push({ type: "image", src: (img as HTMLImageElement).src, alt: (img as HTMLImageElement).alt || "" });

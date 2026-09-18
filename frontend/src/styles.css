@@ -6,6 +6,7 @@
 @theme {
   --color-chrome: #ececec;
   --color-chrome-2: #e2e2e2;
+  --thead-h: 27px;
   --color-raised: #f7f7f7;
   --color-content: #ffffff;
   --color-sunken: #e6e6e6;
@@ -247,6 +248,9 @@
     position: sticky;
     top: 0;
     z-index: 2;
+    /* Cố định chiều cao để hàng chương đang mở neo dính ngay dưới nó
+       (--thead-h), thay vì đoán bằng một con số rời rạc. */
+    height: var(--thead-h);
     padding: 6px 10px;
     background: var(--color-raised);
     border-bottom: 1px solid var(--color-rule-2);
@@ -700,8 +704,16 @@
     overflow-wrap: anywhere;
   }
 
-  .chapter-body img {
+  .chapter-body img,
+  .chapter-body audio,
+  .chapter-body video {
+    display: block;
+    margin: 8px auto;
     max-width: 100%;
+  }
+
+  .chapter-body img,
+  .chapter-body video {
     height: auto;
   }
 
@@ -721,10 +733,29 @@
     color: var(--color-ink-3);
   }
 
+  /* Mở một chương dài rồi cuộn thì hàng tiêu đề phải dính lại ngay dưới đầu
+     bảng — không có nó, cuộn giữa nội dung là mất dấu đang ở chương nào.
+     position: sticky phải đặt trên <td>: Chrome và Safari không áp dụng nó cho
+     <tr>. z-index thấp hơn thead để hàng trượt xuống dưới đầu bảng, không đè. */
+  .tbl tbody tr.row-open > td {
+    position: sticky;
+    top: var(--thead-h);
+    z-index: 1;
+    background: var(--color-row-hover);
+    border-bottom: 1px solid var(--color-rule-2);
+  }
+
   .chapter-open td {
     height: auto;
     padding: 0 10px 13px;
     background: var(--color-row-hover);
+  }
+
+  .export-progress {
+    color: var(--color-ink-2);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
   }
 
   .jobs {

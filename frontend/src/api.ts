@@ -11,7 +11,7 @@ async function readJsonError(res: Response, fallback: string): Promise<string> {
   return data?.message || fallback;
 }
 
-async function streamNdjson(path: string, body: unknown, onEvent: (event: ProgressEvent) => void): Promise<void> {
+async function streamNdjson<T>(path: string, body: unknown, onEvent: (event: T) => void): Promise<void> {
   const res = await fetch(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -42,7 +42,7 @@ async function streamNdjson(path: string, body: unknown, onEvent: (event: Progre
 // Streams NDJSON progress events from POST /api/extract, invoking onEvent
 // for each line as it arrives.
 export async function extractChapters(urls: string[], onEvent: (event: ProgressEvent) => void): Promise<void> {
-  await streamNdjson("/api/extract", { urls }, onEvent);
+  await streamNdjson<ProgressEvent>("/api/extract", { urls }, onEvent);
 }
 
 // Bắt đầu crawl một truyện: server trả về ngay rồi crawl ở hậu trường, tiến
@@ -140,18 +140,54 @@ export interface StoryExportChapter {
   contentHtml?: string;
 }
 
+// Tiến trình dựng sách: phần lớn thời gian là tải ảnh trong chương về.
+export interface ExportProgress {
+  phase: "images" | "media" | "packaging";
+  done: number;
+  total: number;
+}
+
+interface ExportEvent extends Partial<ExportProgress> {
+  type: "progress" | "done" | "error";
+  exportId?: string;
+  message?: string;
+}
+
+// Server stream tiến trình rồi trả mã tải; file lấy ở request thứ hai vì một
+// response không thể vừa là luồng tiến trình vừa là file nhị phân.
+async function runExport(
+  path: string,
+  body: unknown,
+  onProgress?: (progress: ExportProgress) => void
+): Promise<Blob> {
+  let exportId: string | undefined;
+  let failure: string | undefined;
+
+  await streamNdjson<ExportEvent>(path, body, (event) => {
+    if (event.type === "progress" && event.phase) {
+      onProgress?.({ phase: event.phase, done: event.done ?? 0, total: event.total ?? 0 });
+    } else if (event.type === "done") {
+      exportId = event.exportId;
+    } else if (event.type === "error") {
+      failure = event.message;
+    }
+  });
+
+  if (failure) throw new Error(failure);
+  if (!exportId) throw new Error("Export thất bại — luồng kết thúc mà không có file");
+
+  const res = await fetch(`/api/exports/${encodeURIComponent(exportId)}`);
+  if (!res.ok) throw new Error(await readJsonError(res, "Không tải được file EPUB vừa dựng"));
+  return res.blob();
+}
+
 export async function exportStoryEpub(
   storyId: string,
   metadata: BookMetadata,
-  chapters: StoryExportChapter[]
+  chapters: StoryExportChapter[],
+  onProgress?: (progress: ExportProgress) => void
 ): Promise<Blob> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/export`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ metadata, chapters }),
-  });
-  if (!res.ok) throw new Error(await readJsonError(res, "Export thất bại"));
-  return res.blob();
+  return runExport(`/api/stories/${encodeURIComponent(storyId)}/export`, { metadata, chapters }, onProgress);
 }
 
 export interface ExportChapterPayload {
@@ -160,14 +196,10 @@ export interface ExportChapterPayload {
   contentHtml: string;
 }
 
-export async function exportEpub(metadata: BookMetadata, chapters: ExportChapterPayload[]): Promise<Blob> {
-  const res = await fetch("/api/export", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ metadata, chapters }),
-  });
-  if (!res.ok) {
-    throw new Error(await readJsonError(res, "Export thất bại"));
-  }
-  return res.blob();
+export async function exportEpub(
+  metadata: BookMetadata,
+  chapters: ExportChapterPayload[],
+  onProgress?: (progress: ExportProgress) => void
+): Promise<Blob> {
+  return runExport("/api/export", { metadata, chapters }, onProgress);
 }

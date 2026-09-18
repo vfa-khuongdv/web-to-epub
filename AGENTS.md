@@ -26,6 +26,7 @@ Local-first tool that crawls rendered pages of Vietnamese novel sites and export
 
 - Requires Node ≥ 22.5: SQLite is `node:sqlite` `DatabaseSync` (no better-sqlite3), experimental warning is expected in test output.
 - `epubBuilder.ts` downloads chapter images itself and derives extensions from magic bytes, because epub-gen guesses `mime.getType(url)` and breaks on extension-less CDN URLs. Don't hand image URLs back to epub-gen.
+- `epubBuilder.ts` also embeds `<audio>`/`<video>`: epub-gen ignores them and strips `controls`, so the finished `.epub` is unzipped and patched (media files + manifest items + `controls` restored) via `packMedia`. That patch assumes epub-gen's fixed layout (`OEBPS/content.opf`, chapters at `OEBPS/*.xhtml`).
 - Chapter edits ARE persisted via `PATCH /api/stories/:id/chapters/:order` ("Lưu chương"); README's known-limits section still claims they aren't.
 - Crawl code re-reads the story from SQLite before `updateMeta` because a user may save meta mid-crawl — keep that read-before-write pattern.
 - Never bypass login/paywall/DRM (product constraint); locked chapters must fail with a clear Vietnamese error.
