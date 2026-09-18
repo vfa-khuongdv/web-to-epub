@@ -42,39 +42,36 @@
 
 @layer base {
   :root {
-    color-scheme: light dark;
+    color-scheme: light;
   }
 
-  @media (prefers-color-scheme: dark) {
-    :root {
-      --color-chrome: #262626;
-      --color-chrome-2: #303030;
-      --color-raised: #2c2c2c;
-      --color-content: #1b1b1b;
-      --color-sunken: #141414;
-      --color-segment-on: #383838;
-      --color-row-hover: #232323;
+  /* Bảng màu tối. `data-theme` do script trong index.html đặt (theo lựa chọn
+     đã lưu, không có thì theo hệ điều hành); nút trên thanh tiêu đề đổi nó. */
+  :root[data-theme="dark"] {
+    color-scheme: dark;
 
-      --color-ink: #ededed;
-      --color-ink-2: #b9b9b9;
-      --color-ink-3: #979797;
-
-      --color-rule: #3a3a3a;
-      --color-rule-2: #4c4c4c;
-
-      --color-select: #7fb0f5;
-      --color-select-deep: #6ea8fe;
-      --color-select-soft: #1e2a38;
-      --color-on-select: #10161f;
-
-      --color-error: #ff8a80;
-      --color-error-soft: #2e1b1a;
-      --color-error-rule: #5c2f2c;
-
-      --color-btn: #2f2f2f;
-      --color-btn-hover: #383838;
-      --color-btn-rule: #4a4a4a;
-    }
+    --color-chrome: #262626;
+    --color-chrome-2: #303030;
+    --color-raised: #2c2c2c;
+    --color-content: #1b1b1b;
+    --color-sunken: #141414;
+    --color-segment-on: #383838;
+    --color-row-hover: #232323;
+    --color-ink: #ededed;
+    --color-ink-2: #b9b9b9;
+    --color-ink-3: #979797;
+    --color-rule: #3a3a3a;
+    --color-rule-2: #4c4c4c;
+    --color-select: #7fb0f5;
+    --color-select-deep: #6ea8fe;
+    --color-select-soft: #1e2a38;
+    --color-on-select: #10161f;
+    --color-error: #ff8a80;
+    --color-error-soft: #2e1b1a;
+    --color-error-rule: #5c2f2c;
+    --color-btn: #2f2f2f;
+    --color-btn-hover: #383838;
+    --color-btn-rule: #4a4a4a;
   }
 
   html,

@@ -17,9 +17,25 @@ export type IconName =
   | "chapter"
   | "dot"
   | "info"
-  | "open";
+  | "open"
+  | "sun"
+  | "moon"
+  | "display";
 
 const shapes: Record<IconName, ReactNode> = {
+  sun: (
+    <>
+      <circle cx="10" cy="10" r="3.5" />
+      <path d="M10 2.6v1.7M10 15.7v1.7M2.6 10h1.7M15.7 10h1.7M4.8 4.8l1.2 1.2M14 14l1.2 1.2M15.2 4.8 14 6M6 14l-1.2 1.2" />
+    </>
+  ),
+  moon: <path d="M15.3 12.3A5.9 5.9 0 0 1 7.7 4.7a5.9 5.9 0 1 0 7.6 7.6z" />,
+  display: (
+    <>
+      <rect x="3" y="4.4" width="14" height="9.2" rx="1.4" />
+      <path d="M7.7 17h4.6M10 13.6V17" />
+    </>
+  ),
   crawl: (
     <>
       <path d="M10 3.2v8.6" />
