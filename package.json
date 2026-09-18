@@ -14,8 +14,9 @@
     "dev": "tsc --watch & nodemon dist/server.js",
     "dev:frontend": "npm run dev -w frontend",
     "test": "vitest run",
-    "app:mac": "npm run build && npm run app:browser && electron-builder --mac --arm64",
-    "app:browser": "PLAYWRIGHT_BROWSERS_PATH=\"$PWD/build/ms-playwright\" playwright install --only-shell chromium"
+    "app:mac": "npm run build && npm run app:browser && npm run app:icon && electron-builder --mac --arm64",
+    "app:browser": "PLAYWRIGHT_BROWSERS_PATH=\"$PWD/build/ms-playwright\" playwright install --only-shell chromium",
+    "app:icon": "node scripts/make-icon.js"
   },
   "dependencies": {
     "@mozilla/readability": "^0.5.0",
@@ -60,7 +61,8 @@
         "zip"
       ],
       "category": "public.app-category.productivity",
-      "identity": null
+      "identity": null,
+      "icon": "build/icon.icns"
     },
     "afterPack": "scripts/adhoc-sign.js"
   }

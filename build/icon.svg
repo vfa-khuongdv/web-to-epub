@@ -1,0 +1,10 @@
+<!-- Icon app macOS: favicon "3 gáy sách" phóng lên khổ 1024, đặt trong khung
+     bo tròn 824x824 lệch vào 100px theo đúng chuẩn icon macOS Big Sur trở đi. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Web → EPUB cho Kindle">
+  <rect x="100" y="100" width="824" height="824" rx="185" fill="#ffffff" stroke="#d4d4d4" stroke-width="4" />
+  <g fill="#1c1c1c">
+    <rect x="282.8" y="280.3" width="113.3" height="463.5" rx="30.9" />
+    <rect x="455.4" y="280.3" width="113.3" height="463.5" rx="30.9" />
+    <rect x="627.9" y="280.3" width="113.3" height="463.5" rx="30.9" transform="rotate(-6 684.4 512)" />
+  </g>
+</svg>

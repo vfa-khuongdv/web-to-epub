@@ -9,3 +9,5 @@ dist/
 data/
 release/
 build/ms-playwright/
+build/icon.iconset/
+build/icon-1024.png
