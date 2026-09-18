@@ -13,6 +13,24 @@ const USER_AGENT =
 // không nhét nội dung quảng cáo mua chương vào sách.
 const PAID_RE = /paid stories program|buy this (story )?part|paywall/i;
 
+// URL part dạng https://www.wattpad.com/1537742464-ten-truyen-ten-chuong
+const PART_ID_RE = /wattpad\.com\/(\d+)/;
+
+function collectBlocks(paragraphs: NodeListOf<Element>): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  paragraphs.forEach((p) => {
+    if (!p.textContent?.trim()) {
+      // Ảnh chèn giữa truyện là một đoạn không có chữ:
+      // <p data-media-type="image"><img src="https://img.wattpad.com/..."></p>
+      const img = p.querySelector("img") as HTMLImageElement | null;
+      if (img?.src) blocks.push({ type: "image", src: img.src, alt: img.alt || "" });
+      return;
+    }
+    blocks.push({ type: "paragraph", text: (p as HTMLElement).innerHTML.trim() });
+  });
+  return blocks;
+}
+
 /**
  * Trích xuất chương từ HTML trang part của Wattpad. Wattpad server-render
  * toàn bộ nội dung chương vào một thẻ <pre> (mỗi đoạn là một <p data-p-id>),
@@ -30,11 +48,7 @@ export function parseWattpadChapter(html: string, url: string): ExtractedChapter
     doc.title.replace(/\s*-\s*Wattpad\s*$/i, "").trim() ||
     url;
 
-  const blocks: ContentBlock[] = [];
-  doc.querySelectorAll("pre p").forEach((p) => {
-    if (!p.textContent?.trim()) return;
-    blocks.push({ type: "paragraph", text: (p as HTMLElement).innerHTML.trim() });
-  });
+  const blocks = collectBlocks(doc.querySelectorAll("pre p"));
 
   if (blocks.length === 0) {
     if (doc.querySelector(".story-part-paywall") || PAID_RE.test(doc.body?.textContent || "")) {
@@ -50,7 +64,32 @@ export function parseWattpadChapter(html: string, url: string): ExtractedChapter
   return { sourceUrl: url, title, blocks };
 }
 
+/**
+ * Part dài được Wattpad chia trang: HTML trả về chỉ chứa trang đầu trong <pre>,
+ * phần còn lại (kèm ảnh nằm trong đó) chỉ tải bằng JS khi cuộn. Endpoint
+ * storytext trả về toàn bộ nội dung part trong một lần gọi — id part chính là
+ * số mở đầu URL. Trả về mảng rỗng khi không lấy được để bên gọi dùng nội dung
+ * trang đầu thay vì làm hỏng cả chương.
+ */
+async function fetchFullPartBlocks(url: string): Promise<ContentBlock[]> {
+  const partId = url.match(PART_ID_RE)?.[1];
+  if (!partId) return [];
+  try {
+    const fragment = await fetchText(`https://www.wattpad.com/apiv2/storytext?id=${partId}`, {
+      headers: { "User-Agent": USER_AGENT },
+    });
+    const doc = new JSDOM(fragment, { url }).window.document;
+    return collectBlocks(doc.querySelectorAll("p"));
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchWattpadChapter(url: string): Promise<ExtractedChapter> {
   const html = await fetchText(url, { headers: { "User-Agent": USER_AGENT } });
-  return parseWattpadChapter(html, url);
+  // Trang HTML cho tiêu đề và nhận diện paywall; storytext cho nội dung đầy đủ.
+  const chapter = parseWattpadChapter(html, url);
+  const full = await fetchFullPartBlocks(url);
+  if (full.length > chapter.blocks.length) chapter.blocks = full;
+  return chapter;
 }
