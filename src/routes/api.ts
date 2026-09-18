@@ -511,7 +511,11 @@ router.post("/stories/:id/crawl", async (req, res) => {
         stored.status = extracted.error ? "error" : "done";
         stored.error = extracted.error;
         stored.blocks = extracted.error ? undefined : extracted.blocks;
-        if (!extracted.error) stored.title = extracted.title;
+        // Tên trong mục lục ngắn gọn và đúng thứ tự; <title> trang chương thường
+        // kèm tên truyện lẫn hậu tố site ("Hãn Phu - Chương 1 - XTruyện"). Chỉ
+        // lấy tên trích xuất khi mục lục không cho được tên nào ra hồn.
+        const tocTitle = stored.title?.trim();
+        if (!extracted.error && (!tocTitle || tocTitle === stored.url)) stored.title = extracted.title;
         await storyStore.saveChapter(story.id, stored);
       }
 
