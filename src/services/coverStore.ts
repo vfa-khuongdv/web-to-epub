@@ -18,7 +18,7 @@ const CONTENT_TYPES: Record<string, string> = {
   gif: "image/gif",
 };
 
-const EXTENSION_BY_TYPE = new Map(Object.entries(CONTENT_TYPES).map(([extension, type]) => [type, extension]));
+export const EXTENSION_BY_TYPE = new Map(Object.entries(CONTENT_TYPES).map(([extension, type]) => [type, extension]));
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
@@ -26,7 +26,7 @@ const USER_AGENT =
 // Nhiều CDN ảnh trả content-type chung chung (application/octet-stream) — đã gặp
 // thật với img.xtruyen.vn — nên nhận diện ảnh bằng magic bytes trước, chỉ tin
 // content-type khi không đọc được chữ ký.
-function sniffImageExtension(bytes: Buffer): string | undefined {
+export function sniffImageExtension(bytes: Buffer): string | undefined {
   if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "jpg";
   if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "png";
   if (bytes.length >= 12 && bytes.subarray(0, 4).toString("latin1") === "RIFF" && bytes.subarray(8, 12).toString("latin1") === "WEBP") {

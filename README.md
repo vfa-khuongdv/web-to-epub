@@ -120,6 +120,14 @@ tool-crawler-/
    `epub-gen` để sinh file EPUB (mimetype, OPF, NCX, nav TOC, chapter XHTML,
    ảnh được tải về và nhúng vào `OEBPS/images/`), trả về client dưới dạng file
    tải xuống.
+   - Ảnh trong chương được `embedImages` tải về **trước** khi đưa cho
+     `epub-gen`, và đuôi file lấy từ magic bytes chứ không đoán từ URL. Lý do:
+     `epub-gen` tự đoán bằng `mime.getType(url)` nên URL không có đuôi (rất
+     phổ biến với CDN ảnh) cho ra file `<id>.null` kèm `media-type=""` — máy
+     đọc sách không hiện được ảnh và file EPUB sai chuẩn.
+   - Ảnh nào tải hỏng thì **bỏ hẳn thẻ `<img>`**, giữ nguyên phần chữ. Nếu để
+     mặc `epub-gen`, nó vẫn ghi `<img>` và khai báo ảnh trong manifest dù file
+     không nằm trong zip, làm EPUB sai chuẩn.
 
 ## 5. UI/UX
 
