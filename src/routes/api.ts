@@ -433,7 +433,7 @@ router.post("/stories/:id/crawl", async (req, res) => {
       const chapter = plan[i];
       const extracted = await extractWithRetry(chapter.url, (attempt) => {
         const attemptSuffix = attempt > 1 ? ` (lần thử ${attempt}/${MAX_ATTEMPTS})` : "";
-        send({ type: "progress", index: i, total: plan.length, url: chapter.url, message: `Đang tải & trích xuất...${attemptSuffix}` });
+        send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: `Đang tải & trích xuất...${attemptSuffix}` });
       });
 
       const stored = story.chapters.find((c) => c.order === chapter.order);
@@ -446,7 +446,7 @@ router.post("/stories/:id/crawl", async (req, res) => {
       }
 
       if (extracted.error) {
-        send({ type: "error", index: i, total: plan.length, url: chapter.url, message: extracted.error });
+        send({ type: "error", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: extracted.error });
       }
     }
     send({ type: "done", total: plan.length });
