@@ -90,6 +90,13 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   // Capture the raw <title> before Readability runs — parse() heavily
   // mutates/strips the document and can leave document.title empty.
   const rawTitle = dom.window.document.title?.trim();
+  // Tên chương đầy đủ của một số site nằm ngoài phần Readability giữ lại:
+  // xtruyen để "Quyển 1 Chương 2 : Mở cửa" ở <h2> ngay trên khối nội dung,
+  // còn <title> chỉ có "<tên truyện> - Quyển 1 Chương 2 - XTruyện".
+  const pageHeading = dom.window.document
+    .querySelector(".main-col > h2, .chapter-title")
+    ?.textContent?.replace(/\s+/g, " ")
+    .trim();
 
   // truyenfull.live ships the full chapter text inside #chapter-c but hides
   // it behind an "click an ad to unlock" overlay (the text itself is already
@@ -127,20 +134,21 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   // Readability's title heuristic often grabs the page's single <h1>, which
   // on chapter/serial sites is the story name (identical on every chapter),
   // not the chapter title. Prefer, in order:
-  //  1. A heading found at the very start of the extracted content — the
-  //     closest thing to a per-page title when Readability kept it.
-  //  2. The raw <title> tag — usually encodes "Story - Chapter - Site",
+  //  1. Thẻ tiêu đề chương của chính site (selector nhắm đích, đáng tin nhất
+  //     và là bản đầy đủ: "Chương 1: Quyển 1: Năm bắt đầu ấy").
+  //  2. A heading found at the very start of the extracted content.
+  //  3. The raw <title> tag — usually encodes "Story - Chapter - Site",
   //     which at least differs per page even if Readability's h1-based
   //     guess collapses to the story name.
-  //  3. Readability's own title guess, as a last resort.
+  //  4. Readability's own title guess, as a last resort.
+  // Heading mở đầu luôn bị lấy ra khỏi nội dung dù có được chọn làm tiêu đề
+  // hay không: nó hoặc là tên chương lặp lại, hoặc là khối chrome của site
+  // (xtruyen chèn banner "X-TRUYỆN ANDROID APP !" ngay đầu bài).
   const leadingHeadingIndex = blocks.findIndex((b, i) => i < 3 && b.type === "heading");
-  let title: string;
-  if (leadingHeadingIndex >= 0) {
-    title = blocks[leadingHeadingIndex].text as string;
-    blocks.splice(leadingHeadingIndex, 1);
-  } else {
-    title = rawTitle || article.title?.trim() || "Untitled";
-  }
+  const leadingHeading = leadingHeadingIndex >= 0 ? (blocks[leadingHeadingIndex].text as string) : undefined;
+  if (leadingHeadingIndex >= 0) blocks.splice(leadingHeadingIndex, 1);
+
+  const title = pageHeading || leadingHeading || rawTitle || article.title?.trim() || "Untitled";
 
   return {
     sourceUrl: url,

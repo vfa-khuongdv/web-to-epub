@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { StoredStory } from "../types";
 import { TocResult } from "./toc/types";
-import { chaptersToCrawl, mergeStory, toExtractedChapter } from "./storyService";
+import { chaptersToCrawl, mergeStory, pickChapterTitle, toExtractedChapter } from "./storyService";
 
 const toc: TocResult = {
   title: "Truyện A",
@@ -86,5 +86,31 @@ describe("toExtractedChapter", () => {
     });
     const failed = toExtractedChapter({ order: 2, url: "u2", title: "t2", status: "error", error: "lỗi" });
     expect(failed.error).toBe("lỗi");
+  });
+});
+
+describe("pickChapterTitle", () => {
+  const url = "https://xtruyen.vn/truyen/kiem-lai/quyen-1-chuong-2/";
+
+  it("lấy tên trang khi nó là bản đầy đủ hơn của tên mục lục", () => {
+    expect(pickChapterTitle("Quyển 1 Chương 2", "Quyển 1 Chương 2 : Mở cửa", url)).toBe("Quyển 1 Chương 2 : Mở cửa");
+    expect(pickChapterTitle("Chương 1", "Chương 1: Sơn biên tiểu thôn", url)).toBe("Chương 1: Sơn biên tiểu thôn");
+  });
+
+  it("bỏ tên trang khi nó kèm tên truyện hoặc hậu tố website", () => {
+    expect(pickChapterTitle("Chương 1", "Hãn Phu - Chương 1 - XTruyện", url)).toBe("Chương 1");
+    expect(pickChapterTitle("Chương 599: Sắp Xếp", "Nữ Học Bá : Chương 599: Sắp Xếp - Truyenfull.vn", url)).toBe(
+      "Chương 599: Sắp Xếp"
+    );
+  });
+
+  it("giữ tên mục lục khi trang không cho tên gì hơn", () => {
+    expect(pickChapterTitle("Chương 1", "Chương 1", url)).toBe("Chương 1");
+    expect(pickChapterTitle("Chương 1", "", url)).toBe("Chương 1");
+  });
+
+  it("crawl thủ công (mục lục trống hoặc chỉ là URL) thì dùng tên trang", () => {
+    expect(pickChapterTitle(undefined, "Chương 1: Ly hương", url)).toBe("Chương 1: Ly hương");
+    expect(pickChapterTitle(url, "Chương 1: Ly hương", url)).toBe("Chương 1: Ly hương");
   });
 });

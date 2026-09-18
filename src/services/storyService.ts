@@ -51,3 +51,21 @@ export function toExtractedChapter(chapter: StoredChapter): ExtractedChapter {
   }
   return { sourceUrl: chapter.url, title: chapter.title, blocks: chapter.blocks ?? [] };
 }
+
+/**
+ * Mục lục cho tên ngắn gọn và đúng thứ tự, nhưng trang chương đôi khi có bản
+ * đầy đủ hơn: mục lục xtruyen chỉ có "Quyển 1 Chương 2", trang chương mới có
+ * "Quyển 1 Chương 2 : Mở cửa". Chỉ nhận tên của trang khi nó nối dài tên mục
+ * lục — đủ để loại những <title> lẫn tên truyện và hậu tố site
+ * ("Hãn Phu - Chương 1 - XTruyện").
+ */
+export function pickChapterTitle(tocTitle: string | undefined, pageTitle: string, chapterUrl: string): string {
+  const toc = tocTitle?.trim();
+  const page = pageTitle.trim();
+  // Crawl thủ công không có mục lục: tên đang là chính URL.
+  if (!toc || toc === chapterUrl) return page || toc || chapterUrl;
+  if (!page) return toc;
+  const normalize = (text: string) => text.replace(/\s+/g, " ").toLowerCase();
+  const extendsToc = normalize(page).startsWith(normalize(toc)) && page.length > toc.length;
+  return extendsToc ? page : toc;
+}
