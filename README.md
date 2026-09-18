@@ -13,6 +13,10 @@ chặn bôi đen, copy hay chuột phải.
 
 ![Giao diện Web to EPUB](frontend/.impeccable/review/desktop.png)
 
+Giao diện tối (bấm icon trên thanh tiêu đề để đổi, hoặc để "tự động" theo hệ điều hành):
+
+![Giao diện tối](frontend/.impeccable/review/desktop-dark.png)
+
 ## Mục lục
 
 - [Tính năng](#tính-năng)
@@ -40,8 +44,16 @@ chặn bôi đen, copy hay chuột phải.
 - **Sửa lại chương rồi lưu** — nội dung crawl về thường lẫn lời web, quảng cáo
   hay tên chương lặp lại; sửa tiêu đề và nội dung ngay trong bảng chương rồi
   bấm **Lưu chương** là ghi thẳng vào thư viện, mở lại vẫn còn.
-- **Preview trước khi xuất** — tick chọn chương nào vào sách, thử lại riêng
-  từng chương lỗi, hoặc tự dán nội dung cho chương crawl không được.
+- **Quản lý thư viện** — cột trạng thái cho biết truyện nào đã crawl xong hay
+  còn bao nhiêu chương, tìm theo tên (gõ không dấu vẫn ra), bấm tiêu đề cột để
+  sắp xếp — giữ Shift để thêm tiêu chí phụ — phân trang, và chọn nhiều truyện
+  để xoá một lượt.
+- **Mở nhanh cả truyện nghìn chương** — danh sách chương không kèm nội dung,
+  mở chương nào mới tải chương đó; bảng chương phân trang 100 chương/trang.
+- **Xử lý chương lỗi** — thử lại riêng từng chương, hoặc tự dán nội dung cho
+  chương crawl không được.
+- **Giao diện sáng/tối** — một nút trên thanh tiêu đề, xoay vòng tự động → sáng
+  → tối; để tự động thì bám theo cài đặt hệ điều hành.
 - **EPUB chuẩn** — TOC (NCX + nav), metadata, ảnh bìa, ảnh trong chương được
   tải về và nhúng thẳng vào file.
 - **Chạy được ở 3 dạng** — server Node, container Docker, hoặc app macOS.
@@ -116,8 +128,9 @@ UI có hai tab:
 1. Dán URL trang truyện (ví dụ `https://truyenfull.live/dau-xuan-tuoi-sang/`)
    rồi bấm "Tải danh sách chương".
 2. Bấm "Crawl" — tiến độ hiện realtime, đóng tab không mất tiến độ.
-3. Mở chi tiết truyện để sửa tên sách / tác giả / ảnh bìa, tick chọn chương.
-4. Bấm "Xuất EPUB".
+3. Mở chi tiết truyện để sửa tên sách / tác giả / ảnh bìa, sửa lại tên và nội
+   dung từng chương nếu cần.
+4. Bấm "Xuất EPUB" — sách gồm mọi chương đã có nội dung.
 
 **Crawl thủ công** — dán trực tiếp danh sách URL từng chương (mỗi dòng một
 URL), dùng cho trang chưa có adapter mục lục như `metruyenchu.com`.
@@ -146,7 +159,8 @@ Backend phục vụ cả frontend đã build lẫn REST API dưới `/api`.
 | `GET` | `/api/supported-sites` | Danh sách domain được phép crawl |
 | `GET` | `/api/stories` | Danh sách truyện trong thư viện |
 | `POST` | `/api/stories` | `{ url }` — nạp mục lục từ trang truyện, tải bìa, lưu vào thư viện |
-| `GET` | `/api/stories/:id` | Chi tiết truyện kèm toàn bộ chương |
+| `GET` | `/api/stories/:id` | Chi tiết truyện + danh sách chương (**không** kèm nội dung, để truyện nghìn chương vẫn mở nhanh) |
+| `GET` | `/api/stories/:id/chapters/:order` | Nội dung một chương, tải khi người dùng mở chương ra |
 | `POST` | `/api/stories/:id/crawl` | `{ orders? }` — crawl ở hậu trường, trả `202` ngay |
 | `POST` | `/api/stories/:id/meta` | Lưu tên sách / tác giả / ngôn ngữ / ảnh bìa (multipart khi kèm ảnh) |
 | `PATCH` | `/api/stories/:id/chapters/:order` | `{ title, contentHtml }` — lưu tên & nội dung người dùng đã sửa cho một chương |
@@ -156,7 +170,8 @@ Backend phục vụ cả frontend đã build lẫn REST API dưới `/api`.
 | `POST` | `/api/extract` | `{ urls }` — crawl danh sách URL, trả **NDJSON** mỗi dòng một sự kiện |
 | `POST` | `/api/extract-one` | `{ url }` — crawl lại một chương |
 | `POST` | `/api/cover-upload` | Upload ảnh bìa tạm (multipart) |
-| `POST` | `/api/export` | `{ metadata, chapters }` — trả file `.epub` |
+| `POST` | `/api/stories/:id/export` | `{ metadata, chapters }` — dựng EPUB từ nội dung trong DB, client chỉ gửi chương đang sửa dở |
+| `POST` | `/api/export` | `{ metadata, chapters }` — trả file `.epub` (dùng cho tab Crawl thủ công) |
 
 ## Cấu trúc project
 
@@ -263,11 +278,10 @@ sai chuẩn. Ảnh tải hỏng thì bỏ hẳn thẻ `<img>` thay vì để l�
   lazy-load qua scroll event.
 - **Bảng (`<table>`)** bị làm phẳng thành các đoạn văn rời rạc.
 - **Không có đăng nhập tự động** — trang yêu cầu đăng nhập thì nằm ngoài phạm vi.
-- **Sửa nội dung chương trên UI không được lưu** — chỉ áp dụng cho lần export
-  đó. Tên sách / tác giả / ngôn ngữ / ảnh bìa thì có nút "Lưu thông tin" ghi
-  vào thư viện.
-- **Truyện hàng nghìn chương** làm UI nặng khi mở chi tiết vì tải toàn bộ nội
-  dung đã crawl.
+- **Tên chương phụ thuộc mục lục của site.** Mục lục `xtruyen.vn` chỉ trả phần
+  số ("Quyển 1 Chương 2"); phụ đề ("… : Mở cửa") nằm trên trang từng chương nên
+  chỉ hiện sau khi crawl chương đó. Chương đã crawl từ các bản cũ vẫn giữ tên
+  cũ — crawl lại để cập nhật.
 - **Kindle đời cũ** chỉ đọc MOBI/AZW3 — dùng Calibre để chuyển:
   `ebook-convert book.epub book.azw3`. Kindle firmware mới, "Send to Kindle" và
   Kindle app đọc EPUB trực tiếp.
