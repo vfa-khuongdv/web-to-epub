@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchStory, saveStoryMeta, startStoryCrawl } from "../api";
+import { fetchStory, saveChapterEdit, saveStoryMeta, startStoryCrawl } from "../api";
 import { blocksToHtml } from "../blocksToHtml";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../useCrawlJob";
@@ -381,6 +381,26 @@ export default function StoryDetail({
                   }
                   onRetry={() => handleCrawl([c.order])}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
+                  onSave={async (title, contentHtml) => {
+                    const updated = await saveChapterEdit(story.id, c.order, { title, contentHtml });
+                    // Lấy lại đúng bản server đã chuẩn hoá để lúc xuất EPUB
+                    // khớp với những gì đang nằm trong DB.
+                    bodies.current.set(c.id, blocksToHtml(updated.blocks ?? []));
+                    setChapters((cs) =>
+                      cs.map((x) =>
+                        x.id === c.id
+                          ? {
+                              ...x,
+                              title: updated.title,
+                              data: { sourceUrl: updated.url, title: updated.title, blocks: updated.blocks ?? [] },
+                              // Chương từng lỗi nay đã có nội dung -> tick vào sách.
+                              included: x.data.error ? true : x.included,
+                            }
+                          : x
+                      )
+                    );
+                    onStoryChanged();
+                  }}
                 />
               );
             })}

@@ -8,9 +8,10 @@ import { buildEpub, contentDisposition, epubFileName } from "../services/epubBui
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
 import { DATA_DIR } from "../config/paths";
 import { storyId, storyStore } from "../services/storyStore";
+import { htmlToBlocks } from "../services/chapterHtml";
 import { chaptersToCrawl, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
-import { ExportRequest, ExtractedChapter, ExtractRequest, ProgressEvent, StoredStory } from "../types";
+import { ExportRequest, ExtractedChapter, ExtractRequest, ProgressEvent, StoredChapter, StoredStory } from "../types";
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
@@ -275,6 +276,63 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
     coverUrl,
   });
   res.json({ story: await storyStore.get(id) });
+});
+
+// Sửa tên và nội dung một chương. Nội dung crawl về thường lẫn thông tin thừa
+// của trang nguồn (lời web, quảng cáo, tên chương lặp lại), nên người dùng dọn
+// lại trong khung soạn thảo rồi lưu đè bản đã sửa.
+router.patch("/stories/:id/chapters/:order", async (req, res) => {
+  const { id } = req.params;
+  const order = Number(req.params.order);
+  if (!Number.isInteger(order)) {
+    res.status(400).json({ message: "Số thứ tự chương không hợp lệ" });
+    return;
+  }
+  // Crawl đang chạy sẽ ghi đè chương bằng bản vừa trích xuất, nên chặn sửa để
+  // người dùng không mất công dọn xong rồi bị đè mất.
+  if (runningCrawls.has(id)) {
+    res.status(409).json({ message: "Truyện đang được crawl, không sửa được chương" });
+    return;
+  }
+
+  const story = await storyStore.get(id);
+  if (!story) {
+    res.status(404).json({ message: "Không tìm thấy truyện" });
+    return;
+  }
+  const chapter = story.chapters.find((c) => c.order === order);
+  if (!chapter) {
+    res.status(404).json({ message: "Không tìm thấy chương" });
+    return;
+  }
+
+  const { title, contentHtml } = req.body as { title?: string; contentHtml?: string };
+  if (!title?.trim()) {
+    res.status(400).json({ message: "Tên chương là bắt buộc" });
+    return;
+  }
+  if (typeof contentHtml !== "string") {
+    res.status(400).json({ message: "Nội dung chương là bắt buộc" });
+    return;
+  }
+
+  const blocks = htmlToBlocks(contentHtml);
+  if (blocks.length === 0) {
+    res.status(400).json({ message: "Nội dung chương không được để trống" });
+    return;
+  }
+
+  // Chương crawl lỗi mà người dùng tự dán nội dung vào coi như đã xong: nó được
+  // tính vào sách và "Crawl tiếp" không crawl lại để ghi đè nữa.
+  const updated: StoredChapter = {
+    ...chapter,
+    title: title.trim(),
+    blocks,
+    status: "done",
+    error: undefined,
+  };
+  await storyStore.saveChapter(id, updated);
+  res.json({ chapter: updated });
 });
 
 router.delete("/stories/:id", async (req, res) => {

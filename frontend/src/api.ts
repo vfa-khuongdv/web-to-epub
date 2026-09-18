@@ -1,4 +1,4 @@
-import { BookMetadata, ProgressEvent, StoredStory, StorySummary, SupportedSite } from "./types";
+import { BookMetadata, ProgressEvent, StoredChapter, StoredStory, StorySummary, SupportedSite } from "./types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites");
@@ -88,6 +88,23 @@ export async function saveStoryMeta(id: string, form: FormData): Promise<StoredS
   if (!res.ok) throw new Error(await readJsonError(res, "Không lưu được thông tin truyện"));
   const data = await res.json();
   return data.story as StoredStory;
+}
+
+// Lưu tên + nội dung một chương người dùng vừa sửa trong khung soạn thảo.
+// Server tự chuyển HTML về dạng block đang lưu và trả lại chương sau khi lưu.
+export async function saveChapterEdit(
+  storyId: string,
+  order: number,
+  edit: { title: string; contentHtml: string }
+): Promise<StoredChapter> {
+  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(edit),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, "Không lưu được chương"));
+  const data = await res.json();
+  return data.chapter as StoredChapter;
 }
 
 export async function deleteStory(id: string): Promise<void> {

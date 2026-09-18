@@ -37,8 +37,11 @@ chặn bôi đen, copy hay chuột phải.
   tab đang mở đều thấy trạng thái giống nhau, không cần F5.
 - **Ảnh bìa tự động** — lấy bìa từ trang truyện, nhận dạng bằng magic bytes để
   CDN trả `content-type` chung chung vẫn lưu đúng định dạng.
-- **Preview & sửa trước khi xuất** — sửa tiêu đề, sửa nội dung, tick chọn
-  chương nào vào sách, thử lại riêng từng chương lỗi.
+- **Sửa lại chương rồi lưu** — nội dung crawl về thường lẫn lời web, quảng cáo
+  hay tên chương lặp lại; sửa tiêu đề và nội dung ngay trong bảng chương rồi
+  bấm **Lưu chương** là ghi thẳng vào thư viện, mở lại vẫn còn.
+- **Preview trước khi xuất** — tick chọn chương nào vào sách, thử lại riêng
+  từng chương lỗi, hoặc tự dán nội dung cho chương crawl không được.
 - **EPUB chuẩn** — TOC (NCX + nav), metadata, ảnh bìa, ảnh trong chương được
   tải về và nhúng thẳng vào file.
 - **Chạy được ở 3 dạng** — server Node, container Docker, hoặc app macOS.
@@ -146,6 +149,7 @@ Backend phục vụ cả frontend đã build lẫn REST API dưới `/api`.
 | `GET` | `/api/stories/:id` | Chi tiết truyện kèm toàn bộ chương |
 | `POST` | `/api/stories/:id/crawl` | `{ orders? }` — crawl ở hậu trường, trả `202` ngay |
 | `POST` | `/api/stories/:id/meta` | Lưu tên sách / tác giả / ngôn ngữ / ảnh bìa (multipart khi kèm ảnh) |
+| `PATCH` | `/api/stories/:id/chapters/:order` | `{ title, contentHtml }` — lưu tên & nội dung người dùng đã sửa cho một chương |
 | `GET` | `/api/stories/:id/cover` | Ảnh bìa đã lưu |
 | `GET` | `/api/stories/live` | **SSE** — tiến độ mọi truyện đang crawl (kèm `storyId`) |
 | `GET` | `/api/stories/:id/live` | **SSE** — tiến độ một truyện |

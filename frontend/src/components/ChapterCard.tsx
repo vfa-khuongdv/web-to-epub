@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ExtractedChapter } from "../types";
 import { blocksToHtml } from "../blocksToHtml";
 import { Icon } from "./Icon";
@@ -61,6 +61,9 @@ interface ChapterCardProps {
   retrying: boolean;
   retriedOnce: boolean;
   onBodyChange: (html: string) => void;
+  // Vắng mặt ở tab "Crawl thủ công": chương chưa nằm trong thư viện nên không
+  // có gì để lưu vào, chỉ sửa tạm rồi xuất EPUB.
+  onSave?: (title: string, contentHtml: string) => Promise<void>;
 }
 
 // Playwright's failure text arrives with the time annotations from its Call
@@ -80,6 +83,10 @@ function tidyError(message: string): string {
 // the crawl progress updating or the row being collapsed. Its live HTML is
 // handed to the parent on input, and again on collapse before the editor
 // unmounts, so a collapsed chapter still exports what the user typed into it.
+//
+// Edits stay in the browser until "Lưu chương" writes them to the DB: crawled
+// text usually carries leftovers from the source page, and cleaning it up is
+// only worth doing once if it survives a reload.
 export default function ChapterCard({
   chapter,
   order,
@@ -91,8 +98,10 @@ export default function ChapterCard({
   retrying,
   retriedOnce,
   onBodyChange,
+  onSave,
 }: ChapterCardProps) {
-  const [html, setHtml] = useState(() => blocksToHtml(chapter.blocks));
+  const initialHtml = () => blocksToHtml(chapter.blocks);
+  const [html, setHtml] = useState(initialHtml);
   // Lets the user paste in content they viewed and copied themselves from a
   // normal browser (e.g. a chapter gated behind the site's own anti-adblock
   // wall) instead of this tool trying to defeat that gate automatically.
@@ -100,9 +109,33 @@ export default function ChapterCard({
   const [open, setOpen] = useState(false);
   const bodyEl = useRef<HTMLDivElement | null>(null);
 
+  // Bản đã lưu gần nhất: dùng để "Hoàn tác" quay về đúng nội dung trong DB.
+  const [savedTitle, setSavedTitle] = useState(title);
+  const [savedHtml, setSavedHtml] = useState(initialHtml);
+  // Cờ tự đặt thay vì so chuỗi: trình duyệt tự chuẩn hoá HTML lúc gắn vào khung
+  // soạn thảo (`<img />` -> `<img>`), so chuỗi sẽ báo "đã sửa" ngay khi vừa mở.
+  const [dirty, setDirty] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // Tăng lên để remount khung soạn thảo — cách duy nhất ép một vùng
+  // contentEditable không kiểm soát nhận lại nội dung cũ khi hoàn tác.
+  const [editorKey, setEditorKey] = useState(0);
+
   const failed = !!chapter.error && !manualMode;
   const panelId = `chapter-panel-${order}`;
   const chip: ChipState | null = retrying ? "running" : failed ? "error" : manualMode ? null : "done";
+
+  // Nhấp nháy "Đã lưu" trên nút sau khi lưu thành công.
+  useEffect(() => {
+    if (!saved) return;
+    const timer = setTimeout(() => setSaved(false), 2200);
+    return () => clearTimeout(timer);
+  }, [saved]);
+
+  function liveHtml(): string {
+    return bodyEl.current?.innerHTML ?? html;
+  }
 
   function toggle() {
     if (open) {
@@ -119,6 +152,35 @@ export default function ChapterCard({
     setManualMode(true);
     setOpen(true);
     onIncludedChange(true);
+  }
+
+  async function handleSave() {
+    if (!onSave) return;
+    const contentHtml = liveHtml();
+    setSaveError(null);
+    setSaving(true);
+    try {
+      await onSave(title, contentHtml);
+      setSavedTitle(title);
+      setSavedHtml(contentHtml);
+      setDirty(false);
+      setSaved(true);
+      // Nội dung dán tay giờ đã nằm trong DB như một chương bình thường.
+      setManualMode(false);
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function handleRevert() {
+    onTitleChange(savedTitle);
+    setHtml(savedHtml);
+    onBodyChange(savedHtml);
+    setEditorKey((k) => k + 1);
+    setDirty(false);
+    setSaveError(null);
   }
 
   return (
@@ -151,6 +213,7 @@ export default function ChapterCard({
               className={`text-ink-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
             />
             <span className="t">{title || chapter.sourceUrl}</span>
+            {dirty && <span className="chip shrink-0">Chưa lưu</span>}
           </button>
         </td>
         <td className="w-32">
@@ -220,10 +283,14 @@ export default function ChapterCard({
                     type="text"
                     className="input font-semibold"
                     value={title}
-                    onChange={(e) => onTitleChange(e.target.value)}
+                    onChange={(e) => {
+                      onTitleChange(e.target.value);
+                      setDirty(true);
+                    }}
                   />
                 </div>
                 <div
+                  key={editorKey}
                   className="chapter-body"
                   contentEditable
                   suppressContentEditableWarning
@@ -235,9 +302,38 @@ export default function ChapterCard({
                   onInput={() => {
                     const live = bodyEl.current?.innerHTML;
                     if (live !== undefined) onBodyChange(live);
+                    setDirty(true);
                   }}
                   dangerouslySetInnerHTML={{ __html: html }}
                 />
+
+                {saveError && (
+                  <div className="banner mt-2">
+                    <Icon name="alert" size={14} />
+                    <p className="min-w-0">{saveError}</p>
+                  </div>
+                )}
+
+                {onSave && (
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    className="btn btn-tiny"
+                    disabled={saving || !dirty}
+                    onClick={handleSave}
+                  >
+                    <Icon name={saved ? "check" : "upload"} size={13} />
+                    {saving ? "Đang lưu…" : saved ? "Đã lưu" : "Lưu chương"}
+                  </button>
+                  <button type="button" className="btn btn-quiet btn-tiny" disabled={saving || !dirty} onClick={handleRevert}>
+                    <Icon name="retry" size={13} />
+                    Hoàn tác
+                  </button>
+                  <span className="text-xs text-ink-3">
+                    {dirty ? "Sửa xong nhớ bấm Lưu chương, nếu không đóng app là mất." : "Sửa tên và nội dung để bỏ phần thừa của trang nguồn."}
+                  </span>
+                </div>
+                )}
               </>
             )}
           </td>
