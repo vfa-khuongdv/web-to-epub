@@ -6,6 +6,7 @@ import { MAX_ATTEMPTS, extractWithRetry } from "../services/crawl";
 import { createCoverStore, coverPathForExport } from "../services/coverStore";
 import { buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
+import { DATA_DIR } from "../config/paths";
 import { storyId, storyStore } from "../services/storyStore";
 import { chaptersToCrawl, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
@@ -13,7 +14,7 @@ import { ExportRequest, ExtractedChapter, ExtractRequest, ProgressEvent, StoredS
 
 const router = Router();
 const upload = multer({ dest: os.tmpdir() });
-const coverStore = createCoverStore(path.resolve("data"));
+const coverStore = createCoverStore(DATA_DIR);
 
 router.get("/supported-sites", (_req, res) => {
   res.json({ sites: SUPPORTED_SITES });

@@ -79,6 +79,8 @@ tool-crawler-/
 │           └── ChapterCard.tsx  # Thẻ preview/edit từng chapter (kể cả trạng thái lỗi + nút thử lại)
 ├── public/                       # Build output của frontend (tự sinh, không sửa tay)
 ├── data/                         # Thư viện truyện: stories.db (SQLite) + covers/ (không commit)
+├── electron/main.js              # Main process Electron: chạy server + mở cửa sổ (bản app macOS)
+├── scripts/adhoc-sign.js         # Ký ad-hoc bundle .app sau khi đóng gói
 ├── Dockerfile                    # Image multi-stage: build tsc+vite → runtime Node 22 + Chromium
 ├── docker-compose.yml            # Chạy image từ Docker Hub, mount ./data
 ├── package.json                  # npm workspaces: root (backend) + frontend
@@ -266,7 +268,53 @@ Dockerfile dùng multi-stage: stage `builder` chạy `npm run build`
 Chromium của Playwright rồi chạy `node dist/server.js` bằng user `node`
 (không phải root).
 
-## 9. Giới hạn hiện tại (MVP)
+## 9. Đóng gói thành app macOS (.app / .dmg)
+
+Bọc bằng Electron: main process chạy thẳng server Express rồi mở cửa sổ trỏ
+vào `localhost` (cổng tự chọn ngẫu nhiên nên không đụng cổng đang dùng).
+
+```bash
+npm run app:mac        # build frontend+backend, tải Chromium, đóng gói
+```
+
+Kết quả nằm ở `release/`:
+
+| File | Dung lượng |
+| --- | --- |
+| `Web to EPUB-1.0.0-arm64.dmg` | ~219 MB (gửi file này) |
+| `Web to EPUB-1.0.0-arm64-mac.zip` | ~219 MB |
+| `release/mac-arm64/Web to EPUB.app` | ~520 MB sau khi giải nén |
+
+Chromium của Playwright (195 MB, bản `--only-shell`) được nhét vào
+`Contents/Resources/ms-playwright/`, nên máy nhận **không cần cài Node hay
+Playwright**. Thư viện truyện lưu ở `~/Library/Application Support/web-to-epub/data`
+(không phải `./data` như khi chạy bằng `npm start`) — biến `DATA_DIR` quyết
+định chỗ này.
+
+### Máy nhận phải gỡ cờ quarantine
+
+Không có tài khoản Apple Developer nên app chỉ được **ký ad-hoc** (đủ để chạy
+trên Apple Silicon, chưa đủ để qua Gatekeeper). File gửi qua AirDrop/Zip/Drive
+sẽ bị macOS gắn cờ quarantine và báo *"Apple could not verify..."*.
+
+Người nhận kéo app vào `/Applications` rồi chạy **một lần** trong Terminal:
+
+```bash
+xattr -dr com.apple.quarantine "/Applications/Web to EPUB.app"
+```
+
+Từ macOS 15 Sequoia, chuột phải → Open không còn bypass được nữa; cách thay
+thế là System Settings → Privacy & Security → "Open Anyway". Muốn double-click
+chạy ngay như app thường thì bắt buộc phải có Apple Developer Program
+(99 USD/năm) để ký Developer ID + notarize.
+
+### Máy Intel
+
+`npm run app:mac` chỉ build **arm64** (Apple Silicon). Máy Intel cần build
+riêng `electron-builder --mac --x64`, và phải tải Chromium bản x64 cho
+Playwright trước đó — chạy build này trên chính máy Intel là chắc ăn nhất.
+
+## 10. Giới hạn hiện tại (MVP)
 
 - Chỉ crawl được domain nằm trong whitelist ở `src/config/supportedSites.ts`
   (hiện tại: xtruyen.vn, truyenfull.vn/.live, metruyenchu.com, truyencom.com,

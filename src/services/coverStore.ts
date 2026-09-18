@@ -1,6 +1,7 @@
 import fs from "fs";
 import path from "path";
 import { fetchWithRetry } from "./toc/http";
+import { DATA_DIR } from "../config/paths";
 
 // Bìa truyện thật thường dưới 500KB; chặn ở 8MB để một URL trỏ sai (ảnh scan,
 // file phim) không làm phình data/.
@@ -136,7 +137,7 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
 
 // epub-gen đọc trực tiếp file nội bộ (đường dẫn lưu trong DB) và tự tải URL
 // ngoài, nên chỉ cần đổi đường dẫn nội bộ thành đường dẫn tuyệt đối.
-export function coverPathForExport(coverUrl: string, dataDir = path.resolve("data")): string {
+export function coverPathForExport(coverUrl: string, dataDir = DATA_DIR): string {
   if (/^https?:/i.test(coverUrl) || path.isAbsolute(coverUrl)) return coverUrl;
   return path.resolve(dataDir, coverUrl);
 }
