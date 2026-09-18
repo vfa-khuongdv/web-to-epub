@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { buildChapterUrl, parseChaptersResponse, parseMangaId, parseStoryMeta } from "./xtruyen";
+import { buildChapterUrl, decodeChapterTitle, parseChaptersResponse, parseMangaId, parseStoryMeta } from "./xtruyen";
 import { normalizeStoryUrl } from "./normalizeUrl";
 
 const readFixture = (name: string) => readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), "utf8");
@@ -45,5 +45,22 @@ describe("buildChapterUrl", () => {
 describe("normalizeStoryUrl (xtruyen)", () => {
   it("cắt URL chương về URL truyện", () => {
     expect(normalizeStoryUrl("https://xtruyen.vn/truyen/han-phu/chuong-233/")).toBe("https://xtruyen.vn/truyen/han-phu/");
+  });
+});
+
+describe("decodeChapterTitle", () => {
+  it("giải mã entity và bỏ khoảng trắng thừa", () => {
+    expect(decodeChapterTitle("Quyển 1 Chương 0&nbsp;")).toBe("Quyển 1 Chương 0");
+    expect(decodeChapterTitle("Chương 5: Trời &amp; Đất")).toBe("Chương 5: Trời & Đất");
+    expect(decodeChapterTitle("Chương&#32;7&#x20;cuối")).toBe("Chương 7 cuối");
+  });
+
+  it("để nguyên chuỗi không phải entity hợp lệ", () => {
+    expect(decodeChapterTitle("Chương 1 &khongcothat; &#999999999;")).toBe("Chương 1 &khongcothat; &#999999999;");
+  });
+
+  it("tên chương trong API được giải mã", () => {
+    const list = parseChaptersResponse('[{"s":"quyen-1-chuong-1","n":"Quyển 1 Chương 0&nbsp;"}]');
+    expect(list).toEqual([{ slug: "quyen-1-chuong-1", title: "Quyển 1 Chương 0" }]);
   });
 });

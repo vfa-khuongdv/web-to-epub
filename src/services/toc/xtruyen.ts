@@ -38,6 +38,30 @@ export function parseStoryMeta(html: string, pageUrl: string): { title: string; 
   return { title, author, coverUrl };
 }
 
+// API trả tên chương ở dạng HTML nên có entity: "Quyển 1 Chương 0&nbsp;".
+// Không giải mã thì chuỗi "&nbsp;" hiện nguyên xi trong bảng chương và trong
+// mục lục EPUB. Giải mã xong gộp khoảng trắng (kể cả U+00A0 vừa sinh ra).
+const NAMED_ENTITIES: Record<string, string> = {
+  nbsp: "\u00a0",
+  amp: "&",
+  lt: "<",
+  gt: ">",
+  quot: '"',
+  apos: "'",
+};
+
+export function decodeChapterTitle(raw: string): string {
+  return raw
+    .replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (match, code: string) => {
+      if (!code.startsWith("#")) return NAMED_ENTITIES[code.toLowerCase()] ?? match;
+      const value = code[1] === "x" || code[1] === "X" ? parseInt(code.slice(2), 16) : Number(code.slice(1));
+      if (!Number.isInteger(value) || value <= 0 || value > 0x10ffff) return match;
+      return String.fromCodePoint(value);
+    })
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 export function parseChaptersResponse(text: string): { slug: string; title: string }[] {
   let data: unknown;
   try {
@@ -53,7 +77,7 @@ export function parseChaptersResponse(text: string): { slug: string; title: stri
       const item = x as { s?: unknown; n?: unknown };
       return !!x && typeof item.s === "string" && typeof item.n === "string";
     })
-    .map((x) => ({ slug: x.s, title: x.n }));
+    .map((x) => ({ slug: x.s, title: decodeChapterTitle(x.n) }));
 }
 
 export function buildChapterUrl(storyUrl: string, slug: string): string {
