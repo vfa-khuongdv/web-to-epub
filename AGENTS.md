@@ -16,6 +16,8 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 
 - Entry: `src/server.ts` (Express, serves `public/` + `/api`).
 - Crawl pipeline: `services/renderer.ts` (Playwright + auto-scroll) → `services/extractor.ts` (Readability + custom chrome filter) → typed `ContentBlock[]` → `services/storyStore.ts` (SQLite) → `services/epubBuilder.ts` (epub-gen).
+- Reader/preview: `frontend/src/components/ReaderOverlay.tsx` renders a chapter in a sandboxed iframe (no `allow-scripts`, chapter HTML is crawled) using the export's own `KINDLE_CSS`, so what is on screen is what the EPUB will contain. Highlights live in the `highlights` table and anchor by character offsets into the chapter's plain text (`frontend/src/highlightDom.ts`); reading position and reader preferences are per-browser in `localStorage`.
+- UI language: everything user-facing goes through `t()` — `frontend/src/i18n.tsx` + `messages.ts` on the client, `src/services/lang.ts` on the server. Keys are the English source text, so a missing entry renders English.
 - Per-site TOC adapters live in `src/services/toc/` (register in `index.ts`); direct chapter fetchers in `src/services/chapters/`. `services/crawl.ts` dispatches by URL: site fetcher if present, else renderer+extractor; retries 3 times.
 - Story crawls run server-side after a `202` response; progress goes over SSE (`/api/stories/live` shared channel tagged `storyId`, `/api/stories/:id/live`). The manual batch crawl streams NDJSON (`POST /api/extract`). `runningCrawls` and SSE subscriber maps are in-memory in `src/routes/api.ts` — single process only.
 - Trust boundary is the allowlist in `src/config/supportedSites.ts`, enforced server-side (frontend reads it from `/api/supported-sites`). New domains go there; optionally add a TOC adapter.
@@ -30,6 +32,9 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 - Chapter edits ARE persisted via `PATCH /api/stories/:id/chapters/:order` ("Save Chapter").
 - Crawl code re-reads the story from SQLite before `updateMeta` because a user may save meta mid-crawl — keep that read-before-write pattern.
 - Never bypass login/paywall/DRM (product constraint); locked chapters must fail with a clear Vietnamese error.
+- `LOCKED_CONTENT_RE` in `extractor.ts` matches text on the *crawled page*, not text this app writes — the supported sites publish their anti-adblock notices in Vietnamese. Translating it silently turns the check off (it already happened once).
+- `KINDLE_CSS` is exported from `epubBuilder.ts` and mirrored in `frontend/src/readerPreview.ts`; they must stay identical or the reader stops being an honest preview.
+- Server-side wording is module state in `services/lang.ts`, set per request from the `X-Lang` header. Fine because the app is single-process and single-reader; it would have to be per-request in a multi-user server. It defaults to English when the header is absent, which is what the tests rely on.
 - Docker runtime relies on `CHROMIUM_NO_SANDBOX=1` and expects a volume at `/app/data`. `npm run app:mac` is arm64-only, ad-hoc signed, and bundles Playwright shell Chromium via `build/ms-playwright`.
 
 ## Conventions
