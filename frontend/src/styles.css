@@ -1147,6 +1147,17 @@
     font-weight: 600;
   }
 
+  /* Five font samples do not fit across a 320px panel, and each needs enough room to
+     read as its own typeface — so they stack. */
+  .reader-seg-col {
+    flex-direction: column;
+  }
+
+  .reader-seg-col button {
+    text-align: left;
+    font-size: 14px;
+  }
+
   .reader-seg-value {
     display: flex;
     align-items: center;

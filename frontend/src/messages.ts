@@ -230,6 +230,10 @@ export const vi: Record<string, string> = {
   "Hide the chapter list": "Ẩn danh sách chương",
   "Show the chapter list": "Hiện danh sách chương",
   "Text settings": "Tuỳ chỉnh chữ",
+  "Read full screen": "Đọc toàn màn hình",
+  "Leave full screen": "Thoát toàn màn hình",
+  "Read full screen (F)": "Đọc toàn màn hình (F)",
+  "Leave full screen (F)": "Thoát toàn màn hình (F)",
   Unknown: "Không rõ",
   "{count} chapters in the book": "{count} chương trong sách",
   "Find a chapter…": "Tìm chương…",
@@ -248,12 +252,16 @@ export const vi: Record<string, string> = {
   Tight: "Hẹp",
   Book: "Như sách",
   Loose: "Rộng",
+  Font: "Phông chữ",
+  // Georgia/Palatino/Verdana are family names, so they stay as they are.
+  "Book serif": "Serif của sách",
+  "System sans": "Sans hệ thống",
   Page: "Nền trang",
   Paper: "Giấy",
   Sepia: "Ngà",
   Night: "Đêm",
-  "Fonts, spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file.":
-    "Phông chữ, khoảng cách và ảnh đều lấy từ chính stylesheet của sách, nên trang này đúng bằng nội dung file EPUB xuất ra. Các tuỳ chỉnh ở đây chỉ đổi cách bạn đọc tại chỗ — giống nút chỉnh chữ trên Kindle, chúng không được ghi vào file.",
+  "Spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file.":
+    "Khoảng cách và ảnh đều lấy từ chính stylesheet của sách, nên trang này đúng bằng nội dung file EPUB xuất ra. Các tuỳ chỉnh ở đây chỉ đổi cách bạn đọc tại chỗ — giống nút chỉnh chữ trên Kindle, chúng không được ghi vào file.",
 
   // Highlights
   "Highlights ({count})": "Đã tô ({count})",
