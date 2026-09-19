@@ -21,14 +21,17 @@ function epubFileName(title: string): string {
     .trim();
   return `${base || "book"}.epub`;
 }
+import { Translate } from "./i18n";
 import { BookMetadata } from "./types";
 
 // Description for progress bar. Image download is longest phase so show count;
 // packaging runs in one batch, cannot be subdivided.
-export function exportProgressLabel(progress: ExportProgress): string {
-  if (progress.phase === "packaging") return "Packaging EPUB…";
-  const what = progress.phase === "images" ? "images" : "audio/video";
-  return `Downloading ${what} ${progress.done}/${progress.total}…`;
+export function exportProgressLabel(progress: ExportProgress, t: Translate): string {
+  if (progress.phase === "packaging") return t("Packaging EPUB…");
+  const counts = { done: progress.done, total: progress.total };
+  return progress.phase === "images"
+    ? t("Downloading images {done}/{total}…", counts)
+    : t("Downloading audio/video {done}/{total}…", counts);
 }
 
 export function useEpubExport() {

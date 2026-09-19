@@ -4,6 +4,7 @@ import path from "path";
 import { DatabaseSync } from "node:sqlite";
 import { ContentBlock, StoredChapter, StoredStory, StorySummary } from "../types";
 import { DATA_DIR } from "../config/paths";
+import { t } from "./lang";
 
 export function storyId(storyUrl: string): string {
   return crypto.createHash("sha1").update(storyUrl).digest("hex").slice(0, 16);
@@ -38,9 +39,43 @@ export interface StoryStore {
     result: { newChapterCount?: number; checkedAt?: string; error?: string | null }
   ): Promise<boolean>;
   remove(id: string): Promise<boolean>;
+  listHighlights(storyId: string): Promise<Highlight[]>;
+  addHighlight(storyId: string, highlight: Omit<Highlight, "id" | "createdAt">): Promise<Highlight>;
+  setHighlightColor(storyId: string, id: string, color: HighlightColor): Promise<boolean>;
+  removeHighlight(storyId: string, id: string): Promise<boolean>;
 }
 
 const STORY_ID_RE = /^[0-9a-f]{16}$/;
+
+export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"] as const;
+export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
+
+/**
+ * A highlighted passage. `start`/`end` are character offsets into the chapter's plain
+ * text — not DOM positions — because the reader rebuilds that HTML on every open, and
+ * a re-crawl can rebuild it differently. `text` is kept so the sidebar can list the
+ * passage without loading the chapter, and so a highlight whose offsets no longer line
+ * up can still be shown rather than silently lost.
+ */
+export interface Highlight {
+  id: string;
+  chapterOrder: number;
+  start: number;
+  end: number;
+  color: HighlightColor;
+  text: string;
+  createdAt: string;
+}
+
+interface HighlightRow {
+  id: string;
+  chapter_order: number;
+  start: number;
+  end: number;
+  color: string;
+  text: string;
+  created_at: string;
+}
 
 interface StoryRow {
   id: string;
@@ -89,6 +124,18 @@ export function createStoryStore(baseDir: string): StoryStore {
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS highlights (
+      id TEXT PRIMARY KEY,
+      story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      chapter_order INTEGER NOT NULL,
+      start INTEGER NOT NULL,
+      "end" INTEGER NOT NULL,
+      color TEXT NOT NULL,
+      text TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS highlights_by_chapter
+      ON highlights (story_id, chapter_order, start);
     CREATE TABLE IF NOT EXISTS chapters (
       story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
       "order" INTEGER NOT NULL,
@@ -140,6 +187,16 @@ export function createStoryStore(baseDir: string): StoryStore {
       blocks = excluded.blocks
   `);
   const deleteChapters = db.prepare(`DELETE FROM chapters WHERE story_id = ?`);
+  const selectHighlights = db.prepare(
+    `SELECT id, chapter_order, start, "end", color, text, created_at FROM highlights
+     WHERE story_id = ? ORDER BY chapter_order, start`
+  );
+  const insertHighlight = db.prepare(
+    `INSERT INTO highlights (id, story_id, chapter_order, start, "end", color, text, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+  );
+  const updateHighlightColor = db.prepare(`UPDATE highlights SET color = ? WHERE id = ? AND story_id = ?`);
+  const deleteHighlight = db.prepare(`DELETE FROM highlights WHERE id = ? AND story_id = ?`);
   const selectStory = db.prepare(`SELECT * FROM stories WHERE id = ?`);
   const selectChapters = db.prepare(`SELECT * FROM chapters WHERE story_id = ? ORDER BY "order"`);
   const selectChapterOutlines = db.prepare(
@@ -298,7 +355,7 @@ export function createStoryStore(baseDir: string): StoryStore {
 
     async save(story: StoredStory): Promise<void> {
       if (!STORY_ID_RE.test(story.id)) {
-        throw new Error(`Invalid story ID: ${story.id}`);
+        throw new Error(t("Invalid story ID: {id}", { id: story.id }));
       }
       inTransaction(() => {
         upsertStory.run(
@@ -358,12 +415,12 @@ export function createStoryStore(baseDir: string): StoryStore {
 
     async saveChapter(id: string, chapter: StoredChapter): Promise<void> {
       if (!STORY_ID_RE.test(id)) {
-        throw new Error(`Invalid story ID: ${id}`);
+        throw new Error(t("Invalid story ID: {id}", { id }));
       }
       inTransaction(() => {
         const result = touchStory.run(new Date().toISOString(), id);
         if (Number(result.changes) === 0) {
-          throw new Error(`Story not found: ${id}`);
+          throw new Error(t("Story not found: {id}", { id }));
         }
         upsertChapter.run(...chapterParams(id, chapter));
       });
@@ -372,6 +429,48 @@ export function createStoryStore(baseDir: string): StoryStore {
     async remove(id: string): Promise<boolean> {
       if (!STORY_ID_RE.test(id)) return false;
       return Number(deleteStory.run(id).changes) > 0;
+    },
+
+    async listHighlights(id: string): Promise<Highlight[]> {
+      if (!STORY_ID_RE.test(id)) return [];
+      const rows = selectHighlights.all(id) as unknown as HighlightRow[];
+      return rows.map((row) => ({
+        id: row.id,
+        chapterOrder: row.chapter_order,
+        start: row.start,
+        end: row.end,
+        color: row.color as HighlightColor,
+        text: row.text,
+        createdAt: row.created_at,
+      }));
+    },
+
+    async addHighlight(id: string, highlight: Omit<Highlight, "id" | "createdAt">): Promise<Highlight> {
+      if (!STORY_ID_RE.test(id)) {
+        throw new Error(t("Invalid story ID: {id}", { id }));
+      }
+      const saved: Highlight = { ...highlight, id: crypto.randomUUID(), createdAt: new Date().toISOString() };
+      insertHighlight.run(
+        saved.id,
+        id,
+        saved.chapterOrder,
+        saved.start,
+        saved.end,
+        saved.color,
+        saved.text,
+        saved.createdAt
+      );
+      return saved;
+    },
+
+    async setHighlightColor(id: string, highlightId: string, color: HighlightColor): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
+      return Number(updateHighlightColor.run(color, highlightId, id).changes) > 0;
+    },
+
+    async removeHighlight(id: string, highlightId: string): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
+      return Number(deleteHighlight.run(highlightId, id).changes) > 0;
     },
   };
 }

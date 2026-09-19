@@ -41,12 +41,12 @@ describe("parseWattpadChapter", () => {
   it("báo LockedContentError khi chương nằm sau paywall (Paid Stories)", () => {
     const url = "https://www.wattpad.com/643127331-of-cages-and-crowns-previously-the-culled-crown";
     expect(() => parseWattpadChapter(readFixture("wattpad-paid-chapter.html"), url)).toThrow(LockedContentError);
-    expect(() => parseWattpadChapter(readFixture("wattpad-paid-chapter.html"), url)).toThrow(/trả phí/);
+    expect(() => parseWattpadChapter(readFixture("wattpad-paid-chapter.html"), url)).toThrow(/Paid Stories/);
   });
 
   it("báo lỗi thường khi trang không có nội dung chương", () => {
     expect(() => parseWattpadChapter("<html><head><title>X</title></head><body>loading</body></html>", CHAPTER_URL)).toThrow(
-      /Không tìm thấy nội dung chương/
+      /Could not find chapter content/
     );
   });
 

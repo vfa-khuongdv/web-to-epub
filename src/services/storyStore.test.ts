@@ -145,7 +145,7 @@ describe("createStoryStore", () => {
   });
 
   it("save rejects id path traversal", async () => {
-    await expect(store.save(makeStory({ id: "../../evil" }))).rejects.toThrow("Invalid story id");
+    await expect(store.save(makeStory({ id: "../../evil" }))).rejects.toThrow("Invalid story ID");
   });
 
   it("remove deletes story with all chapters", async () => {
@@ -181,7 +181,7 @@ describe("createStoryStore", () => {
 
   it("saveChapter rejects id path traversal", async () => {
     const chapter = { order: 1, url: "https://example.com/x/1/", title: "Chương 1", status: "pending" as const };
-    await expect(store.saveChapter("../../evil", chapter)).rejects.toThrow("Invalid story id");
+    await expect(store.saveChapter("../../evil", chapter)).rejects.toThrow("Invalid story ID");
   });
 
   it("updateMeta updates title/author/language/cover and keeps chapters unchanged", async () => {

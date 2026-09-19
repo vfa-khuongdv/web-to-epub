@@ -2,6 +2,7 @@ import { JSDOM } from "jsdom";
 import { ContentBlock, ExtractedChapter } from "../../types";
 import { LockedContentError } from "../extractor";
 import { fetchText } from "../toc/http";
+import { t } from "../lang";
 
 export const WATTPAD_DOMAINS = ["wattpad.com"];
 
@@ -53,11 +54,13 @@ export function parseWattpadChapter(html: string, url: string): ExtractedChapter
   if (blocks.length === 0) {
     if (doc.querySelector(".story-part-paywall") || PAID_RE.test(doc.body?.textContent || "")) {
       throw new LockedContentError(
-        `This chapter is part of Wattpad's Paid Stories program and cannot be extracted: ${url}`
+        t("This chapter is part of Wattpad's Paid Stories program and cannot be extracted: {url}", { url })
       );
     }
     throw new Error(
-      `Could not find chapter content at ${url} — the site may have changed structure or the chapter is locked`
+      t("Could not find chapter content at {url} — the site may have changed structure or the chapter is locked", {
+        url,
+      })
     );
   }
 

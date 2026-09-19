@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { ExtractedChapter } from "../types";
 import { blocksToHtml } from "../blocksToHtml";
+import { useLang } from "../i18n";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
 
@@ -21,11 +22,12 @@ export function PendingChapterRow({
   // Keep the same column count as the table using it (see ChapterCardProps.included).
   includeColumn?: boolean;
 }) {
+  const { t } = useLang();
   return (
     <tr>
       {includeColumn && (
         <td className="w-9 pr-1">
-          <input type="checkbox" className="checkbox" disabled aria-label={`Chapter ${order} not crawled yet`} />
+          <input type="checkbox" className="checkbox" disabled aria-label={t("Chapter {order} not crawled yet", { order })} />
         </td>
       )}
       <td className="num w-11">
@@ -45,10 +47,10 @@ export function PendingChapterRow({
           href={url}
           target="_blank"
           rel="noreferrer"
-          title="Open source page"
+          title={t("Open source page")}
         >
           <Icon name="open" size={13} />
-          <span className="visually-hidden">Open source page for chapter {order}</span>
+          <span className="visually-hidden">{t("Open source page for chapter {order}", { order })}</span>
         </a>
       </td>
     </tr>
@@ -117,6 +119,7 @@ export default function ChapterCard({
   // normal browser (e.g. a chapter gated behind the site's own anti-adblock
   // wall) instead of this tool trying to defeat that gate automatically.
   const [manualMode, setManualMode] = useState(false);
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const bodyEl = useRef<HTMLDivElement | null>(null);
 
@@ -231,7 +234,7 @@ export default function ChapterCard({
               checked={included}
               disabled={failed}
               onChange={(e) => onIncludedChange(e.target.checked)}
-              aria-label={`Include chapter ${order} in book`}
+              aria-label={t("Include chapter {order} in book", { order })}
             />
           </td>
         )}
@@ -252,16 +255,16 @@ export default function ChapterCard({
               className={`text-ink-3 transition-transform duration-200 ${open ? "rotate-90" : ""}`}
             />
             <span className="t">{title || chapter.sourceUrl}</span>
-            {dirty && <span className="chip shrink-0">Unsaved</span>}
+            {dirty && <span className="chip shrink-0">{t("Unsaved")}</span>}
           </button>
         </td>
         <td className="w-32">
           {chip ? (
-            <StatusChip state={chip} label={retrying ? "Retrying" : undefined} />
+            <StatusChip state={chip} label={retrying ? t("Retrying") : undefined} />
           ) : (
             <span className="chip">
               <Icon name="edit" size={12} />
-              Manual input
+              {t("Manual input")}
             </span>
           )}
         </td>
@@ -269,7 +272,7 @@ export default function ChapterCard({
           {failed && (
             <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
               <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
-              {retrying ? "Retrying..." : "Retry"}
+              {retrying ? t("Retrying…") : t("Retry")}
             </button>
           )}
         </td>
@@ -280,7 +283,7 @@ export default function ChapterCard({
           <td colSpan={onIncludedChange ? 5 : 4}>
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
               <span className="break-all">
-                Source:{" "}
+                {t("Source:")}{" "}
                 <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
                   {chapter.sourceUrl}
                 </a>
@@ -292,22 +295,22 @@ export default function ChapterCard({
                 <div className="banner mt-2">
                   <Icon name="alert" size={14} />
                   <div className="min-w-0">
-                    <p className="font-semibold">Could not extract this chapter</p>
+                    <p className="font-semibold">{t("Could not extract this chapter")}</p>
                     <p className="mt-0.5 font-mono text-[11.5px] leading-relaxed">{tidyError(chapter.error ?? "")}</p>
                   </div>
                 </div>
                 <div className="mt-2 flex flex-wrap items-center gap-2">
                   <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
                     <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
-                    {retrying ? "Retrying..." : "Retry"}
+                    {retrying ? t("Retrying…") : t("Retry")}
                   </button>
                   {retriedOnce ? (
                     <button type="button" className="btn btn-tiny" onClick={enterManualMode}>
                       <Icon name="edit" size={13} />
-                      Enter content manually
+                      {t("Enter content manually")}
                     </button>
                   ) : (
-                    <span className="text-xs text-ink-3">Many errors are temporary — try again first.</span>
+                    <span className="text-xs text-ink-3">{t("Many errors are temporary — try again first.")}</span>
                   )}
                 </div>
               </>
@@ -315,7 +318,7 @@ export default function ChapterCard({
               <>
                 <div className="mt-2">
                   <label className="visually-hidden" htmlFor={`chapter-title-${order}`}>
-                    Title for chapter {order}
+                    {t("Title for chapter {order}", { order })}
                   </label>
                   <input
                     id={`chapter-title-${order}`}
@@ -328,7 +331,7 @@ export default function ChapterCard({
                     }}
                   />
                 </div>
-                {loadingBody && <p className="mt-2 text-xs text-ink-3">Loading chapter content...</p>}
+                {loadingBody && <p className="mt-2 text-xs text-ink-3">{t("Loading chapter content…")}</p>}
                 {loadError && (
                   <div className="banner mt-2">
                     <Icon name="alert" size={14} />
@@ -342,8 +345,8 @@ export default function ChapterCard({
                   suppressContentEditableWarning
                   role="textbox"
                   aria-multiline="true"
-                  aria-label={`Content for chapter ${order}`}
-                  data-placeholder="Paste chapter content here"
+                  aria-label={t("Content for chapter {order}", { order })}
+                  data-placeholder={t("Paste chapter content here")}
                   ref={bodyEl}
                   onInput={() => {
                     const live = bodyEl.current?.innerHTML;
@@ -369,14 +372,16 @@ export default function ChapterCard({
                       onClick={handleSave}
                     >
                       <Icon name={saved ? "check" : "upload"} size={13} />
-                      {saving ? "Saving..." : saved ? "Saved" : "Save chapter"}
+                      {saving ? t("Saving…") : saved ? t("Saved") : t("Save chapter")}
                     </button>
                     <button type="button" className="btn btn-quiet btn-tiny" disabled={saving || !dirty} onClick={handleRevert}>
                       <Icon name="retry" size={13} />
-                      Undo
+                      {t("Undo")}
                     </button>
                     <span className="text-xs text-ink-3">
-                      {dirty ? "Remember to click Save chapter after editing, or changes will be lost when you close." : "Edit the title and content to remove unwanted source page elements."}
+                      {dirty
+                        ? t("Remember to click Save chapter after editing, or changes will be lost when you close.")
+                        : t("Edit the title and content to remove unwanted source page elements.")}
                     </span>
                   </div>
                 )}

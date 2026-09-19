@@ -2,6 +2,7 @@ import { JSDOM } from "jsdom";
 import { Readability } from "@mozilla/readability";
 import { ContentBlock, ExtractedChapter } from "../types";
 import { mediaSrc } from "./chapterHtml";
+import { t } from "./lang";
 
 // Matches whole class/id tokens for common chrome (nav/ads/sidebar/etc), not
 // substrings — a class like "gradient" or "loading" must NOT match "ad".
@@ -12,7 +13,9 @@ const CHROME_TOKEN_RE =
 // returning an error — the page loads fine but the "content" is just this message.
 // Left undetected, it would silently become a nonsense 1-paragraph "chapter" in the
 // exported book instead of a visible failure the user can retry or skip.
-const LOCKED_CONTENT_RE = /content (chapter|chapter).{0,20}(is locked|locked)|please (disable|enable).{0,30}ad/i;
+// This one matches text on the crawled page, not text this app writes, so it stays in
+// the language the supported sites publish in — translating it turns the check off.
+const LOCKED_CONTENT_RE = /nội dung (chương|chapter).{0,20}(đang bị khóa|bị khóa)|vui lòng (tắt|mở lại).{0,30}quảng cáo/i;
 
 // Thrown when a chapter is locked behind an ad interaction. Retrying can't
 // unlock it, so callers must not spend their retry budget on it.
@@ -139,7 +142,7 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   }
 
   if (!article || !article.content) {
-    throw new Error(`Could not extract main content from ${url}`);
+    throw new Error(t("Could not extract main content from {url}", { url }));
   }
 
   const contentDom = new JSDOM(article.content, { url });
@@ -154,7 +157,9 @@ export function extractChapter(url: string, renderedHtml: string): ExtractedChap
   const bodyText = blocks.map((b) => b.text || "").join(" ");
   if (LOCKED_CONTENT_RE.test(bodyText)) {
     throw new LockedContentError(
-      `Chapter is locked behind an ad blocker notice (requires disabling/enabling ads), cannot extract: ${url}`
+      t("Chapter is locked behind an ad blocker notice (requires disabling/enabling ads), cannot extract: {url}", {
+        url,
+      })
     );
   }
 

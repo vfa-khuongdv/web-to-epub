@@ -2,6 +2,7 @@ import { JSDOM } from "jsdom";
 import { fetchText } from "./http";
 import { normalizeStoryUrl } from "./normalizeUrl";
 import { TocAdapter, TocChapter, TocResult } from "./types";
+import { t } from "../lang";
 
 export const TRUYENFULL_TEMPLATE_DOMAINS = ["truyenfull.live", "truyenfull.vn", "truyencom.com"];
 
@@ -82,7 +83,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   }
 
   if (chapters.length === 0) {
-    throw new Error(`No chapter list found at ${storyUrl} — check the story URL again`);
+    throw new Error(t("No chapter list found at {url} — check the story URL again", { url: storyUrl }));
   }
   return { ...meta, chapters };
 }

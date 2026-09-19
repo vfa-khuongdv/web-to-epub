@@ -97,7 +97,7 @@ describe("extractWithRetry", () => {
 
     const chapter = await extractWithRetry(WATTPAD_URL);
 
-    expect(chapter.error).toMatch(/trả phí/);
+    expect(chapter.error).toMatch(/paid program/);
     expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
   });
 
@@ -166,7 +166,7 @@ describe("extractWithRetry", () => {
       const chapter = await promise;
 
       expect(chapter.sourceUrl).toBe(OTHER_URL);
-      expect(chapter.error).toMatch(/rỗng/);
+      expect(chapter.error).toMatch(/downloaded empty/);
       expect(chapter.blocks).toEqual([]);
     } finally {
       vi.useRealTimers();

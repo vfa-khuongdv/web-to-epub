@@ -2,12 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveStoryMeta, setStoryWatch, startStoryCrawl } from "../api";
 import { blocksToHtml } from "../blocksToHtml";
 import { formatEta } from "../formatEta";
+import { Translate, useLang } from "../i18n";
 import { timeAgo } from "../timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../useCrawlJob";
 import { exportProgressLabel, useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
+import ReaderOverlay from "./ReaderOverlay";
 
 // Long stories with thousands of chapters: rendering all at once creates tens of
 // thousands of DOM nodes, and each checkbox click redraws that many rows.
@@ -23,10 +25,10 @@ interface ChapterState {
   retriedOnce: boolean;
 }
 
-function toChapterState(chapter: StoredChapter, version: number): ChapterState {
+function toChapterState(chapter: StoredChapter, version: number, t: Translate): ChapterState {
   const data: ExtractedChapter =
     chapter.status === "error"
-      ? { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || "Unknown error" }
+      ? { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || t("Unknown error") }
       : { sourceUrl: chapter.url, title: chapter.title, blocks: chapter.blocks ?? [] };
   return {
     id: `stored-${chapter.order}`,
@@ -54,8 +56,10 @@ export default function StoryDetail({
   onStoryChanged: () => void | Promise<void>;
   onClear: () => void;
 }) {
+  // Before the state below: the chapter list's lazy initializer already needs `t`.
+  const { lang, t } = useLang();
   const [chapters, setChapters] = useState<ChapterState[]>(() =>
-    story.chapters.filter((c) => c.status !== "pending").map((c) => toChapterState(c, 0))
+    story.chapters.filter((c) => c.status !== "pending").map((c) => toChapterState(c, 0, t))
   );
   const [bookTitle, setBookTitle] = useState(story.title);
   const [author, setAuthor] = useState(story.author || "");
@@ -71,6 +75,7 @@ export default function StoryDetail({
   const [error, setError] = useState<string | null>(null);
   const [chapterPage, setChapterPage] = useState(1);
   const [loadingNew, setLoadingNew] = useState(false);
+  const [reading, setReading] = useState(false);
   const { isExporting, progress, exportStoryBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
@@ -97,12 +102,30 @@ export default function StoryDetail({
   // remaining-chapters / ETA = chapters/minute — no separate field needed.
   const etaText =
     job.running && job.etaMs !== undefined && job.total > job.cursor
-      ? `${formatEta(job.etaMs)} remaining · ${Math.max(1, Math.round((job.total - job.cursor) / (job.etaMs / 60_000)))} ch/min`
+      ? t("{eta} remaining · {rate} ch/min", {
+          eta: formatEta(job.etaMs, lang),
+          rate: Math.max(1, Math.round((job.total - job.cursor) / (job.etaMs / 60_000))),
+        })
       : null;
 
   // Look up via Map instead of find() in loop: find() turns each table render
   // into O(n²) — with 2468 chapters, millions of comparisons.
   const stateByOrder = new Map(chapters.map((c) => [c.order, c]));
+
+  // Exactly what the book will contain, with the titles currently in the editor —
+  // the reader is a preview of the export, not of what is on the server.
+  const readableChapters = story.chapters
+    .filter((c) => c.status === "done")
+    .map((c) => ({ order: c.order, title: stateByOrder.get(c.order)?.title ?? c.title }));
+
+  const coverSrc =
+    coverUrl && !coverBroken
+      ? // Not downloaded internally (stories completed before this feature existed)
+        // show temp image from original URL; load error shows empty frame.
+        coverUrl.startsWith("http")
+        ? coverUrl
+        : `/api/stories/${encodeURIComponent(story.id)}/cover?v=${encodeURIComponent(coverUrl)}`
+      : undefined;
   const chapterPageCount = Math.max(1, Math.ceil(story.chapters.length / CHAPTERS_PER_PAGE));
   const currentChapterPage = Math.min(chapterPage, chapterPageCount);
   const visibleChapters = story.chapters.slice(
@@ -112,7 +135,7 @@ export default function StoryDetail({
 
   // Open story listens on realtime channel: crawl started by this or another
   // session both update the chapter table directly.
-  useEffect(() => attach(`Story: ${story.title}`, story.id), [attach, story.id, story.title]);
+  useEffect(() => attach(t("Story: {title}", { title: story.title }), story.id), [attach, story.id, story.title]);
 
   // When a crawl run ends, refetch content from server (realtime channel carries
   // state only, not chapter content).
@@ -139,7 +162,7 @@ export default function StoryDetail({
       if (single !== undefined) {
         const updated = fresh.chapters.find((c) => c.order === single);
         if (updated) {
-          setChapters((cs) => cs.map((c) => (c.order === single ? toChapterState(updated, c.version + 1) : c)));
+          setChapters((cs) => cs.map((c) => (c.order === single ? toChapterState(updated, c.version + 1, t) : c)));
         }
       } else {
         // Bumping the version remounts each rewritten row, so its editor shows
@@ -147,7 +170,7 @@ export default function StoryDetail({
         setChapters((cs) =>
           fresh.chapters
             .filter((c) => c.status !== "pending")
-            .map((c) => toChapterState(c, (cs.find((x) => x.order === c.order)?.version ?? -1) + 1))
+            .map((c) => toChapterState(c, (cs.find((x) => x.order === c.order)?.version ?? -1) + 1, t))
         );
       }
       clearChapters();
@@ -262,24 +285,18 @@ export default function StoryDetail({
       <div className="pane-head">
         <button type="button" className="btn btn-quiet btn-tiny" onClick={onClear}>
           <Icon name="chevron" size={12} className="rotate-180" />
-          Story list
+          {t("Story list")}
         </button>
-        <h2 className="ml-auto">Story details</h2>
+        <h2 className="ml-auto">{t("Story details")}</h2>
       </div>
 
       <div className="detail">
         <div className="detail-cover">
-          {coverUrl && !coverBroken ? (
+          {coverSrc ? (
             <img
               className="cover-thumb"
-              // Not downloaded internally (stories completed before this feature existed)
-              // show temp image from original URL; load error shows empty frame.
-              src={
-                coverUrl.startsWith("http")
-                  ? coverUrl
-                  : `/api/stories/${encodeURIComponent(story.id)}/cover?v=${encodeURIComponent(coverUrl)}`
-              }
-              alt={`Cover image for ${story.title}`}
+              src={coverSrc}
+              alt={t("Cover image for {title}", { title: story.title })}
               // Some CDNs (Google Drive) block hotlinks by Referer.
               referrerPolicy="no-referrer"
               onError={() => setCoverBroken(true)}
@@ -307,18 +324,20 @@ export default function StoryDetail({
             <div className="readout">
               <span className="readout-n">{doneCount}</span>
               <span className="readout-of">/{story.chapters.length}</span>
-              <span className="readout-what">chapters crawled</span>
+              <span className="readout-what">{t("chapters crawled")}</span>
             </div>
             <p className="mt-1.5 text-xs text-ink-2">
-              {pendingCount > 0 && <span>{pendingCount} pending crawl</span>}
+              {pendingCount > 0 && <span>{t("{count} pending crawl", { count: pendingCount })}</span>}
               {pendingCount > 0 && errorCount > 0 && <span> · </span>}
-              {errorCount > 0 && <span className="font-semibold text-error">{errorCount} errors</span>}
-              {remaining === 0 && <span>All chapters crawled</span>}
+              {errorCount > 0 && <span className="font-semibold text-error">{t("{count} errors", { count: errorCount })}</span>}
+              {remaining === 0 && <span>{t("All chapters crawled")}</span>}
           </p>
             {etaText && <p className="mt-1.5 text-xs text-ink-2">{etaText}</p>}
             {story.watching && (
               <p className="mt-1.5 text-xs text-ink-3">
-                {story.lastCheckedAt ? `Last checked ${timeAgo(story.lastCheckedAt)}` : "Never checked"}
+                {story.lastCheckedAt
+                  ? t("Last checked {when}", { when: timeAgo(story.lastCheckedAt, lang) })
+                  : t("Never checked")}
               </p>
             )}
         </div>
@@ -326,14 +345,18 @@ export default function StoryDetail({
           {story.newChapterCount > 0 && (
             <div className="banner banner-new">
               <Icon name="bell" size={14} />
-              <p className="min-w-0">{story.newChapterCount} new chapters since the last crawl.</p>
+              <p className="min-w-0">
+                {t("{count} new chapters since the last crawl.", { count: story.newChapterCount })}
+              </p>
               <button
                 type="button"
                 className="btn btn-tiny ml-auto"
                 disabled={loadingNew || job.running}
                 onClick={handleLoadNew}
               >
-                {loadingNew ? "Loading new chapters..." : `Load ${story.newChapterCount} new chapters`}
+                {loadingNew
+                  ? t("Loading new chapters…")
+                  : t("Load {count} new chapters", { count: story.newChapterCount })}
               </button>
             </div>
           )}
@@ -346,30 +369,40 @@ export default function StoryDetail({
               onClick={() => handleCrawl()}
             >
               <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
-              {job.running ? "Crawling..." : `Continue crawl (${remaining} chapters)`}
+              {job.running ? t("Crawling…") : t("Continue crawl ({count} chapters)", { count: remaining })}
+            </button>
+            <button
+              type="button"
+              className="btn"
+              disabled={readableChapters.length === 0}
+              title={t("See the chapters exactly as the exported EPUB will show them — and read them here")}
+              onClick={() => setReading(true)}
+            >
+              <Icon name="book" size={14} />
+              {t("Read / preview")}
             </button>
             <button type="button" className="btn" disabled={isExporting || doneCount === 0} onClick={handleExport}>
               <Icon name="download" size={14} />
-              {isExporting ? "Exporting..." : "Export EPUB"}
+              {isExporting ? t("Exporting…") : t("Export EPUB")}
             </button>
             {isExporting && (
               <span className="export-progress" role="status">
-                {progress ? exportProgressLabel(progress) : "Preparing..."}
+                {progress ? exportProgressLabel(progress, t) : t("Preparing…")}
               </span>
             )}
             <button
               type="button"
               className="btn"
               aria-pressed={story.watching}
-              title={story.watching ? "Stop watching for new chapters" : "Check for new chapters when opening app"}
+              title={story.watching ? t("Stop watching for new chapters") : t("Check for new chapters when opening app")}
               onClick={handleWatchToggle}
             >
               <Icon name="bell" size={13} className={story.watching ? "text-select" : undefined} />
-              {story.watching ? "Watching" : "Watch for new chapters"}
+              {story.watching ? t("Watching") : t("Watch for new chapters")}
             </button>
             <button type="button" className="btn" disabled={saving} onClick={handleSave}>
               <Icon name={saved ? "check" : "upload"} size={13} />
-              {saving ? "Saving..." : saved ? "Saved" : "Save metadata"}
+              {saving ? t("Saving…") : saved ? t("Saved") : t("Save metadata")}
             </button>
           </div>
 
@@ -382,7 +415,7 @@ export default function StoryDetail({
 
           <div className="fields">
             <div className="field">
-              <label htmlFor="story-title">Book title</label>
+              <label htmlFor="story-title">{t("Book title")}</label>
             <input
               id="story-title"
               type="text"
@@ -392,7 +425,7 @@ export default function StoryDetail({
             />
             </div>
             <div className="field">
-              <label htmlFor="story-author">Author</label>
+              <label htmlFor="story-author">{t("Author")}</label>
             <input
               id="story-author"
               type="text"
@@ -402,19 +435,19 @@ export default function StoryDetail({
             />
             </div>
             <div className="field">
-              <label htmlFor="story-language">Language</label>
+              <label htmlFor="story-language">{t("Book language")}</label>
             <select
               id="story-language"
               className="input"
               value={language}
               onChange={(e) => setLanguage(e.target.value)}
             >
-              <option value="vi">Vietnamese</option>
-              <option value="en">English</option>
+              <option value="vi">{t("Vietnamese")}</option>
+              <option value="en">{t("English")}</option>
             </select>
             </div>
             <div className="field">
-              <label htmlFor="story-cover">Cover image</label>
+              <label htmlFor="story-cover">{t("Cover image")}</label>
             <input
               id="story-cover"
               ref={coverInput}
@@ -423,7 +456,7 @@ export default function StoryDetail({
               accept="image/*"
               onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
             />
-              <p className="cover-hint">Cover auto-downloads during crawl. Select a new image, then click "Save metadata" to change it.</p>
+              <p className="cover-hint">{t("Cover auto-downloads during crawl. Select a new image, then click Save metadata to change it.")}</p>
             </div>
           </div>
         </div>
@@ -434,8 +467,8 @@ export default function StoryDetail({
           <thead>
             <tr>
               <th className="num w-11">#</th>
-              <th>Chapter</th>
-              <th className="w-32">Status</th>
+              <th>{t("Chapter")}</th>
+              <th className="w-32">{t("Status")}</th>
               <th className="w-28" />
             </tr>
           </thead>
@@ -495,8 +528,11 @@ export default function StoryDetail({
         {chapterPageCount > 1 && (
           <div className="flex items-center gap-2 border-t border-rule px-3 py-2 text-xs text-ink-2">
             <span>
-              Chapters {(currentChapterPage - 1) * CHAPTERS_PER_PAGE + 1}–
-              {Math.min(currentChapterPage * CHAPTERS_PER_PAGE, story.chapters.length)} / {story.chapters.length}
+              {t("Chapters {from}–{to} / {total}", {
+                from: (currentChapterPage - 1) * CHAPTERS_PER_PAGE + 1,
+                to: Math.min(currentChapterPage * CHAPTERS_PER_PAGE, story.chapters.length),
+                total: story.chapters.length,
+              })}
             </span>
             <span className="ml-auto flex items-center gap-1.5">
               <button
@@ -505,23 +541,39 @@ export default function StoryDetail({
                 disabled={currentChapterPage <= 1}
                 onClick={() => setChapterPage(currentChapterPage - 1)}
               >
-                Previous
+                {t("Previous")}
               </button>
-              <span>
-                Page {currentChapterPage}/{chapterPageCount}
-              </span>
+              <span>{t("Page {page}/{total}", { page: currentChapterPage, total: chapterPageCount })}</span>
               <button
                 type="button"
                 className="btn btn-quiet btn-tiny"
                 disabled={currentChapterPage >= chapterPageCount}
                 onClick={() => setChapterPage(currentChapterPage + 1)}
               >
-                Next
+                {t("Next")}
               </button>
             </span>
           </div>
         )}
       </div>
+
+      {reading && (
+        <ReaderOverlay
+          storyId={story.id}
+          storyTitle={bookTitle || story.title}
+          author={author}
+          language={language}
+          coverSrc={coverSrc}
+          chapters={readableChapters}
+          // Chapters open in the editor export their unsaved HTML, so the preview must
+          // show that too; the rest come from the DB like the export builds them.
+          loadChapterHtml={async (order) =>
+            bodies.current.get(`stored-${order}`) ??
+            blocksToHtml((await fetchChapterContent(story.id, order)).blocks ?? [])
+          }
+          onClose={() => setReading(false)}
+        />
+      )}
     </section>
   );
 }

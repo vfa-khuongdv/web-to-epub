@@ -7,13 +7,16 @@ import path from "path";
 import { BookMetadata, ExportChapter } from "../types";
 import { EXTENSION_BY_TYPE, sniffImageExtension } from "./coverStore";
 import { fetchWithRetry } from "./toc/http";
+import { t } from "./lang";
 
 // Simple, Kindle-friendly reading styles: system-safe fonts, no fixed sizes
 // or absolute positioning, so it reflows correctly on any device.
 // `display: block` for images/media is mandatory, not decoration: each image block is an <img> tag
 // next to its siblings, but <img> defaults to inline, so many narrow images would flow horizontally
 // like text in a line — if the source page stacks them vertically, the book must too.
-const KINDLE_CSS = `
+// Exported so the in-app reader can style its preview with the exact stylesheet the
+// book carries (mirrored in frontend/src/readerPreview.ts).
+export const KINDLE_CSS = `
 body { font-family: serif; line-height: 1.5; }
 h1, h2, h3 { font-family: sans-serif; }
 img, audio, video { display: block; margin: 0.6em auto; max-width: 100%; }
@@ -397,7 +400,7 @@ export async function buildEpub(
 ): Promise<Buffer> {
   const included = chapters.filter((c) => c.includeInBook);
   if (included.length === 0) {
-    throw new Error("No chapters selected for export");
+    throw new Error(t("No chapters selected for export"));
   }
 
   const outputPath = path.join(os.tmpdir(), `epub-${randomUUID()}.epub`);

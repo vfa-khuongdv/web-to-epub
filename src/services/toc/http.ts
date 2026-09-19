@@ -1,3 +1,4 @@
+import { t } from "../lang";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_ATTEMPTS = 5;
 const BASE_DELAY_MS = 1000;
@@ -38,7 +39,10 @@ function hostOf(url: string): string {
 // "fetch failed" tells users nothing; when a connection dies (e.g., ISP blocks a host or the site
 // blocks your IP), say which host clearly and what to try next.
 function networkFailureMessage(url: string, code: string): string {
-  return `Failed to connect to ${hostOf(url)} (${code}) — connection dropped before getting a response. If your network is blocking this site or the site is blocking your IP, try a VPN/proxy and run again. URL: ${url}`;
+  return t(
+    "Failed to connect to {host} ({code}) — connection dropped before getting a response. If your network is blocking this site or the site is blocking your IP, try a VPN/proxy and run again. URL: {url}",
+    { host: hostOf(url), code, url }
+  );
 }
 
 export function sleep(ms: number): Promise<void> {
@@ -105,8 +109,8 @@ export async function fetchText(url: string, init: RequestInit = {}, options: Fe
     throw new Error(networkFailureMessage(url, code));
   }
   if (!res.ok) {
-    const hint = res.status === 429 ? " — page is rate-limiting access, try again in a few minutes" : "";
-    throw new Error(`Failed to fetch ${url} (HTTP ${res.status})${hint}`);
+    const hint = res.status === 429 ? t(" — page is rate-limiting access, try again in a few minutes") : "";
+    throw new Error(t("Failed to fetch {url} (HTTP {status}){hint}", { url, status: res.status, hint }));
   }
   return res.text();
 }

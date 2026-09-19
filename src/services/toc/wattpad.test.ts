@@ -57,12 +57,12 @@ describe("parseWattpadStory", () => {
   });
 
   it("reports error when response is not JSON", () => {
-    expect(() => parseWattpadStory("<html>blocked</html>", "https://www.wattpad.com/story/1")).toThrow(/not JSON/);
+    expect(() => parseWattpadStory("<html>blocked</html>", "https://www.wattpad.com/story/1")).toThrow(/did not return JSON/);
   });
 
   it("reports error when response has no parts", () => {
     expect(() => parseWattpadStory(JSON.stringify({ id: "1", title: "Truyện", parts: [] }), "https://www.wattpad.com/story/1")).toThrow(
-      /list of chapters/
+      /No chapter list found/
     );
   });
 });

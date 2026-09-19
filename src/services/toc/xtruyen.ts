@@ -2,6 +2,7 @@ import { JSDOM } from "jsdom";
 import { fetchText, sleep } from "./http";
 import { normalizeStoryUrl } from "./normalizeUrl";
 import { TocAdapter, TocChapter, TocResult } from "./types";
+import { t } from "../lang";
 
 export const XTRUYEN_DOMAINS = ["xtruyen.vn"];
 
@@ -67,10 +68,10 @@ export function parseChaptersResponse(text: string): { slug: string; title: stri
   try {
     data = JSON.parse(text);
   } catch {
-    throw new Error("xtruyen's chapter list API did not return JSON");
+    throw new Error(t("xtruyen's chapter list API did not return JSON"));
   }
   if (!Array.isArray(data)) {
-    throw new Error("xtruyen's chapter list API returned the wrong format");
+    throw new Error(t("xtruyen's chapter list API returned the wrong format"));
   }
   return data
     .filter((x): x is { s: string; n: string } => {
@@ -107,7 +108,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   const meta = parseStoryMeta(pageHtml, storyUrl);
   const mangaId = parseMangaId(pageHtml);
   if (!mangaId) {
-    throw new Error(`Story ID not found on the page at ${storyUrl} — check the story URL again`);
+    throw new Error(t("Story ID not found on the page at {url} — check the story URL again", { url: storyUrl }));
   }
 
   const apiUrl = new URL("/api/api-chapters.php", storyUrl).toString();
@@ -138,7 +139,7 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   }
 
   if (chapters.length === 0) {
-    throw new Error(`No chapter list found at ${storyUrl} — check the story URL again`);
+    throw new Error(t("No chapter list found at {url} — check the story URL again", { url: storyUrl }));
   }
 
   const chapterNumber = (url: string) => {

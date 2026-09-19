@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { checkStoryUpdates, createStory, deleteStory, fetchStories, fetchStory, setStoryWatch } from "../api";
+import { ApiError, checkStoryUpdates, createStory, deleteStory, fetchStories, fetchStory, setStoryWatch } from "../api";
+import { Translate, useLang } from "../i18n";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { timeAgo } from "../timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
@@ -17,21 +18,25 @@ function crawlStatus(
   done: number,
   errors: number,
   newChapterCount: number,
-  crawling?: LiveCrawl
+  crawling: LiveCrawl | undefined,
+  t: Translate
 ): { state: ChipState; label: string } {
   if (crawling) {
     return {
       state: "running",
-      label: crawling.total > 0 ? `Crawling ${crawling.cursor}/${crawling.total}` : "Crawling",
+      label:
+        crawling.total > 0
+          ? t("Crawling {done}/{total}", { done: crawling.cursor, total: crawling.total })
+          : t("Crawling"),
     };
   }
   if (newChapterCount > 0) {
-    return { state: "new", label: `${newChapterCount} new chapters` };
+    return { state: "new", label: t("{count} new chapters", { count: newChapterCount }) };
   }
   const remaining = total - done - errors;
-  if (remaining > 0) return { state: "pending", label: `${remaining} chapters pending` };
-  if (errors > 0) return { state: "error", label: `Done · ${errors} errors` };
-  return { state: "done", label: "Crawl complete" };
+  if (remaining > 0) return { state: "pending", label: t("{count} chapters pending", { count: remaining }) };
+  if (errors > 0) return { state: "error", label: `${t("Done")} · ${t("{count} errors", { count: errors })}` };
+  return { state: "done", label: t("Crawl complete") };
 }
 
 const PAGE_SIZE = 10;
@@ -93,6 +98,7 @@ function SortTh({
   onSort: (key: SortKey, additive: boolean) => void;
   className?: string;
 }) {
+  const { t } = useLang();
   const rank = sorts.findIndex((s) => s.key === sortKey);
   const active = sorts[rank];
   return (
@@ -103,10 +109,10 @@ function SortTh({
       <button
         type="button"
         className="inline-flex cursor-pointer items-center gap-1"
-        title={`Sort by ${label} — hold Shift to add secondary criteria`}
+        title={t("Sort by {label} — hold Shift to add secondary criteria", { label: t(label) })}
         onClick={(e) => onSort(sortKey, e.shiftKey)}
       >
-        {label}
+        {t(label)}
         {active && (
           <>
             <Icon name="chevron" size={10} className={active.dir === "asc" ? "-rotate-90" : "rotate-90"} />
@@ -131,6 +137,7 @@ export default function LibraryView({
   clearChapters: () => void;
   supportedSites: SupportedSite[];
 }) {
+  const { lang, t } = useLang();
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [storyUrl, setStoryUrl] = useState("");
   const [busy, setBusy] = useState(false);
@@ -171,9 +178,10 @@ export default function LibraryView({
             current.map((s) => (s.id === story.id ? { ...s, ...result, checkError: undefined } : s))
           );
         } catch (err) {
+          // Story being crawled: server refuses the check with 409 — the crawl chip
+          // replaces it. Matched by status, not by message text, which is translated.
+          if ((err as ApiError).status === 409) continue;
           const message = (err as Error).message;
-          // Story being crawled: server refuses checks — crawl chip replaces it.
-          if (/is being crawled/.test(message)) continue;
           setStories((current) =>
             current.map((s) => (s.id === story.id ? { ...s, checkError: message } : s))
           );
@@ -223,12 +231,14 @@ export default function LibraryView({
   async function handleCreate() {
     const url = storyUrl.trim();
     if (!url) {
-      setError("Paste a story URL first.");
+      setError(t("Paste a story URL first."));
       return;
     }
     if (!isSupportedUrl(url, supportedSites)) {
       setError(
-        `URL is not from a supported site. Supported: ${supportedSites.map((s) => s.domain).join(", ")}.`
+        t("URL is not from a supported site. Supported: {sites}.", {
+          sites: supportedSites.map((s) => s.domain).join(", "),
+        })
       );
       return;
     }
@@ -329,7 +339,7 @@ export default function LibraryView({
       errors,
       remaining: s.chapterCount - done - errors,
       crawling,
-      status: crawlStatus(s.chapterCount, done, errors, s.newChapterCount, crawling),
+      status: crawlStatus(s.chapterCount, done, errors, s.newChapterCount, crawling, t),
     };
   });
 
@@ -372,7 +382,7 @@ export default function LibraryView({
     <>
       <section className="pane">
         <div className="pane-head">
-          <h2>My Stories</h2>
+          <h2>{t("My Stories")}</h2>
           <span className="end flex items-center gap-2 text-xs text-ink-2">
             {stories.some((s) => s.watching) && (
               <button
@@ -386,11 +396,15 @@ export default function LibraryView({
                   size={12}
                   className={checking ? "animate-pulse" : undefined}
                 />
-                {checking ? "Checking..." : "Check for new chapters"}
+                {checking ? t("Checking…") : t("Check for new chapters")}
               </button>
             )}
             <span>
-              {stories.length === 0 ? "" : needle ? `${filtered.length}/${stories.length} stories` : `${stories.length} stories`}
+              {stories.length === 0
+                ? ""
+                : needle
+                  ? t("{shown}/{total} stories", { shown: filtered.length, total: stories.length })
+                  : t("{count} stories", { count: stories.length })}
             </span>
           </span>
         </div>
@@ -398,7 +412,7 @@ export default function LibraryView({
         <div className="border-b border-rule p-3">
           <div className="flex gap-2">
             <label className="visually-hidden" htmlFor="story-url">
-              Story page URL
+              {t("Story page URL")}
             </label>
             <input
               id="story-url"
@@ -412,25 +426,25 @@ export default function LibraryView({
               }}
             />
             <button type="button" className="btn btn-primary" disabled={busy} onClick={handleCreate}>
-              {busy ? "Loading..." : "Load chapters"}
+              {busy ? t("Loading…") : t("Load chapters")}
             </button>
           </div>
           <p className="mt-1.5 text-xs text-ink-3">
-            Paste a story page URL to load the full chapter list. Auto-loading sites:{" "}
-            {[...new Set(supportedSites.map((s) => s.name))].join(", ") || "loading..."}
+            {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
+            {[...new Set(supportedSites.map((s) => s.name))].join(", ") || t("loading…")}
           </p>
         </div>
 
         {!loading && stories.length > 0 && (
           <div className="border-b border-rule p-3">
             <label className="visually-hidden" htmlFor="story-search">
-              Search stories
+              {t("Search stories")}
             </label>
             <input
               id="story-search"
               type="search"
               className="input"
-              placeholder="Search by story name or site..."
+              placeholder={t("Search by story name or site…")}
               value={query}
               onChange={(e) => {
                 setQuery(e.target.value);
@@ -442,7 +456,7 @@ export default function LibraryView({
 
         {pickedIds.length > 0 && (
           <div className="flex items-center gap-2 border-b border-rule px-3 py-2 text-xs text-ink-2">
-            <span>Selected {pickedIds.length} stories</span>
+            <span>{t("Selected {count} stories", { count: pickedIds.length })}</span>
             <span className="ml-auto flex gap-1.5">
               {confirmBulk ? (
                 <>
@@ -452,20 +466,20 @@ export default function LibraryView({
                     disabled={bulkBusy}
                     onClick={() => handleBulkDelete(pickedIds)}
                   >
-                    {bulkBusy ? "Deleting..." : `Delete ${pickedIds.length} stories`}
+                    {bulkBusy ? t("Deleting…") : t("Delete {count} stories", { count: pickedIds.length })}
                   </button>
                   <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setConfirmBulk(false)}>
-                    Cancel
+                    {t("Cancel")}
                   </button>
                 </>
               ) : (
                 <>
                   <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setConfirmBulk(true)}>
                     <Icon name="trash" size={12} />
-                    Delete selected
+                    {t("Delete selected")}
                   </button>
                   <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setPicked(new Set())}>
-                    Deselect
+                    {t("Deselect")}
                   </button>
                 </>
               )}
@@ -486,23 +500,25 @@ export default function LibraryView({
               {[0, 1, 2].map((i) => (
                 <div key={i} className="h-3 animate-pulse rounded-[2px] bg-sunken" style={{ width: `${92 - i * 14}%` }} />
               ))}
-              <span className="visually-hidden">Loading story list</span>
+              <span className="visually-hidden">{t("Loading story list")}</span>
             </div>
           ) : stories.length === 0 ? (
             <div className="empty">
-              <h3>Library is empty</h3>
+              <h3>{t("Library is empty")}</h3>
               <ol>
-                <li>Paste a story URL above and click "Load chapters".</li>
-                <li>The entire chapter list loads with "Pending" status.</li>
+                <li>{t("Paste a story URL above and click Load chapters.")}</li>
+                <li>{t("The entire chapter list loads with Pending status.")}</li>
                 <li>
-                  Click "Crawl" to crawl gradually. Close the tab anytime — progress is saved in the library, reopen to see where you left off.
+                  {t(
+                    "Click Crawl to crawl gradually. Close the tab anytime — progress is saved in the library, reopen to see where you left off."
+                  )}
                 </li>
               </ol>
             </div>
           ) : sorted.length === 0 ? (
-            <div className=”empty”>
-              <h3>No stories match</h3>
-              <p>No stories with name or site containing “{query.trim()}”. Try shorter keywords.</p>
+            <div className="empty">
+              <h3>{t("No stories match")}</h3>
+              <p>{t("No stories with name or site containing “{query}”. Try shorter keywords.", { query: query.trim() })}</p>
             </div>
           ) : (
             <table className="tbl">
@@ -512,7 +528,7 @@ export default function LibraryView({
                     <input
                       type="checkbox"
                       className="checkbox"
-                      aria-label="Select all stories on this page"
+                      aria-label={t("Select all stories on this page")}
                       checked={allPagePicked}
                       ref={(el) => {
                         if (el) el.indeterminate = somePagePicked && !allPagePicked;
@@ -586,11 +602,11 @@ export default function LibraryView({
                       {s.checkError && (
                         <span className="mt-1 flex items-center gap-1 text-xs text-error" title={s.checkError}>
                           <Icon name="alert" size={11} />
-                          Check error
+                          {t("Check error")}
                         </span>
                       )}
                     </td>
-                    <td className="dim">{timeAgo(s.updatedAt)}</td>
+                    <td className="dim">{timeAgo(s.updatedAt, lang)}</td>
                     <td onClick={(e) => e.stopPropagation()}>
                       {confirmDelete === s.id ? (
                         <span className="flex items-center justify-end gap-1.5">
@@ -599,14 +615,14 @@ export default function LibraryView({
                             className="btn btn-tiny btn-danger"
                             onClick={() => handleDelete(s.id)}
                           >
-                            Delete
+                            {t("Delete")}
                           </button>
                           <button
                             type="button"
                             className="btn btn-tiny btn-quiet"
                             onClick={() => setConfirmDelete(null)}
                           >
-                            Cancel
+                            {t("Cancel")}
                           </button>
                         </span>
                       ) : (
@@ -614,8 +630,8 @@ export default function LibraryView({
                           <button
                             type="button"
                             className="btn btn-quiet btn-tiny"
-                            title={s.watching ? "Stop watching for new chapters" : "Watch for new chapters"}
-                            aria-label={s.watching ? `Stop watching ${s.title}` : `Watch ${s.title}`}
+                            title={s.watching ? t("Stop watching for new chapters") : t("Watch for new chapters")}
+                            aria-label={s.watching ? t("Stop watching {title}", { title: s.title }) : t("Watch {title}", { title: s.title })}
                             aria-pressed={s.watching}
                             onClick={() => handleWatchToggle(s)}
                           >
@@ -624,8 +640,8 @@ export default function LibraryView({
                           <button
                             type="button"
                             className="btn btn-quiet btn-tiny"
-                            title={s.crawling ? "Crawling, cannot delete" : "Delete story from library"}
-                            aria-label={`Delete ${s.title}`}
+                            title={s.crawling ? t("Crawling, cannot delete") : t("Delete story from library")}
+                            aria-label={t("Delete {title}", { title: s.title })}
                             disabled={!!s.crawling}
                             onClick={() => setConfirmDelete(s.id)}
                           >
@@ -643,9 +659,7 @@ export default function LibraryView({
 
         {pageCount > 1 && (
           <div className="flex items-center gap-2 border-t border-rule px-3 py-2 text-xs text-ink-2">
-            <span>
-              Page {currentPage}/{pageCount}
-            </span>
+            <span>{t("Page {page}/{total}", { page: currentPage, total: pageCount })}</span>
             <span className="ml-auto flex gap-1.5">
               <button
                 type="button"
@@ -653,7 +667,7 @@ export default function LibraryView({
                 disabled={currentPage <= 1}
                 onClick={() => setPage(currentPage - 1)}
               >
-                Previous
+                {t("Previous")}
               </button>
               <button
                 type="button"
@@ -661,7 +675,7 @@ export default function LibraryView({
                 disabled={currentPage >= pageCount}
                 onClick={() => setPage(currentPage + 1)}
               >
-                Next
+                {t("Next")}
               </button>
             </span>
           </div>
@@ -681,12 +695,14 @@ export default function LibraryView({
       ) : (
         <section className="pane">
           <div className="pane-head">
-            <h2 className="ml-auto">Story Details</h2>
+            <h2 className="ml-auto">{t("Story details")}</h2>
           </div>
           <div className="empty">
-            <h3>No story selected</h3>
+            <h3>{t("No story selected")}</h3>
             <p>
-              The table on the left lists saved stories with progress. Select a story to view its chapters, continue crawling, edit content, and export to EPUB.
+              {t(
+                "The table on the left lists saved stories with progress. Select a story to view its chapters, continue crawling, edit content, and export to EPUB."
+              )}
             </p>
           </div>
         </section>

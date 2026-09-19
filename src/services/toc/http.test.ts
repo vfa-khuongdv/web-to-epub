@@ -140,7 +140,7 @@ describe("fetchText", () => {
 
     await expect(
       fetchText("https://example.com/x", {}, { fetchImpl: fetchImpl as unknown as typeof fetch, sleepImpl, maxAttempts: 2 })
-    ).rejects.toThrow(/429.*giới hạn tần suất/);
+    ).rejects.toThrow(/429.*rate-limiting/);
   });
 
   it("trả text khi thành công", async () => {

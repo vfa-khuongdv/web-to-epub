@@ -3,8 +3,10 @@ import { Icon } from "./Icon";
 import { ProgressBar } from "./ProgressBar";
 import { CrawlJobState } from "../useCrawlJob";
 import { formatEta } from "../formatEta";
+import { useLang } from "../i18n";
 
 export function JobStrip({ job }: { job: CrawlJobState }) {
+  const { lang, t } = useLang();
   const [open, setOpen] = useState(false);
   const logRef = useRef<HTMLDivElement | null>(null);
   const atBottom = useRef(true);
@@ -50,12 +52,12 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
               ) : (
                 <Icon name="check" size={13} />
               )}
-              <span className="what">Done · {job.label}</span>
+              <span className="what">{t("Done")} · {job.label}</span>
             </>
           ) : (
             <>
               <Icon name="info" size={13} className="text-ink-3" />
-              <span className="what">Ready</span>
+              <span className="what">{t("Ready")}</span>
             </>
           )}
         </span>
@@ -65,23 +67,19 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
             <ProgressBar
               pct={job.pct}
               running={job.running}
-              label={job.running ? "Crawl progress" : "Crawl completed"}
+              label={job.running ? t("Crawl progress") : t("Crawl completed")}
             />
           </div>
         )}
 
         <span className="counts">
-          {job.running && job.total === 0 && <span>Preparing...</span>}
+          {job.running && job.total === 0 && <span>{t("Preparing…")}</span>}
           {job.total > 0 && (
-            <span>
-              {job.cursor}/{job.total} chapters
-            </span>
+            <span>{t("{done}/{total} chapters", { done: job.cursor, total: job.total })}</span>
           )}
-          {job.running && job.etaMs !== undefined && <span>· {formatEta(job.etaMs)} remaining</span>}
+          {job.running && job.etaMs !== undefined && <span>· {t("{eta} remaining", { eta: formatEta(job.etaMs, lang) })}</span>}
           {job.errors > 0 && (
-            <span className="bad">
-              {job.errors} errors
-            </span>
+            <span className="bad">{t("{count} errors", { count: job.errors })}</span>
           )}
         </span>
 
@@ -94,7 +92,7 @@ export function JobStrip({ job }: { job: CrawlJobState }) {
               onClick={() => setOpen((o) => !o)}
             >
               <Icon name="chapter" size={13} />
-              Log ({job.log.length})
+              {t("Log ({count})", { count: job.log.length })}
               <Icon name="chevron" size={12} className={open ? "rotate-90" : undefined} />
             </button>
           )}

@@ -1,3 +1,4 @@
+import { currentLang, translate } from "./i18n";
 import { useCallback, useRef, useState } from "react";
 import { ProgressEvent } from "./types";
 
@@ -181,7 +182,7 @@ export function useCrawlJob() {
       } catch (err) {
         setJob((j) => ({
           ...j,
-          log: appendLog(j.log, { at: stamp(), text: `Connection error: ${(err as Error).message}`, isError: true }),
+          log: appendLog(j.log, { at: stamp(), text: translate(currentLang(), "Connection error: {message}", { message: (err as Error).message }), isError: true }),
         }));
       } finally {
         setJob((j) => ({ ...j, running: false }));

@@ -4,6 +4,7 @@ import { blocksToHtml } from "../blocksToHtml";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { ExtractedChapter, SupportedSite } from "../types";
 import { CrawlJobState, RunCrawl } from "../useCrawlJob";
+import { useLang } from "../i18n";
 import { exportProgressLabel, useEpubExport } from "../useEpubExport";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
@@ -52,6 +53,7 @@ export default function ManualCrawlView({
   const [chapters, setChapters] = useState<ChapterState[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [badUrls, setBadUrls] = useState<string[]>([]);
+  const { t } = useLang();
   const { isExporting, progress, exportBook } = useEpubExport();
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
@@ -83,13 +85,13 @@ export default function ManualCrawlView({
     setError(null);
 
     if (urls.length === 0) {
-      setError("Enter at least one chapter URL.");
+      setError(t("Enter at least one chapter URL."));
       return;
     }
     const unsupported = urls.filter((u) => !isSupportedUrl(u, supportedSites));
     if (unsupported.length > 0) {
       setBadUrls(unsupported);
-      setError(`${unsupported.length} URLs are not from supported sites.`);
+      setError(t("{count} URLs are not from supported sites.", { count: unsupported.length }));
       return;
     }
 
@@ -106,7 +108,7 @@ export default function ManualCrawlView({
       }))
     );
 
-    await run("Manual crawl", (emit) => extractChapters(urls, emit), (event) => {
+    await run(t("Manual crawl"), (emit) => extractChapters(urls, emit), (event) => {
       if (event.type === "error" && event.index !== undefined && event.message) {
         const order = event.index + 1;
         setChapters((cs) =>
@@ -141,7 +143,9 @@ export default function ManualCrawlView({
     setError(null);
 
     await run(
-      targets.length === 1 ? "Retry one chapter" : `Retry ${targets.length} failed chapters`,
+      targets.length === 1
+        ? t("Retry one chapter")
+        : t("Retry {count} failed chapters", { count: targets.length }),
       (emit) => extractChapters(targets.map((c) => c.url), emit),
       (event) => {
         if (event.type === "done" && event.chapters) {
@@ -179,13 +183,13 @@ export default function ManualCrawlView({
     <>
       <section className="pane">
         <div className="pane-head">
-          <h2>Content source</h2>
-          <span className="end text-xs text-ink-2">No story account needed — just URLs</span>
+          <h2>{t("Content source")}</h2>
+          <span className="end text-xs text-ink-2">{t("No story account needed — just URLs")}</span>
         </div>
 
         <div className="pane-body p-3">
           <div className="field">
-            <label htmlFor="urls">URL list — one chapter per line, in order</label>
+            <label htmlFor="urls">{t("URL list — one chapter per line, in order")}</label>
             <textarea
               id="urls"
               className="input"
@@ -197,9 +201,9 @@ export default function ManualCrawlView({
           </div>
 
           <div className="sites-line mt-2">
-            <span className="text-xs text-ink-2">Supported sites:</span>
+            <span className="text-xs text-ink-2">{t("Supported sites:")}</span>
             {supportedSites.length === 0 ? (
-              <span className="text-xs text-ink-3">loading site list...</span>
+              <span className="text-xs text-ink-3">{t("loading site list…")}</span>
             ) : (
               supportedSites.map((s) => (
                 <span className="chip" key={s.domain}>
@@ -228,18 +232,18 @@ export default function ManualCrawlView({
 
           <div className="fields mt-4">
             <div className="field">
-              <label htmlFor="title">Book title</label>
+              <label htmlFor="title">{t("Book title")}</label>
               <input
                 id="title"
                 type="text"
                 className="input"
-                placeholder="Leave empty to use the first chapter's title"
+                placeholder={t("Leave empty to use the first chapter's title")}
                 value={bookTitle}
                 onChange={(e) => setBookTitle(e.target.value)}
               />
             </div>
             <div className="field">
-              <label htmlFor="author">Author</label>
+              <label htmlFor="author">{t("Author")}</label>
               <input
                 id="author"
                 type="text"
@@ -249,19 +253,19 @@ export default function ManualCrawlView({
               />
             </div>
             <div className="field">
-              <label htmlFor="language">Language</label>
+              <label htmlFor="language">{t("Book language")}</label>
               <select
                 id="language"
                 className="input"
                 value={language}
                 onChange={(e) => setLanguage(e.target.value)}
               >
-                <option value="vi">Vietnamese</option>
-                <option value="en">English</option>
+                <option value="vi">{t("Vietnamese")}</option>
+                <option value="en">{t("English")}</option>
               </select>
             </div>
             <div className="field">
-              <label htmlFor="cover-file">Cover image (optional)</label>
+              <label htmlFor="cover-file">{t("Cover image (optional)")}</label>
               <input
                 id="cover-file"
                 type="file"
@@ -274,14 +278,14 @@ export default function ManualCrawlView({
 
           <button type="button" className="btn btn-primary mt-3" disabled={job.running} onClick={handleExtract}>
             <Icon name="crawl" size={14} />
-            {job.running ? "Crawling..." : "Crawl & extract content"}
+            {job.running ? t("Crawling…") : t("Crawl & extract content")}
           </button>
         </div>
       </section>
 
       <section className="pane">
         <div className="pane-head">
-          <h2>Results</h2>
+          <h2>{t("Results")}</h2>
           <span className="end">
             {failedOrders.length > 0 && (
               <button
@@ -291,7 +295,7 @@ export default function ManualCrawlView({
                 onClick={() => retryOrders(failedOrders)}
               >
                 <Icon name="retry" size={13} />
-                Retry {failedOrders.length} failed chapters
+                {t("Retry {count} failed chapters", { count: failedOrders.length })}
               </button>
             )}
             <button
@@ -301,11 +305,11 @@ export default function ManualCrawlView({
               onClick={handleExport}
             >
               <Icon name="download" size={13} />
-              {isExporting ? "Exporting..." : "Export EPUB"}
+              {isExporting ? t("Exporting…") : t("Export EPUB")}
             </button>
             {isExporting && (
               <span className="export-progress" role="status">
-                {progress ? exportProgressLabel(progress) : "Preparing..."}
+                {progress ? exportProgressLabel(progress, t) : t("Preparing…")}
               </span>
             )}
           </span>
@@ -314,17 +318,21 @@ export default function ManualCrawlView({
         {chapters.length === 0 ? (
           <div className="pane-body">
             <div className="empty">
-              <h3>No content yet</h3>
+              <h3>{t("No content yet")}</h3>
               <p>
-                Paste a list of chapter URLs in the left panel — one chapter per line, in the order you want them in the book — then click Crawl &amp; extract content.
+                {t(
+                  "Paste a list of chapter URLs in the left panel — one chapter per line, in the order you want them in the book — then click Crawl & extract content."
+                )}
               </p>
               <ol>
-                <li>The tool opens each page in a headless browser and reads the rendered content, so it's not blocked by copy-protection.</li>
-                <li>Failed chapters have a Retry button; if retry doesn't work, you can paste the content manually.</li>
-                <li>Edit the title and content right in the table, then export to EPUB to read on Kindle.</li>
+                <li>{t("The tool opens each page in a headless browser and reads the rendered content, so it's not blocked by copy-protection.")}</li>
+                <li>{t("Failed chapters have a Retry button; if retry doesn't work, you can paste the content manually.")}</li>
+                <li>{t("Edit the title and content right in the table, then export to EPUB to read on Kindle.")}</li>
               </ol>
               <p>
-                For stories with hundreds of chapters, use the "My Stories" tab instead: just paste the story page URL and progress is saved.
+                {t(
+                  "For stories with hundreds of chapters, use the My Stories tab instead: just paste the story page URL and progress is saved."
+                )}
               </p>
             </div>
           </div>
@@ -334,14 +342,14 @@ export default function ManualCrawlView({
               <div className="readout">
                 <span className="readout-n">{ok}</span>
                 <span className="readout-of">/{chapters.length}</span>
-                <span className="readout-what">chapters extracted</span>
+                <span className="readout-what">{t("chapters extracted")}</span>
               </div>
               <p className="text-xs text-ink-2">
-                {waiting > 0 && <span>{waiting} pending crawl</span>}
+                {waiting > 0 && <span>{t("{count} pending crawl", { count: waiting })}</span>}
                 {waiting > 0 && failed > 0 && <span> · </span>}
-                {failed > 0 && <span className="font-semibold text-error">{failed} errors</span>}
+                {failed > 0 && <span className="font-semibold text-error">{t("{count} errors", { count: failed })}</span>}
                 {crawled.length > 0 && failed === 0 && waiting === 0 && (
-                  <span>All chapters extracted successfully</span>
+                  <span>{t("All chapters extracted successfully")}</span>
                 )}
               </p>
             </div>
@@ -352,8 +360,8 @@ export default function ManualCrawlView({
                   <tr>
                     <th className="w-9" />
                     <th className="num w-11">#</th>
-                    <th>Chapter</th>
-                    <th className="w-32">Status</th>
+                    <th>{t("Chapter")}</th>
+                    <th className="w-32">{t("Status")}</th>
                     <th className="w-28" />
                   </tr>
                 </thead>

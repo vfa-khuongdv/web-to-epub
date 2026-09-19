@@ -4,6 +4,7 @@ import ManualCrawlView from "./components/ManualCrawlView";
 import { JobStrip } from "./components/JobStrip";
 import { Icon, IconName } from "./components/Icon";
 import { fetchSupportedSites } from "./api";
+import { Lang, LANGUAGES, useLang } from "./i18n";
 import { SupportedSite } from "./types";
 import { useCrawlJob } from "./useCrawlJob";
 
@@ -35,8 +36,12 @@ export default function App() {
   const [supportedSites, setSupportedSites] = useState<SupportedSite[]>([]);
   const [tab, setTab] = useState<"library" | "manual">("library");
   const [theme, setTheme] = useState<Theme>(readTheme);
+  const { lang, setLang, t } = useLang();
   const { job, live, run, attach, subscribe, clearChapters } = useCrawlJob();
   const nextTheme = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
+  // Only two languages, so the button swaps between them rather than opening a menu.
+  const nextLang: Lang = lang === "vi" ? "en" : "vi";
+  const langLabel = (code: Lang) => LANGUAGES.find((l) => l.code === code)!.label;
 
   useEffect(() => {
     fetchSupportedSites().then(setSupportedSites).catch(() => setSupportedSites([]));
@@ -61,15 +66,24 @@ export default function App() {
     return () => media.removeEventListener("change", sync);
   }, [theme]);
 
+  const themeTitle =
+    (theme === "system"
+      ? t("Theme: {theme} (system)", { theme: t(THEME_LABEL[theme]) })
+      : t("Theme: {theme}", { theme: t(THEME_LABEL[theme]) })) +
+    " — " +
+    t("Click to switch to {theme}", { theme: t(THEME_LABEL[nextTheme]) });
+
   return (
     <div className="app">
       <header className="cmdbar">
         <span className="flex items-baseline gap-1.5 whitespace-nowrap">
           <span className="text-sm font-semibold tracking-[-0.01em]">Web → EPUB</span>
-          <small className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-2">cho Kindle</small>
+          <small className="text-[11.5px] font-semibold uppercase tracking-[0.06em] text-ink-2">
+            {t("for Kindle")}
+          </small>
         </span>
 
-        <nav className="tabs" role="tablist" aria-label="Workspace">
+        <nav className="tabs" role="tablist" aria-label={t("Workspace")}>
           <button
             type="button"
             role="tab"
@@ -77,7 +91,7 @@ export default function App() {
             onClick={() => setTab("library")}
           >
             <Icon name="library" size={14} />
-            My Stories
+            {t("My Stories")}
           </button>
           <button
             type="button"
@@ -86,7 +100,7 @@ export default function App() {
             onClick={() => setTab("manual")}
           >
             <Icon name="crawl" size={14} />
-            Manual Crawl
+            {t("Manual Crawl")}
           </button>
         </nav>
 
@@ -94,8 +108,29 @@ export default function App() {
           <button
             type="button"
             className="btn btn-quiet btn-tiny"
-            title={`Theme: ${THEME_LABEL[theme]}${theme === "system" ? " (system)" : ""} — click to switch to ${THEME_LABEL[nextTheme]}`}
-            aria-label={`Theme: ${THEME_LABEL[theme]}. Click to switch to ${THEME_LABEL[nextTheme]}`}
+            title={`${t("Language: {language}", { language: langLabel(lang) })} — ${t(
+              "Click to switch to {language}",
+              { language: langLabel(nextLang) }
+            )}`}
+            aria-label={`${t("Language: {language}", { language: langLabel(lang) })}. ${t(
+              "Click to switch to {language}",
+              { language: langLabel(nextLang) }
+            )}`}
+            onClick={() => setLang(nextLang)}
+          >
+            <Icon name="language" size={14} />
+            <span className="uppercase">{lang}</span>
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-quiet btn-tiny"
+            title={themeTitle}
+            aria-label={`${
+              theme === "system"
+                ? t("Theme: {theme} (system)", { theme: t(THEME_LABEL[theme]) })
+                : t("Theme: {theme}", { theme: t(THEME_LABEL[theme]) })
+            }. ${t("Click to switch to {theme}", { theme: t(THEME_LABEL[nextTheme]) })}`}
             onClick={() => setTheme(nextTheme)}
           >
             <Icon name={THEME_ICON[theme]} size={14} />
@@ -104,12 +139,14 @@ export default function App() {
           {job.running ? (
             <span className="chip chip-running">
               <Icon name="dot" size={12} className="animate-pulse" />
-              {job.total > 0 ? `Crawling ${job.cursor}/${job.total}` : "Crawling"}
+              {job.total > 0 ? t("Crawling {done}/{total}", { done: job.cursor, total: job.total }) : t("Crawling")}
             </span>
           ) : (
             <span className="flex items-center gap-1.5">
               <Icon name="info" size={13} className="text-ink-3" />
-              {supportedSites.length > 0 ? `${supportedSites.length} sites supported` : "Loading supported sites…"}
+              {supportedSites.length > 0
+                ? t("{count} sites supported", { count: supportedSites.length })
+                : t("Loading supported sites…")}
             </span>
           )}
         </div>

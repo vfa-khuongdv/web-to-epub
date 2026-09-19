@@ -1,5 +1,6 @@
 import { fetchText } from "./http";
 import { TocAdapter, TocChapter, TocResult } from "./types";
+import { t } from "../lang";
 
 export const WATTPAD_DOMAINS = ["wattpad.com"];
 
@@ -47,15 +48,15 @@ export function parseWattpadStory(text: string, storyUrl: string): TocResult {
   try {
     data = JSON.parse(text) as WattpadStoryResponse;
   } catch {
-    throw new Error(`Wattpad's chapter list API did not return JSON (${storyUrl})`);
+    throw new Error(t("Wattpad's chapter list API did not return JSON ({url})", { url: storyUrl }));
   }
 
   if (data.error_type) {
     const detail = data.message ? `: ${data.message}` : "";
     if (data.error_type === "NotFound") {
-      throw new Error(`Story not found on Wattpad${detail} — check the story URL again (${storyUrl})`);
+      throw new Error(t("Story not found on Wattpad{detail} — check the story URL again ({url})", { detail, url: storyUrl }));
     }
-    throw new Error(`Wattpad API error (${data.error_type})${detail} (${storyUrl})`);
+    throw new Error(t("Wattpad API error ({type}){detail} ({url})", { type: data.error_type, detail, url: storyUrl }));
   }
 
   const chapters: TocChapter[] = (Array.isArray(data.parts) ? data.parts : [])
@@ -63,7 +64,7 @@ export function parseWattpadStory(text: string, storyUrl: string): TocResult {
     .map((p) => ({ url: p.url, title: p.title?.trim() || p.url }));
 
   if (chapters.length === 0) {
-    throw new Error(`No chapter list found at ${storyUrl} — check the story URL again`);
+    throw new Error(t("No chapter list found at {url} — check the story URL again", { url: storyUrl }));
   }
 
   return {
@@ -78,7 +79,9 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   const storyId = parseWattpadStoryId(storyUrl);
   if (!storyId) {
     throw new Error(
-      `This is not a Wattpad story page: ${storyUrl} — paste a URL like https://www.wattpad.com/story/<id>`
+      t("This is not a Wattpad story page: {url} — paste a URL like https://www.wattpad.com/story/<id>", {
+        url: storyUrl,
+      })
     );
   }
   const text = await fetchText(storyApiUrl(storyId), { headers: { "User-Agent": USER_AGENT } });

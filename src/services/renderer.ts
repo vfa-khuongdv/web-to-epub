@@ -1,4 +1,5 @@
 import { Browser, chromium } from "playwright";
+import { t } from "./lang";
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -182,10 +183,10 @@ export async function renderPageHtml(url: string): Promise<string> {
       if (html.length < MIN_RENDERED_HTML_LENGTH) {
         if (blanked) {
           throw new BlankedPageError(
-            `Page blanked before content could be read (temporary error, can retry): ${url}`
+            t("Page blanked before content could be read (temporary error, can retry): {url}", { url })
           );
         }
-        throw new Error(`Page loaded empty (temporary error, can retry): ${url}`);
+        throw new Error(t("Page loaded empty (temporary error, can retry): {url}", { url }));
       }
       return html;
     } finally {

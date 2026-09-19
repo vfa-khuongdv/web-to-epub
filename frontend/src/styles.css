@@ -868,6 +868,312 @@
     color: var(--color-error);
   }
 
+  /* Reading view: covers the whole window so nothing but the page is in sight.
+     The page itself lives in an iframe carrying the EPUB's stylesheet — none of
+     the rules below reach inside it, which is what keeps the preview honest. */
+  .reader {
+    position: fixed;
+    inset: 0;
+    z-index: 40;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    background: var(--color-chrome);
+  }
+
+  .reader-bar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    min-height: 40px;
+    padding: 5px 12px;
+    background: var(--color-raised);
+    border-bottom: 1px solid var(--color-rule-2);
+  }
+
+  .reader-where {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    min-width: 0;
+    font-size: 12.5px;
+  }
+
+  .reader-where b {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+
+  .reader-where span {
+    flex: none;
+    color: var(--color-ink-2);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reader-aa {
+    font-family: serif;
+    font-size: 14px;
+    line-height: 1;
+  }
+
+  .reader-stage {
+    position: relative;
+    display: flex;
+    min-height: 0;
+    background: var(--color-sunken);
+  }
+
+  .reader-page {
+    flex: 1;
+    min-width: 0;
+    border: 0;
+  }
+
+  .reader-note {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+    font-size: 13px;
+  }
+
+  .reader-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: none;
+    width: 320px;
+    min-height: 0;
+    padding: 12px;
+    background: var(--color-content);
+    border-left: 1px solid var(--color-rule-2);
+    overflow: auto;
+  }
+
+  /* The chapter list is navigation, so it sits where navigation belongs — ahead of the
+     page, not layered over it like the text settings. */
+  .reader-panel-left {
+    border-left: 0;
+    border-right: 1px solid var(--color-rule-2);
+  }
+
+  .reader-book {
+    display: flex;
+    gap: 10px;
+    min-width: 0;
+    font-size: 13px;
+  }
+
+  .reader-cover {
+    flex: none;
+    width: 46px;
+    height: 66px;
+    object-fit: cover;
+    border: 1px solid var(--color-rule-2);
+    border-radius: var(--radius-tool);
+    background: var(--color-content);
+  }
+
+  .reader-cover-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--color-ink-3);
+  }
+
+  .reader-toc {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .reader-toc button {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    width: 100%;
+    padding: 4px 6px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--color-ink);
+    font: inherit;
+    font-size: 12.5px;
+    text-align: left;
+    cursor: pointer;
+  }
+
+  .reader-toc button:hover {
+    background: var(--color-row-hover);
+  }
+
+  .reader-toc button[aria-current="true"] {
+    background: var(--color-select-soft);
+    font-weight: 600;
+  }
+
+  .reader-toc .num {
+    flex: none;
+    width: 3.2em;
+    color: var(--color-ink-3);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reader-toc-note {
+    color: var(--color-ink-3);
+    font-size: 11.5px;
+  }
+
+  .reader-toc-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-rule);
+    color: var(--color-ink-2);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Colour palette over the page. Positioned from the stage, so it has to sit above
+     the iframe and stay clear of the text it is about. */
+  .reader-palette {
+    position: absolute;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 6px;
+    transform: translate(-50%, calc(-100% - 8px));
+    background: var(--color-raised);
+    border: 1px solid var(--color-rule-2);
+    border-radius: var(--radius-tool);
+    box-shadow: 0 4px 14px rgb(0 0 0 / 0.18);
+  }
+
+  .reader-palette-below {
+    transform: translate(-50%, 8px);
+  }
+
+  .reader-swatch {
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: 1px solid rgb(0 0 0 / 0.18);
+    border-radius: 50%;
+    cursor: pointer;
+  }
+
+  .reader-swatch:hover {
+    outline: 2px solid var(--color-select);
+    outline-offset: 1px;
+  }
+
+  .reader-swatch-remove {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-left: 3px;
+    background: transparent;
+    border-color: var(--color-rule-2);
+    color: var(--color-error);
+  }
+
+  .reader-hl-row {
+    align-items: flex-start !important;
+    gap: 7px !important;
+  }
+
+  .reader-hl-dot {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin-top: 4px;
+    border-radius: 50%;
+  }
+
+  .reader-hl-text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 3;
+    overflow: hidden;
+  }
+
+  .reader-hl-where {
+    display: block;
+    margin-top: 2px;
+    color: var(--color-ink-3);
+    font-size: 11px;
+  }
+
+  .reader-seg {
+    display: flex;
+    gap: 2px;
+    padding: 2px;
+    background: var(--color-sunken);
+    border: 1px solid var(--color-rule);
+    border-radius: var(--radius-tool);
+  }
+
+  .reader-seg button {
+    flex: 1;
+    padding: 4px 8px;
+    border: 0;
+    border-radius: 2px;
+    background: transparent;
+    color: var(--color-ink-2);
+    font: inherit;
+    font-size: 12.5px;
+    cursor: pointer;
+  }
+
+  .reader-seg button:hover:not(:disabled) {
+    color: var(--color-ink);
+  }
+
+  .reader-seg button:disabled {
+    opacity: 0.45;
+    cursor: default;
+  }
+
+  .reader-seg button[aria-pressed="true"] {
+    background: var(--color-segment-on);
+    color: var(--color-ink);
+    font-weight: 600;
+  }
+
+  .reader-seg-value {
+    display: flex;
+    align-items: center;
+    padding: 0 8px;
+    color: var(--color-ink-2);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .reader-foot {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 7px 12px;
+    background: var(--color-raised);
+    border-top: 1px solid var(--color-rule-2);
+  }
+
+  .reader-now {
+    flex: 1;
+    min-width: 0;
+    text-align: center;
+    color: var(--color-ink-2);
+    font-size: 12.5px;
+  }
+
   @media (max-width: 1100px) {
     .workbench {
       grid-template-columns: minmax(0, 1fr);
@@ -898,6 +1204,13 @@
 
     .fields {
       grid-template-columns: 1fr;
+    }
+
+    /* Too narrow to read alongside a side panel: the panel takes the window while open. */
+    .reader-panel {
+      position: absolute;
+      inset: 0;
+      width: auto;
     }
 
     .readout-n {

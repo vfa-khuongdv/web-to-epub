@@ -1,3 +1,4 @@
+import { useLang } from "../i18n";
 import { Icon, IconName } from "./Icon";
 
 export type ChipState = "pending" | "running" | "done" | "error" | "new";
@@ -11,11 +12,12 @@ const defaults: Record<ChipState, { icon: IconName; label: string; modifier: str
 };
 
 export function StatusChip({ state, label }: { state: ChipState; label?: string }) {
+  const { t } = useLang();
   const spec = defaults[state];
   return (
     <span className={`chip ${spec.modifier}`.trim()}>
       <Icon name={spec.icon} size={12} className={state === "running" ? "animate-pulse" : undefined} />
-      {label ?? spec.label}
+      {label ?? t(spec.label)}
     </span>
   );
 }

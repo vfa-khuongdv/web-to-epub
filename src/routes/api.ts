@@ -8,9 +8,10 @@ import { createCoverStore, coverPathForExport } from "../services/coverStore";
 import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
 import { DATA_DIR } from "../config/paths";
-import { storyId, storyStore } from "../services/storyStore";
+import { HIGHLIGHT_COLORS, HighlightColor, storyId, storyStore } from "../services/storyStore";
 import { blocksToHtml, htmlToBlocks } from "../services/chapterHtml";
 import { chaptersToCrawl, countNewChapters, mergeStory, pickChapterTitle } from "../services/storyService";
+import { setLang, t } from "../services/lang";
 import { getTocAdapter } from "../services/toc";
 import { TocAdapter } from "../services/toc/types";
 import {
@@ -25,6 +26,13 @@ import {
 } from "../types";
 
 const router = Router();
+
+// The frontend states the reader's language on every request; the server phrases its
+// errors in it (see services/lang.ts for why this is module state, not per-request).
+router.use((req, _res, next) => {
+  setLang(req.header("X-Lang") ?? undefined);
+  next();
+});
 const upload = multer({ dest: os.tmpdir() });
 const coverStore = createCoverStore(DATA_DIR);
 
@@ -45,14 +53,14 @@ function findUnsupportedUrls(urls: string[]): string[] | null {
 router.post("/extract", async (req, res) => {
   const { urls } = req.body as ExtractRequest;
   if (!Array.isArray(urls) || urls.length === 0) {
-    res.status(400).json({ message: "urls is required and must be a non-empty array" });
+    res.status(400).json({ message: t("urls is required and must be a non-empty array") });
     return;
   }
 
   const unsupported = findUnsupportedUrls(urls);
   if (unsupported) {
     res.status(400).json({
-      message: `${unsupported.length} URL(s) are from unsupported sites`,
+      message: t("{count} URL(s) are from unsupported sites", { count: unsupported.length }),
       unsupportedUrls: unsupported,
     });
     return;
@@ -72,7 +80,7 @@ router.post("/extract", async (req, res) => {
     const url = urls[i];
     const chapter = await extractWithRetry(url, (attempt) => {
       const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
-      send({ type: "progress", index: i, total: urls.length, url, message: `Loading & extracting...${attemptSuffix}` });
+      send({ type: "progress", index: i, total: urls.length, url, message: t("Loading & extracting…{attempt}", { attempt: attemptSuffix }) });
     });
     chapters.push(chapter);
     const etaMs = estimateRemainingMs({ startedAt, completed: i + 1, total: urls.length });
@@ -92,11 +100,11 @@ router.post("/extract", async (req, res) => {
 router.post("/extract-one", async (req, res) => {
   const { url } = req.body as { url: string };
   if (!url) {
-    res.status(400).json({ message: "url is required" });
+    res.status(400).json({ message: t("url is required") });
     return;
   }
   if (!findSupportedSite(url)) {
-    res.status(400).json({ message: `This site is not yet supported: ${url}` });
+    res.status(400).json({ message: t("This site is not yet supported: {url}", { url }) });
     return;
   }
   const chapter = await extractWithRetry(url);
@@ -105,7 +113,7 @@ router.post("/extract-one", async (req, res) => {
 
 router.post("/cover-upload", upload.single("cover"), (req, res) => {
   if (!req.file) {
-    res.status(400).json({ message: "Cover file is required" });
+    res.status(400).json({ message: t("Cover file is required") });
     return;
   }
   res.json({ path: req.file.path });
@@ -176,7 +184,7 @@ async function streamExport(
 router.get("/exports/:exportId", (req, res) => {
   const pending = pendingExports.get(req.params.exportId);
   if (!pending) {
-    res.status(404).json({ message: "Export has expired or already been downloaded — click Export EPUB again" });
+    res.status(404).json({ message: t("Export has expired or already been downloaded — click Export EPUB again") });
     return;
   }
   pendingExports.delete(req.params.exportId);
@@ -191,7 +199,7 @@ router.get("/exports/:exportId", (req, res) => {
 router.post("/export", async (req, res) => {
   const { metadata, chapters } = req.body as ExportRequest;
   if (!metadata || !Array.isArray(chapters)) {
-    res.status(400).json({ message: "metadata and chapters are required" });
+    res.status(400).json({ message: t("metadata and chapters are required") });
     return;
   }
   await streamExport(res, metadata, chapters, epubFileName(metadata.title || "book"));
@@ -254,18 +262,21 @@ async function refreshStoryToc(params: {
 router.post("/stories", async (req, res) => {
   const { url } = req.body as { url?: string };
   if (!url) {
-    res.status(400).json({ message: "url is required" });
+    res.status(400).json({ message: t("url is required") });
     return;
   }
   const site = findSupportedSite(url);
   if (!site) {
-    res.status(400).json({ message: `This site is not yet supported: ${url}` });
+    res.status(400).json({ message: t("This site is not yet supported: {url}", { url }) });
     return;
   }
   const adapter = getTocAdapter(url);
   if (!adapter) {
     res.status(400).json({
-      message: `${site.name} does not yet support automatic chapter list loading — enter chapter URLs manually in the "Manual Crawl" tab`,
+      message: t(
+        "{site} does not yet support automatic chapter list loading — enter chapter URLs manually in the {tab} tab",
+        { site: site.name, tab: t("Manual Crawl") }
+      ),
     });
     return;
   }
@@ -273,7 +284,7 @@ router.post("/stories", async (req, res) => {
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Story is currently crawling, cannot update chapter list" });
+    res.status(409).json({ message: t("Story is currently crawling, cannot update chapter list") });
     return;
   }
   try {
@@ -327,7 +338,7 @@ router.get("/stories/live", (req, res) => {
 router.get("/stories/:id", async (req, res) => {
   const story = await storyStore.getOutline(req.params.id);
   if (!story) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   res.json({ story });
@@ -338,7 +349,7 @@ router.get("/stories/:id", async (req, res) => {
 router.get("/stories/:id/cover", (req, res) => {
   const cover = coverStore.find(req.params.id);
   if (!cover) {
-    res.status(404).json({ message: "No cover image for this story" });
+    res.status(404).json({ message: t("No cover image for this story") });
     return;
   }
   res.type(cover.contentType);
@@ -351,12 +362,12 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
   const { id } = req.params;
   const story = await storyStore.get(id);
   if (!story) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   const { title, author, language } = req.body as { title?: string; author?: string; language?: string };
   if (!title?.trim()) {
-    res.status(400).json({ message: "Book title is required" });
+    res.status(400).json({ message: t("Book title is required") });
     return;
   }
 
@@ -364,7 +375,7 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
   if (req.file) {
     const savedCover = await coverStore.saveUpload(id, req.file.path);
     if (!savedCover) {
-      res.status(400).json({ message: "Invalid cover file — only JPG, PNG, WebP, or GIF accepted" });
+      res.status(400).json({ message: t("Invalid cover file — only JPG, PNG, WebP, or GIF accepted") });
       return;
     }
     coverUrl = savedCover;
@@ -383,12 +394,12 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
 router.get("/stories/:id/chapters/:order", async (req, res) => {
   const order = Number(req.params.order);
   if (!Number.isInteger(order)) {
-    res.status(400).json({ message: "Invalid chapter order" });
+    res.status(400).json({ message: t("Invalid chapter order") });
     return;
   }
   const chapter = await storyStore.getChapter(req.params.id, order);
   if (!chapter) {
-    res.status(404).json({ message: "Chapter not found" });
+    res.status(404).json({ message: t("Chapter not found") });
     return;
   }
   res.json({ chapter });
@@ -403,13 +414,13 @@ router.post("/stories/:id/export", async (req, res) => {
     chapters?: { order: number; title?: string; contentHtml?: string }[];
   };
   if (!metadata || !Array.isArray(chapters)) {
-    res.status(400).json({ message: "metadata and chapters are required" });
+    res.status(400).json({ message: t("metadata and chapters are required") });
     return;
   }
 
   const story = await storyStore.get(id);
   if (!story) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
 
@@ -440,35 +451,35 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
   const { id } = req.params;
   const order = Number(req.params.order);
   if (!Number.isInteger(order)) {
-    res.status(400).json({ message: "Invalid chapter order" });
+    res.status(400).json({ message: t("Invalid chapter order") });
     return;
   }
   // Active crawl will overwrite the chapter with newly extracted content, so block edits
   // to prevent user losing work after cleaning it up.
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Story is currently crawling, cannot edit chapters" });
+    res.status(409).json({ message: t("Story is currently crawling, cannot edit chapters") });
     return;
   }
 
   const chapter = await storyStore.getChapter(id, order);
   if (!chapter) {
-    res.status(404).json({ message: "Chapter not found" });
+    res.status(404).json({ message: t("Chapter not found") });
     return;
   }
 
   const { title, contentHtml } = req.body as { title?: string; contentHtml?: string };
   if (!title?.trim()) {
-    res.status(400).json({ message: "Chapter title is required" });
+    res.status(400).json({ message: t("Chapter title is required") });
     return;
   }
   if (typeof contentHtml !== "string") {
-    res.status(400).json({ message: "Chapter content is required" });
+    res.status(400).json({ message: t("Chapter content is required") });
     return;
   }
 
   const blocks = htmlToBlocks(contentHtml);
   if (blocks.length === 0) {
-    res.status(400).json({ message: "Chapter content cannot be empty" });
+    res.status(400).json({ message: t("Chapter content cannot be empty") });
     return;
   }
 
@@ -485,14 +496,77 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
   res.json({ chapter: updated });
 });
 
+// Highlights live server-side rather than in the browser: they are the reader's own
+// notes on the text, and losing them to a cleared browser cache — or not seeing them
+// in the Electron build after making them in the browser — would be worse than the
+// extra routes.
+router.get("/stories/:id/highlights", async (req, res) => {
+  res.json({ highlights: await storyStore.listHighlights(req.params.id) });
+});
+
+router.post("/stories/:id/highlights", async (req, res) => {
+  const { chapterOrder, start, end, color, text } = req.body ?? {};
+  if (!Number.isInteger(chapterOrder) || chapterOrder < 1) {
+    res.status(400).json({ message: t("Invalid chapter order") });
+    return;
+  }
+  if (!Number.isInteger(start) || !Number.isInteger(end) || start < 0 || end <= start) {
+    res.status(400).json({ message: t("Invalid highlight range") });
+    return;
+  }
+  if (!HIGHLIGHT_COLORS.includes(color)) {
+    res.status(400).json({ message: t("Invalid highlight colour") });
+    return;
+  }
+  if (typeof text !== "string" || !text.trim()) {
+    res.status(400).json({ message: t("Highlighted text is required") });
+    return;
+  }
+  if (!(await storyStore.getOutline(req.params.id))) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const highlight = await storyStore.addHighlight(req.params.id, {
+    chapterOrder,
+    start,
+    end,
+    color: color as HighlightColor,
+    text,
+  });
+  res.status(201).json({ highlight });
+});
+
+router.patch("/stories/:id/highlights/:highlightId", async (req, res) => {
+  const color = req.body?.color;
+  if (!HIGHLIGHT_COLORS.includes(color)) {
+    res.status(400).json({ message: t("Invalid highlight colour") });
+    return;
+  }
+  const updated = await storyStore.setHighlightColor(req.params.id, req.params.highlightId, color);
+  if (!updated) {
+    res.status(404).json({ message: t("Highlight not found") });
+    return;
+  }
+  res.json({ ok: true });
+});
+
+router.delete("/stories/:id/highlights/:highlightId", async (req, res) => {
+  const removed = await storyStore.removeHighlight(req.params.id, req.params.highlightId);
+  if (!removed) {
+    res.status(404).json({ message: t("Highlight not found") });
+    return;
+  }
+  res.json({ ok: true });
+});
+
 router.delete("/stories/:id", async (req, res) => {
   if (runningCrawls.has(req.params.id)) {
-    res.status(409).json({ message: "Story is currently crawling, cannot delete" });
+    res.status(409).json({ message: t("Story is currently crawling, cannot delete") });
     return;
   }
   const removed = await storyStore.remove(req.params.id);
   if (!removed) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   await coverStore.remove(req.params.id);
@@ -539,12 +613,12 @@ router.post("/stories/:id/watch", async (req, res) => {
   const { id } = req.params;
   const { watching } = req.body as { watching?: unknown };
   if (typeof watching !== "boolean") {
-    res.status(400).json({ message: "watching must be true or false" });
+    res.status(400).json({ message: t("watching must be true or false") });
     return;
   }
   const story = await storyStore.getOutline(id);
   if (!story) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   await storyStore.setWatching(id, watching);
@@ -558,16 +632,16 @@ router.post("/stories/:id/check", async (req, res) => {
   const { id } = req.params;
   const story = await storyStore.getOutline(id);
   if (!story) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   const adapter = getTocAdapter(story.storyUrl);
   if (!adapter) {
-    res.status(400).json({ message: "This story has no TOC adapter for checking" });
+    res.status(400).json({ message: t("This story has no TOC adapter for checking") });
     return;
   }
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Story is currently crawling" });
+    res.status(409).json({ message: t("Story is currently crawling") });
     return;
   }
 
@@ -592,17 +666,17 @@ router.post("/stories/:id/refresh", async (req, res) => {
   const { id } = req.params;
   const existing = await storyStore.get(id);
   if (!existing) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   const site = findSupportedSite(existing.storyUrl);
   const adapter = getTocAdapter(existing.storyUrl);
   if (!site || !adapter) {
-    res.status(400).json({ message: "This story has no TOC adapter" });
+    res.status(400).json({ message: t("This story has no TOC adapter") });
     return;
   }
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Story is currently crawling, cannot update chapter list" });
+    res.status(409).json({ message: t("Story is currently crawling, cannot update chapter list") });
     return;
   }
 
@@ -627,11 +701,11 @@ router.post("/stories/:id/crawl", async (req, res) => {
   // tens of MB sitting in RAM for the whole crawl unused.
   const story: StoredStory | undefined = await storyStore.getOutline(id);
   if (!story) {
-    res.status(404).json({ message: "Story not found" });
+    res.status(404).json({ message: t("Story not found") });
     return;
   }
   if (runningCrawls.has(id)) {
-    res.status(409).json({ message: "Story is currently crawling" });
+    res.status(409).json({ message: t("Story is currently crawling") });
     return;
   }
 
@@ -680,7 +754,7 @@ router.post("/stories/:id/crawl", async (req, res) => {
       const chapter = plan[i];
       const extracted = await extractWithRetry(chapter.url, (attempt) => {
         const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
-        send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: `Loading & extracting...${attemptSuffix}` });
+        send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: t("Loading & extracting…{attempt}", { attempt: attemptSuffix }) });
       });
 
       const stored = story.chapters.find((c) => c.order === chapter.order);
