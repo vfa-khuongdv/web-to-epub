@@ -9,6 +9,7 @@ import {
   recolorHighlight,
 } from "../api";
 import * as hl from "../highlightDom";
+import { CONTENT_ID } from "../highlightDom";
 import { useLang } from "../i18n";
 import {
   FONT_SIZE_RANGE,
@@ -37,6 +38,12 @@ const TOC_WINDOW = 200;
 const SCROLL_SAVE_DELAY = 400;
 // Height the palette needs above a selection before it has to flip below it.
 const PALETTE_CLEARANCE = 56;
+// Rough silent-reading pace for Vietnamese prose (~200 words/min at ~5 characters a
+// word). It only drives an estimate the reader glances at, so being off by a fifth
+// costs nothing — but it is the one number here worth tuning if it reads wrong.
+const CHARS_PER_MINUTE = 1000;
+// Below this there is nothing to scroll, so the chapter is fully in view.
+const MIN_SCROLLABLE = 8;
 
 const THEME_LABEL: Record<ReaderTheme, string> = { light: "Paper", sepia: "Sepia", dark: "Night" };
 const LINE_HEIGHT_LABEL: Record<string, string> = { "1.4": "Tight", "1.5": "Book", "1.8": "Loose" };
@@ -105,12 +112,20 @@ export default function ReaderOverlay({
   // reader opens, and the current offset when a preference change reloads the page.
   const pendingScroll = useRef(resume.scroll);
   const cache = useRef(new Map<number, string>());
+  // Chapters a prefetch has been started for, so a second pass does not refetch them.
+  const prefetching = useRef(new Set<number>());
   // The iframe load handler runs outside React's render, so the values it needs live in
   // refs rather than the closure it was created in.
   const highlightsRef = useRef<Highlight[]>([]);
   const chapterRef = useRef(0);
   const scrollToOnLoad = useRef<string | null>(null);
   const scrollTimer = useRef<number | undefined>(undefined);
+  // Progress is written straight into these two nodes instead of through state: it
+  // changes on every scroll frame, and a re-render would redraw the whole chapter list
+  // (up to 200 rows) with it.
+  const progressFill = useRef<HTMLDivElement>(null);
+  const progressLabel = useRef<HTMLSpanElement>(null);
+  const chapterChars = useRef(0);
 
   const chapter = chapters[index];
   highlightsRef.current = highlights;
@@ -119,7 +134,7 @@ export default function ReaderOverlay({
   // Listeners live on the iframe document, which is replaced on every load, so they
   // can only reach the current chapter through a ref.
   const handlers = useRef({
-    onScroll: (_y: number) => {},
+    onScroll: (_win: Window) => {},
     onKey: (_e: KeyboardEvent) => {},
     onPick: () => {},
     onClick: (_e: MouseEvent) => {},
@@ -168,6 +183,26 @@ export default function ReaderOverlay({
     };
   }, [storyId]);
 
+  // Reading straight through is the common case, so have the next chapter in hand
+  // before it is asked for: the turn becomes instant instead of a blank pane and a
+  // request. Starts only once the current chapter is showing, so it never competes
+  // with the chapter the reader is waiting on.
+  useEffect(() => {
+    const next = chapters[index + 1];
+    if (html === null || !next) return;
+    // The cache alone cannot gate this: the effect runs again when `html` settles, while
+    // the first prefetch is still in flight and has nothing in the cache yet — which
+    // fetched the same chapter twice. Track what is already on its way.
+    if (cache.current.has(next.order) || prefetching.current.has(next.order)) return;
+    prefetching.current.add(next.order);
+    loadChapterHtml(next.order)
+      .then((content) => cache.current.set(next.order, content))
+      // Speculative: if it really fails, turning the page reports it properly. Forget it
+      // so a later pass can try again.
+      .catch(() => prefetching.current.delete(next.order));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [index, html]);
+
   // Arrow keys and Escape work while focus is anywhere in the app chrome; the same
   // handler is attached inside the iframe, where focus sits while reading.
   useEffect(() => {
@@ -197,6 +232,19 @@ export default function ReaderOverlay({
     activeRow.current?.scrollIntoView({ block: "nearest" });
   }, [index, tocPage, prefs.toc]);
 
+  function paintProgress(win: Window) {
+    const scrollable = win.document.documentElement.scrollHeight - win.innerHeight;
+    const fraction =
+      scrollable > MIN_SCROLLABLE ? Math.min(1, Math.max(0, win.scrollY / scrollable)) : 1;
+    if (progressFill.current) progressFill.current.style.width = `${fraction * 100}%`;
+    if (progressLabel.current) {
+      const percent = Math.round(fraction * 100);
+      const minutes = Math.ceil(((1 - fraction) * chapterChars.current) / CHARS_PER_MINUTE);
+      progressLabel.current.textContent =
+        minutes >= 1 ? t("{percent}% · ~{minutes} min left", { percent, minutes }) : `${percent}%`;
+    }
+  }
+
   function goTo(next: number) {
     if (next < 0 || next >= chapters.length) return;
     setPalette(null);
@@ -218,12 +266,14 @@ export default function ReaderOverlay({
   }
 
   handlers.current = {
-    onScroll: (y) => {
+    onScroll: (win) => {
+      paintProgress(win);
       window.clearTimeout(scrollTimer.current);
       if (!chapter) return;
       const order = chapter.order;
+      const scroll = win.scrollY;
       scrollTimer.current = window.setTimeout(
-        () => savePosition(storyId, { order, scroll: y }),
+        () => savePosition(storyId, { order, scroll }),
         SCROLL_SAVE_DELAY
       );
     },
@@ -259,6 +309,7 @@ export default function ReaderOverlay({
     const win = frame.current?.contentWindow;
     const doc = frame.current?.contentDocument;
     if (!win || !doc) return;
+    chapterChars.current = doc.getElementById(CONTENT_ID)?.textContent?.length ?? 0;
     hl.paintAll(doc, highlightsRef.current.filter((h) => h.chapterOrder === chapterRef.current));
     if (scrollToOnLoad.current) {
       hl.scrollToHighlight(doc, scrollToOnLoad.current);
@@ -269,12 +320,16 @@ export default function ReaderOverlay({
     pendingScroll.current = 0;
     // On the document, not the window: a preference change reloads the iframe, and only
     // listeners bound to the replaced document are guaranteed to go with it.
-    doc.addEventListener("scroll", () => handlers.current.onScroll(win.scrollY), { passive: true });
+    doc.addEventListener("scroll", () => handlers.current.onScroll(win), { passive: true });
+    // Showing or hiding the chapter list renarrows the page without reloading it, so the
+    // same scroll offset is now a different fraction of a taller chapter.
+    win.addEventListener("resize", () => paintProgress(win));
     doc.addEventListener("keydown", (e) => handlers.current.onKey(e));
     // mouseup rather than selectionchange: the palette should appear once the reader has
     // finished dragging, not follow the selection as it grows.
     doc.addEventListener("mouseup", () => handlers.current.onPick());
     doc.addEventListener("click", (e) => handlers.current.onClick(e));
+    paintProgress(win);
   }
 
   // Place the palette in the app's coordinates: the rect comes from inside the iframe,
@@ -628,11 +683,17 @@ export default function ReaderOverlay({
       </div>
 
       <div className="reader-foot">
+        <div className="reader-progress" aria-hidden="true">
+          <div className="reader-progress-fill" ref={progressFill} />
+        </div>
         <button type="button" className="btn" disabled={index === 0} onClick={() => goTo(index - 1)}>
           <Icon name="chevron" size={12} className="rotate-180" />
           {t("Previous")}
         </button>
-        <span className="reader-now truncate">{chapter?.title}</span>
+        <span className="reader-now">
+          <span className="truncate">{chapter?.title}</span>
+          <span className="reader-progress-label" ref={progressLabel} />
+        </span>
         <button
           type="button"
           className="btn"

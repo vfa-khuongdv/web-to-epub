@@ -240,6 +240,7 @@ export const vi: Record<string, string> = {
   "{from}–{to} of {total}": "{from}–{to} / {total}",
   "{title} — EPUB preview": "{title} — xem thử EPUB",
   "Loading chapter…": "Đang tải chương…",
+  "{percent}% · ~{minutes} min left": "{percent}% · còn ~{minutes} phút",
   "Text size": "Cỡ chữ",
   "Smaller text": "Chữ nhỏ hơn",
   "Larger text": "Chữ to hơn",
