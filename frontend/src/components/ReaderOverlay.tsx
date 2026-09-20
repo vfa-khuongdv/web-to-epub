@@ -14,6 +14,7 @@ import { useLang } from "../i18n";
 import {
   FONT_SIZE_RANGE,
   LINE_HEIGHTS,
+  READER_FONTS,
   ReaderPrefs,
   ReaderTheme,
   readPosition,
@@ -104,7 +105,9 @@ export default function ReaderOverlay({
   const [sidebar, setSidebar] = useState<"chapters" | "highlights">("chapters");
   const [highlights, setHighlights] = useState<Highlight[]>([]);
   const [palette, setPalette] = useState<Palette | null>(null);
+  const [full, setFull] = useState(false);
 
+  const root = useRef<HTMLDivElement>(null);
   const frame = useRef<HTMLIFrameElement>(null);
   const stage = useRef<HTMLDivElement>(null);
   const activeRow = useRef<HTMLButtonElement>(null);
@@ -211,6 +214,18 @@ export default function ReaderOverlay({
     return () => document.removeEventListener("keydown", onKey);
   }, []);
 
+  // Full screen is the browser's, not ours: it can also be left with Escape or the
+  // window chrome, so the button follows the document rather than its own state. Leaving
+  // the reader leaves full screen too — the library behind it is not a full screen page.
+  useEffect(() => {
+    const onChange = () => setFull(document.fullscreenElement === root.current);
+    document.addEventListener("fullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    };
+  }, []);
+
   // Closing mid-scroll must not lose the last few hundred milliseconds of reading.
   useEffect(() => {
     return () => {
@@ -253,10 +268,22 @@ export default function ReaderOverlay({
     savePosition(storyId, { order: chapters[next].order, scroll: 0 });
   }
 
+  function toggleFull() {
+    // Either call rejects when the browser refuses full screen (an embedded frame, a
+    // policy): the reader is unchanged and still readable, so there is nothing to report.
+    if (document.fullscreenElement) void document.exitFullscreen().catch(() => {});
+    else void root.current?.requestFullscreen().catch(() => {});
+  }
+
   function updatePrefs(patch: Partial<ReaderPrefs>) {
     // Only the preferences written into the page rebuild the srcdoc, which reloads the
     // iframe back to the top; showing or hiding the chapter list leaves it alone.
-    if (patch.fontSize !== undefined || patch.lineHeight !== undefined || patch.theme !== undefined) {
+    if (
+      patch.fontSize !== undefined ||
+      patch.lineHeight !== undefined ||
+      patch.theme !== undefined ||
+      patch.font !== undefined
+    ) {
       pendingScroll.current = frame.current?.contentWindow?.scrollY ?? 0;
     }
     setPalette(null);
@@ -282,9 +309,13 @@ export default function ReaderOverlay({
       if (target?.tagName === "INPUT" || target?.isContentEditable) return;
       // Escape dismisses the palette first: it is the thing most recently opened.
       if (e.key === "Escape") {
+        // In full screen the browser takes Escape for itself; where it still reaches us,
+        // the keypress belongs to leaving full screen, not to closing the reader.
+        if (document.fullscreenElement) return;
         if (palette) setPalette(null);
         else onClose();
-      } else if (e.key === "ArrowLeft") goTo(index - 1);
+      } else if (e.key === "f" || e.key === "F") toggleFull();
+      else if (e.key === "ArrowLeft") goTo(index - 1);
       else if (e.key === "ArrowRight") goTo(index + 1);
     },
     onPick: () => {
@@ -419,7 +450,13 @@ export default function ReaderOverlay({
   const hiddenMatches = needle ? matches.length - shown.length : 0;
 
   return (
-    <div className="reader" role="dialog" aria-modal="true" aria-label={t("Reading {title}", { title: storyTitle })}>
+    <div
+      className="reader"
+      ref={root}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t("Reading {title}", { title: storyTitle })}
+    >
       <div className="reader-bar">
         <button type="button" className="btn btn-quiet btn-tiny" onClick={onClose}>
           <Icon name="x" size={12} />
@@ -439,6 +476,16 @@ export default function ReaderOverlay({
           >
             <Icon name="chapter" size={13} />
             {t("Chapters")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-tiny"
+            aria-pressed={full}
+            title={full ? t("Leave full screen (F)") : t("Read full screen (F)")}
+            aria-label={full ? t("Leave full screen") : t("Read full screen")}
+            onClick={toggleFull}
+          >
+            <Icon name={full ? "collapse" : "expand"} size={13} />
           </button>
           <button
             type="button"
@@ -659,6 +706,24 @@ export default function ReaderOverlay({
               </div>
             </div>
             <div className="field">
+              <label>{t("Font")}</label>
+              {/* Each choice is written in the family it selects, so the list is its own
+                  sample — the reason to pick one is what it looks like. */}
+              <div className="reader-seg reader-seg-col">
+                {READER_FONTS.map((font) => (
+                  <button
+                    key={font.id}
+                    type="button"
+                    style={{ fontFamily: font.stack }}
+                    aria-pressed={prefs.font === font.id}
+                    onClick={() => updatePrefs({ font: font.id })}
+                  >
+                    {t(font.label)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="field">
               <label>{t("Page")}</label>
               <div className="reader-seg">
                 {(Object.keys(THEME_LABEL) as ReaderTheme[]).map((theme) => (
@@ -675,7 +740,7 @@ export default function ReaderOverlay({
             </div>
             <p className="text-xs text-ink-3">
               {t(
-                "Fonts, spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file."
+                "Spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file."
               )}
             </p>
           </aside>
