@@ -13,6 +13,7 @@ export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "truyenfull.vn", name: "TruyenFull" },
   { domain: "truyenfull.live", name: "TruyenFull" }, // truyenfull.vn's current mirror domain
   { domain: "truyencom.com", name: "Đọc Truyện" }, // dtruyen.com's current domain
+  { domain: "truyenhoan.com", name: "Truyện Hoàn" }, // truyenfull-template theme
   { domain: "wattpad.com", name: "Wattpad" }, // English site; paid chapters (Paid Stories) not supported
 ];
 

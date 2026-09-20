@@ -75,6 +75,7 @@ adding a new domain only requires editing this file.
 | `xtruyen.vn` | ✅ (site JSON API) | Most thoroughly tested |
 | `truyenfull.live` / `truyenfull.vn` | ✅ (scrape TOC pages) | Real-world tested |
 | `truyencom.com` | ✅ (scrape TOC pages) | |
+| `truyenhoan.com` | ✅ (scrape TOC pages) | Same theme as truyenfull; chapters served in HTML |
 | `wattpad.com` | ✅ (internal API `/api/v3/stories/<id>`) | Paid chapters not supported |
 
 ## Installation

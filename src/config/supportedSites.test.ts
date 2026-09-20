@@ -42,6 +42,14 @@ describe("findSupportedSite", () => {
     expect(findSupportedSite("https://www.truyencom.com/de-ba.27/")?.domain).toBe("truyencom.com");
   });
 
+  it("nhận truyenhoan.com", () => {
+    expect(findSupportedSite("https://truyenhoan.com/con-duong-ba-chu.66/")).toEqual({
+      domain: "truyenhoan.com",
+      name: "Truyện Hoàn",
+    });
+    expect(findSupportedSite("https://www.truyenhoan.com/con-duong-ba-chu.66/")?.domain).toBe("truyenhoan.com");
+  });
+
   it("nhận subdomain con của supported site", () => {
     expect(findSupportedSite("https://m.wattpad.com/story/123")?.domain).toBe("wattpad.com");
   });

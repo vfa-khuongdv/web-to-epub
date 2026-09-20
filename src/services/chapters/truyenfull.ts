@@ -3,7 +3,7 @@ import { extractChapter, LockedContentError } from "../extractor";
 import { renderPageHtml } from "../renderer";
 import { fetchText } from "../toc/http";
 
-export const TRUYENFULL_DOMAINS = ["truyenfull.vn", "truyenfull.live"];
+export const TRUYENFULL_DOMAINS = ["truyenfull.vn", "truyenfull.live", "truyenhoan.com"];
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
