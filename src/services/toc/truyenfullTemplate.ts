@@ -4,7 +4,12 @@ import { normalizeStoryUrl } from "./normalizeUrl";
 import { TocAdapter, TocChapter, TocResult } from "./types";
 import { t } from "../lang";
 
-export const TRUYENFULL_TEMPLATE_DOMAINS = ["truyenfull.live", "truyenfull.vn", "truyencom.com"];
+export const TRUYENFULL_TEMPLATE_DOMAINS = [
+  "truyenfull.live",
+  "truyenfull.vn",
+  "truyencom.com",
+  "truyenhoan.com",
+];
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
