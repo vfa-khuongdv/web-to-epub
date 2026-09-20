@@ -289,6 +289,7 @@ export const vi: Record<string, string> = {
   "Enter your 6-digit code to open your private library.":
     "Nhập mã 6 số để mở thư viện ẩn danh.",
   "New code": "Mã mới",
+  "Digit {position}": "Ô số {position}",
   Code: "Mã",
   "Repeat the code": "Nhập lại mã",
   "The two codes do not match": "Hai lần nhập mã không khớp",
