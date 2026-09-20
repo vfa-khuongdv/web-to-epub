@@ -121,7 +121,29 @@ ${contentHtml}
 }
 
 const PREFS_KEY = "reader-prefs";
-const positionKey = (storyId: string) => `reader-position:${storyId}`;
+const PRIVATE_POSITION_PREFIX = "reader-position:private:";
+
+// Reading positions are per-browser, so a private story would otherwise leave its id
+// sitting in localStorage long after the library was locked. In private mode they go
+// under their own prefix and are wiped the moment the session ends; the reader's font
+// and theme stay shared, as those say nothing about what is being read.
+let privateScope = false;
+
+export function setPrivateScope(on: boolean): void {
+  privateScope = on;
+}
+
+export function forgetPrivatePositions(): void {
+  try {
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith(PRIVATE_POSITION_PREFIX));
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    /* Nothing was stored in the first place */
+  }
+}
+
+const positionKey = (storyId: string) =>
+  privateScope ? `${PRIVATE_POSITION_PREFIX}${storyId}` : `reader-position:${storyId}`;
 
 // localStorage can throw (private window, cookies blocked): reading still works, the
 // preference or position just is not remembered — same handling as the theme switch.

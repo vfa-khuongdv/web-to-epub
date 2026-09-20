@@ -1,4 +1,5 @@
 import { currentLang, translate } from "./i18n";
+import { currentVaultToken, noteVaultExpired } from "./vaultToken";
 import { BookMetadata, ProgressEvent, StoredChapter, StoredStory, StorySummary, SupportedSite } from "./types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
@@ -12,9 +13,53 @@ export async function fetchSupportedSites(): Promise<SupportedSite[]> {
 const tr = (key: string) => translate(currentLang(), key);
 
 // The server phrases its own errors, and they are shown to the user verbatim, so every
-// request carries the language it should answer in.
+// request carries the language it should answer in. It also carries the private-mode
+// token when one is held: that is what tells the server which library to read — no
+// token means the normal one.
 function langHeaders(extra?: Record<string, string>): Record<string, string> {
-  return { ...extra, "X-Lang": currentLang() };
+  const token = currentVaultToken();
+  const headers: Record<string, string> = { ...extra, "X-Lang": currentLang() };
+  if (token) headers["X-Vault-Token"] = token;
+  return headers;
+}
+
+// Every call goes through here so an expired private session is noticed once, in one
+// place: the server answers 401 to a token it no longer knows, and the app drops back
+// to the normal library instead of every later request failing on its own.
+async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const hadToken = currentVaultToken() !== null;
+  const res = await fetch(path, init);
+  if (res.status === 401 && hadToken) noteVaultExpired();
+  return res;
+}
+
+export interface VaultStatus {
+  configured: boolean;
+}
+
+export async function fetchVaultStatus(): Promise<VaultStatus> {
+  const res = await fetch("/api/vault/status", { headers: langHeaders() });
+  if (!res.ok) throw new Error(tr("Could not check private mode"));
+  return (await res.json()) as VaultStatus;
+}
+
+// Both halves of "open private mode": the first time there is no code yet and the user
+// picks one, afterwards they type the one they picked. Either way the answer is a
+// session token.
+export async function openVault(code: string, mode: "setup" | "unlock"): Promise<string> {
+  const res = await fetch(`/api/vault/${mode}`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ code }),
+  });
+  if (!res.ok) throw apiError(await readJsonError(res, tr("Wrong code")), res.status);
+  return ((await res.json()) as { token: string }).token;
+}
+
+export async function closeVault(): Promise<void> {
+  // A failure here only means the server keeps a token nobody will send again; the
+  // client forgets it regardless, so there is nothing for the user to act on.
+  await fetch("/api/vault/lock", { method: "POST", headers: langHeaders() }).catch(() => undefined);
 }
 
 // Errors the UI has to react to by kind, not by wording — matching the message text
@@ -35,7 +80,7 @@ async function readJsonError(res: Response, fallback: string): Promise<string> {
 }
 
 async function streamNdjson<T>(path: string, body: unknown, onEvent: (event: T) => void): Promise<void> {
-  const res = await fetch(path, {
+  const res = await apiFetch(path, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(body),
@@ -71,7 +116,7 @@ export async function extractChapters(urls: string[], onEvent: (event: ProgressE
 // Start crawling a story: server responds immediately, crawls in background,
 // progress arrives via realtime channel /api/stories/:id/live (EventSource).
 export async function startStoryCrawl(id: string, orders?: number[]): Promise<{ total: number }> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/crawl`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/crawl`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ orders }),
@@ -81,14 +126,14 @@ export async function startStoryCrawl(id: string, orders?: number[]): Promise<{ 
 }
 
 export async function fetchStories(): Promise<StorySummary[]> {
-  const res = await fetch("/api/stories", { headers: langHeaders() });
+  const res = await apiFetch("/api/stories", { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load story list")));
   const data = await res.json();
   return data.stories || [];
 }
 
 export async function createStory(url: string): Promise<StoredStory> {
-  const res = await fetch("/api/stories", {
+  const res = await apiFetch("/api/stories", {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ url }),
@@ -99,7 +144,7 @@ export async function createStory(url: string): Promise<StoredStory> {
 }
 
 export async function fetchStory(id: string): Promise<StoredStory> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}`, { headers: langHeaders() });
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}`, { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load story")));
   const data = await res.json();
   return data.story as StoredStory;
@@ -107,7 +152,7 @@ export async function fetchStory(id: string): Promise<StoredStory> {
 
 // Save book metadata from detail view (multipart because may include new cover image).
 export async function saveStoryMeta(id: string, form: FormData): Promise<StoredStory> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/meta`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/meta`, {
     method: "POST",
     headers: langHeaders(),
     body: form,
@@ -124,7 +169,7 @@ export async function saveChapterEdit(
   order: number,
   edit: { title: string; contentHtml: string }
 ): Promise<StoredChapter> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`, {
     method: "PATCH",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(edit),
@@ -135,13 +180,13 @@ export async function saveChapterEdit(
 }
 
 export async function deleteStory(id: string): Promise<void> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}`, { method: "DELETE", headers: langHeaders() });
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}`, { method: "DELETE", headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete story")));
 }
 
 // Enable/disable watching for new chapters on a story.
 export async function setStoryWatch(id: string, watching: boolean): Promise<StoredStory> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/watch`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/watch`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ watching }),
@@ -160,14 +205,14 @@ export interface StoryCheckResult {
 // Check TOC for new chapters; throws on fetch failure (previous successful check
 // data still preserved on server).
 export async function checkStoryUpdates(id: string): Promise<StoryCheckResult> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/check`, { method: "POST", headers: langHeaders() });
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/check`, { method: "POST", headers: langHeaders() });
   if (!res.ok) throw apiError(await readJsonError(res, tr("Could not check for new chapters")), res.status);
   return (await res.json()) as StoryCheckResult;
 }
 
 // Refetch TOC for existing story: new chapters become pending, old ones unchanged.
 export async function refreshStoryToc(id: string): Promise<StoredStory> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(id)}/refresh`, { method: "POST", headers: langHeaders() });
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/refresh`, { method: "POST", headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load new chapter list")));
   const data = await res.json();
   return data.story as StoredStory;
@@ -176,7 +221,7 @@ export async function refreshStoryToc(id: string): Promise<StoredStory> {
 export async function uploadCover(file: File): Promise<string> {
   const formData = new FormData();
   formData.append("cover", file);
-  const res = await fetch("/api/cover-upload", { method: "POST", headers: langHeaders(), body: formData });
+  const res = await apiFetch("/api/cover-upload", { method: "POST", headers: langHeaders(), body: formData });
   if (!res.ok) {
     throw new Error(await readJsonError(res, tr("Cover upload failed")));
   }
@@ -187,7 +232,7 @@ export async function uploadCover(file: File): Promise<string> {
 // Chapter content, loaded when user opens chapter to view/edit (story detail no
 // longer carries content to avoid loading tens of MB each time opening a story).
 export async function fetchChapterContent(storyId: string, order: number): Promise<StoredChapter> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`, {
     headers: langHeaders(),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load chapter content")));
@@ -239,7 +284,7 @@ async function runExport(
   if (failure) throw new Error(failure);
   if (!exportId) throw new Error("Export failed — stream ended without file");
 
-  const res = await fetch(`/api/exports/${encodeURIComponent(exportId)}`, { headers: langHeaders() });
+  const res = await apiFetch(`/api/exports/${encodeURIComponent(exportId)}`, { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not download the exported EPUB file")));
   return res.blob();
 }
@@ -281,7 +326,7 @@ export interface Highlight {
 }
 
 export async function fetchHighlights(storyId: string): Promise<Highlight[]> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/highlights`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/highlights`, {
     headers: langHeaders(),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load highlights")));
@@ -292,7 +337,7 @@ export async function createHighlight(
   storyId: string,
   highlight: Omit<Highlight, "id" | "createdAt">
 ): Promise<Highlight> {
-  const res = await fetch(`/api/stories/${encodeURIComponent(storyId)}/highlights`, {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/highlights`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify(highlight),
@@ -302,7 +347,7 @@ export async function createHighlight(
 }
 
 export async function recolorHighlight(storyId: string, id: string, color: HighlightColor): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/stories/${encodeURIComponent(storyId)}/highlights/${encodeURIComponent(id)}`,
     {
       method: "PATCH",
@@ -314,7 +359,7 @@ export async function recolorHighlight(storyId: string, id: string, color: Highl
 }
 
 export async function deleteHighlight(storyId: string, id: string): Promise<void> {
-  const res = await fetch(
+  const res = await apiFetch(
     `/api/stories/${encodeURIComponent(storyId)}/highlights/${encodeURIComponent(id)}`,
     { method: "DELETE", headers: langHeaders() }
   );

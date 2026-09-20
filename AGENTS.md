@@ -22,6 +22,7 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 - Story crawls run server-side after a `202` response; progress goes over SSE (`/api/stories/live` shared channel tagged `storyId`, `/api/stories/:id/live`). The manual batch crawl streams NDJSON (`POST /api/extract`). `runningCrawls` and SSE subscriber maps are in-memory in `src/routes/api.ts` — single process only.
 - Trust boundary is the allowlist in `src/config/supportedSites.ts`, enforced server-side (frontend reads it from `/api/supported-sites`). New domains go there; optionally add a TOC adapter.
 - `DATA_DIR` (default `./data`) holds `stories.db` + `covers/`; nothing under `data/` is committed. The Electron app points `DATA_DIR` at userData.
+- Private mode ("ẩn danh", Cmd/Ctrl+Shift+N — also +K, because Chrome keeps +N): a second library under `DATA_DIR/private/` (own `stories.db`, `covers/`, `lock.json`) behind a 6-digit code. `services/vault.ts` hashes the code with scrypt and hands out an in-memory session token; every route in `src/routes/api.ts` picks its `Library` via `libraryFor(req, res)` (token in `X-Vault-Token`, or `?vault=` for the SSE channel and cover `<img>`), so crawl state and live channels are per library too. Frontend: `frontend/src/vault.tsx` + `vaultToken.ts`; switching modes remounts `<App>` from `main.tsx`.
 - Frontend is React 18 + Vite + Tailwind 4 and builds into `../public`; never hand-edit `public/` or `dist/`.
 
 ## Gotchas
@@ -32,6 +33,7 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 - Chapter edits ARE persisted via `PATCH /api/stories/:id/chapters/:order` ("Save Chapter").
 - Crawl code re-reads the story from SQLite before `updateMeta` because a user may save meta mid-crawl — keep that read-before-write pattern.
 - Never bypass login/paywall/DRM (product constraint); locked chapters must fail with a clear Vietnamese error.
+- Private mode is a lock on the app, not encryption: `data/private/stories.db` is a plain SQLite file. Don't describe it as encrypted, and don't let an invalid token fall back to the public library — `libraryFor` answers 401 and returns `null` for exactly that reason.
 - `LOCKED_CONTENT_RE` in `extractor.ts` matches text on the *crawled page*, not text this app writes — the supported sites publish their anti-adblock notices in Vietnamese. Translating it silently turns the check off (it already happened once).
 - `KINDLE_CSS` is exported from `epubBuilder.ts` and mirrored in `frontend/src/readerPreview.ts`; they must stay identical or the reader stops being an honest preview.
 - Server-side wording is module state in `services/lang.ts`, set per request from the `X-Lang` header. Fine because the app is single-process and single-reader; it would have to be per-request in a multi-user server. It defaults to English when the header is absent, which is what the tests rely on.

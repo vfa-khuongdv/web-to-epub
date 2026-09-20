@@ -13,6 +13,7 @@ import {
   Info,
   Languages,
   Library,
+  Lock,
   LucideIcon,
   Maximize,
   Minimize,
@@ -54,7 +55,8 @@ export type IconName =
   | "highlight"
   | "bell"
   | "expand"
-  | "collapse";
+  | "collapse"
+  | "lock";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
 // as intent ("retry", "open") and swapping a glyph is a one-line change here.
@@ -85,6 +87,7 @@ const icons: Record<IconName, LucideIcon> = {
   bell: Bell,
   expand: Maximize,
   collapse: Minimize,
+  lock: Lock,
 };
 
 // The dot is a state light (crawling, live), not an outline: it reads as a dot only

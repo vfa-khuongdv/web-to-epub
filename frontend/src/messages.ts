@@ -279,6 +279,25 @@ export const vi: Record<string, string> = {
   "Could not change the highlight colour": "Không đổi được màu tô",
   "Could not delete the highlight": "Không xoá được đoạn tô",
 
+  // Private mode
+  "Private mode": "Chế độ ẩn danh",
+  Private: "Ẩn danh",
+  "Private mode — click to leave": "Chế độ ẩn danh — bấm để thoát",
+  "Set a code for private mode": "Đặt mã cho chế độ ẩn danh",
+  "Pick a 6-digit code. There is no way to recover it, and no way to change it later.":
+    "Chọn mã 6 số. Không có cách nào lấy lại hay đổi mã này về sau.",
+  "Enter your 6-digit code to open your private library.":
+    "Nhập mã 6 số để mở thư viện ẩn danh.",
+  "New code": "Mã mới",
+  Code: "Mã",
+  "Repeat the code": "Nhập lại mã",
+  "The two codes do not match": "Hai lần nhập mã không khớp",
+  Create: "Tạo",
+  Open: "Mở",
+  "Opening…": "Đang mở…",
+  "Wrong code": "Mã không đúng",
+  "Could not check private mode": "Không kiểm tra được chế độ ẩn danh",
+
   // Export progress
   "Packaging EPUB…": "Đang đóng gói EPUB…",
   "Downloading images {done}/{total}…": "Đang tải ảnh {done}/{total}…",

@@ -1,14 +1,22 @@
 import { randomUUID } from "crypto";
-import { Response as ExpressResponse, Router } from "express";
+import { Request as ExpressRequest, Response as ExpressResponse, Router } from "express";
 import multer from "multer";
 import os from "os";
 import path from "path";
 import { MAX_ATTEMPTS, estimateRemainingMs, extractWithRetry } from "../services/crawl";
-import { createCoverStore, coverPathForExport } from "../services/coverStore";
+import { CoverStore, createCoverStore, coverPathForExport } from "../services/coverStore";
 import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { findSupportedSite, SUPPORTED_SITES } from "../config/supportedSites";
-import { DATA_DIR } from "../config/paths";
-import { HIGHLIGHT_COLORS, HighlightColor, storyId, storyStore } from "../services/storyStore";
+import { DATA_DIR, PRIVATE_DIR } from "../config/paths";
+import {
+  HIGHLIGHT_COLORS,
+  HighlightColor,
+  StoryStore,
+  createStoryStore,
+  storyId,
+  storyStore,
+} from "../services/storyStore";
+import { CODE_RE, vault } from "../services/vault";
 import { blocksToHtml, htmlToBlocks } from "../services/chapterHtml";
 import { chaptersToCrawl, countNewChapters, mergeStory, pickChapterTitle } from "../services/storyService";
 import { setLang, t } from "../services/lang";
@@ -34,7 +42,118 @@ router.use((req, _res, next) => {
   next();
 });
 const upload = multer({ dest: os.tmpdir() });
-const coverStore = createCoverStore(DATA_DIR);
+
+/**
+ * A library the app can be reading and writing: the normal one, or the private one
+ * the user unlocks with their code (its own stories.db + covers/ under data/private/).
+ * Every route picks one per request, so a query on the normal library cannot return a
+ * private story even if someone later forgets a filter.
+ */
+interface Library {
+  dataDir: string;
+  stories: StoryStore;
+  covers: CoverStore;
+  // Crawl state belongs to the library too: a story id is sha1 of its URL, so the same
+  // story saved in both libraries shares an id and their events would cross.
+  runningCrawls: Map<string, { cursor: number; total: number; startedAt: number; etaMs?: number }>;
+  liveSubscribers: Map<string, Set<ExpressResponse>>;
+  liveAllSubscribers: Set<ExpressResponse>;
+}
+
+function createLibrary(dataDir: string, stories: StoryStore): Library {
+  return {
+    dataDir,
+    stories,
+    covers: createCoverStore(dataDir),
+    runningCrawls: new Map(),
+    liveSubscribers: new Map(),
+    liveAllSubscribers: new Set(),
+  };
+}
+
+const publicLibrary = createLibrary(DATA_DIR, storyStore);
+
+// Built the first time someone actually unlocks, so a user who never opens private
+// mode never ends up with a data/private/ directory.
+let privateLibrary: Library | undefined;
+function getPrivateLibrary(): Library {
+  return (privateLibrary ??= createLibrary(PRIVATE_DIR, createStoryStore(PRIVATE_DIR)));
+}
+
+/**
+ * Which library this request is talking to. It asks for the private one by carrying
+ * the token from /vault/unlock — normally in a header, in the query string for the two
+ * things the browser opens without headers (EventSource and <img src>).
+ *
+ * A stale or forged token must never quietly fall back to the normal library — that
+ * would show the wrong shelf, or worse, save a private story into the public one — so
+ * this answers 401 itself and returns null for the caller to bail on.
+ */
+function libraryFor(req: ExpressRequest, res: ExpressResponse): Library | null {
+  const token = req.header("X-Vault-Token") ?? (typeof req.query.vault === "string" ? req.query.vault : undefined);
+  if (!token) return publicLibrary;
+  if (!vault.isValidToken(token)) {
+    res.status(401).json({ message: t("Private mode has locked — enter your code again") });
+    return null;
+  }
+  return getPrivateLibrary();
+}
+
+// ---- The lock on the private library (see services/vault.ts) ----------------
+
+router.get("/vault/status", (_req, res) => {
+  res.json({ configured: vault.isConfigured() });
+});
+
+function answerUnlock(res: ExpressResponse, result: ReturnType<typeof vault.unlock>): void {
+  if (result.ok) {
+    res.json({ token: result.token });
+    return;
+  }
+  if (result.reason === "locked-out") {
+    res.status(429).json({
+      message: t("Too many wrong codes — wait {seconds}s and try again", {
+        seconds: Math.ceil(result.retryAfterMs / 1000),
+      }),
+      retryAfterMs: result.retryAfterMs,
+    });
+    return;
+  }
+  if (result.reason === "already-configured") {
+    res.status(409).json({ message: t("A code has already been set for private mode") });
+    return;
+  }
+  if (result.reason === "not-configured") {
+    res.status(404).json({ message: t("No code has been set for private mode yet") });
+    return;
+  }
+  if (result.reason === "bad-code") {
+    res.status(400).json({ message: t("The code must be exactly 6 digits") });
+    return;
+  }
+  // Wrong code: same wording and status whether or not a code exists, so the response
+  // does not become an oracle for "is there a private library on this machine".
+  res.status(401).json({ message: t("Wrong code") });
+}
+
+router.post("/vault/setup", (req, res) => {
+  const { code } = req.body as { code?: unknown };
+  if (typeof code !== "string" || !CODE_RE.test(code)) {
+    res.status(400).json({ message: t("The code must be exactly 6 digits") });
+    return;
+  }
+  answerUnlock(res, vault.setup(code));
+});
+
+router.post("/vault/unlock", (req, res) => {
+  const { code } = req.body as { code?: unknown };
+  answerUnlock(res, vault.unlock(typeof code === "string" ? code : ""));
+});
+
+router.post("/vault/lock", (req, res) => {
+  vault.lock(req.header("X-Vault-Token"));
+  res.json({ ok: true });
+});
 
 router.get("/supported-sites", (_req, res) => {
   res.json({ sites: SUPPORTED_SITES });
@@ -122,7 +241,7 @@ router.post("/cover-upload", upload.single("cover"), (req, res) => {
 // Exporting EPUB with many images takes tens of seconds. A single response that both
 // reports progress and returns binary data is not feasible, so we split it: POST streams
 // NDJSON progress (like /api/extract) then returns an export ID, client GET that ID
-// to fetch the file. File waits in RAM — single machine, single process, like runningCrawls.
+// to fetch the file. File waits in RAM — single machine, single process, like library.runningCrawls.
 const EXPORT_TTL_MS = 5 * 60_000;
 // With many images the progress stream sends one line per image; batch them to avoid
 // flooding the network with thousands of useless lines and thousands of re-renders.
@@ -144,7 +263,8 @@ async function streamExport(
   res: ExpressResponse,
   metadata: BookMetadata,
   chapters: ExportChapter[],
-  fileName: string
+  fileName: string,
+  dataDir: string
 ): Promise<void> {
   res.writeHead(200, {
     "Content-Type": "application/x-ndjson; charset=utf-8",
@@ -168,7 +288,7 @@ async function streamExport(
 
   try {
     const buffer = await buildEpub(
-      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl) : undefined },
+      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl, dataDir) : undefined },
       chapters,
       onProgress
     );
@@ -202,24 +322,8 @@ router.post("/export", async (req, res) => {
     res.status(400).json({ message: t("metadata and chapters are required") });
     return;
   }
-  await streamExport(res, metadata, chapters, epubFileName(metadata.title || "book"));
+  await streamExport(res, metadata, chapters, epubFileName(metadata.title || "book"), DATA_DIR);
 });
-
-// Crawls in progress per story, with current position so a session opened mid-crawl
-// knows exactly where it is (see /stories/:id/live). `startedAt` + `etaMs` are used
-// to estimate remaining time.
-const runningCrawls = new Map<
-  string,
-  { cursor: number; total: number; startedAt: number; etaMs?: number }
->();
-
-// Sessions listening to live updates per story. Crawl continues after the request that
-// started it ends, so a newly reloaded session (or another session) can still see it.
-const liveSubscribers = new Map<string, Set<ExpressResponse>>();
-
-// Shared channel: every session with the app open knows which stories are crawling, even
-// those not yet selected (the library table shows a "Crawling" chip for all rows).
-const liveAllSubscribers = new Set<ExpressResponse>();
 
 function writeSse(res: ExpressResponse, payload: unknown) {
   if (res.destroyed || res.writableEnded) return false;
@@ -227,39 +331,48 @@ function writeSse(res: ExpressResponse, payload: unknown) {
   return true;
 }
 
-function publish(storyId: string, event: ProgressEvent) {
-  const subs = liveSubscribers.get(storyId);
+// Crawls in progress per story, with current position so a session opened mid-crawl
+// knows exactly where it is (see /stories/:id/live). Sessions listening per story are
+// in `liveSubscribers`; `liveAllSubscribers` is the shared channel every open session
+// joins, so the library table can show a "Crawling" chip on rows nobody selected. The
+// crawl outlives the request that started it, so a reloaded session still sees it.
+function publish(library: Library, storyId: string, event: ProgressEvent) {
+  const subs = library.liveSubscribers.get(storyId);
   if (subs) {
     for (const res of subs) {
       if (!writeSse(res, event)) subs.delete(res);
     }
   }
-  if (liveAllSubscribers.size === 0) return;
+  if (library.liveAllSubscribers.size === 0) return;
   const tagged = { ...event, storyId };
-  for (const res of liveAllSubscribers) {
-    if (!writeSse(res, tagged)) liveAllSubscribers.delete(res);
+  for (const res of library.liveAllSubscribers) {
+    if (!writeSse(res, tagged)) library.liveAllSubscribers.delete(res);
   }
 }
 
 // Load TOC and save story — used by both POST /stories (create/update from URL)
 // and POST /stories/:id/refresh (the "Load N new chapters" button).
 async function refreshStoryToc(params: {
+  library: Library;
   existing?: StoredStory;
   storyUrl: string;
   site: string;
   adapter: TocAdapter;
 }): Promise<StoredStory> {
+  const library = params.library;
   const toc = await params.adapter.fetchToc(params.storyUrl);
   const story = mergeStory({ existing: params.existing, site: params.site, storyUrl: params.storyUrl, toc });
   // Download cover to data/covers/ once we know the story URL; if download fails, keep
   // the original URL so epub-gen can fetch it during export.
-  const savedCover = await coverStore.save(story.id, story.coverUrl, params.storyUrl);
+  const savedCover = await library.covers.save(story.id, story.coverUrl, params.storyUrl);
   if (savedCover) story.coverUrl = savedCover;
-  await storyStore.save(story);
+  await library.stories.save(story);
   return story;
 }
 
 router.post("/stories", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { url } = req.body as { url?: string };
   if (!url) {
     res.status(400).json({ message: t("url is required") });
@@ -283,30 +396,34 @@ router.post("/stories", async (req, res) => {
 
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
-  if (runningCrawls.has(id)) {
+  if (library.runningCrawls.has(id)) {
     res.status(409).json({ message: t("Story is currently crawling, cannot update chapter list") });
     return;
   }
   try {
-    const existing = await storyStore.get(id);
-    const story = await refreshStoryToc({ existing, storyUrl, site: site.domain, adapter });
+    const existing = await library.stories.get(id);
+    const story = await refreshStoryToc({ library, existing, storyUrl, site: site.domain, adapter });
     // User just manually loaded TOC: the "N new chapters" chip from the previous check
     // is now stale (new chapters became pending).
-    await storyStore.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
+    await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });
 
-router.get("/stories", async (_req, res) => {
-  res.json({ stories: await storyStore.list() });
+router.get("/stories", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  res.json({ stories: await library.stories.list() });
 });
 
 // Shared live channel: snapshot of all running crawls on connect, then all events with
 // `storyId` — enough for the library table to know which stories are crawling without
 // needing to select one. Must come before /stories/:id so "live" isn't treated as an ID.
 router.get("/stories/live", (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
     "Cache-Control": "no-cache",
@@ -317,18 +434,18 @@ router.get("/stories/live", (req, res) => {
   res.write(
     `data: ${JSON.stringify({
       type: "snapshot",
-      crawls: [...runningCrawls.entries()].map(([storyId, state]) => ({ storyId, ...state })),
+      crawls: [...library.runningCrawls.entries()].map(([storyId, state]) => ({ storyId, ...state })),
     })}\n\n`
   );
 
-  liveAllSubscribers.add(res);
+  library.liveAllSubscribers.add(res);
   const beat = setInterval(() => {
     if (!res.destroyed && !res.writableEnded) res.write(": ping\n\n");
   }, 20_000);
 
   req.on("close", () => {
     clearInterval(beat);
-    liveAllSubscribers.delete(res);
+    library.liveAllSubscribers.delete(res);
   });
 });
 
@@ -336,7 +453,9 @@ router.get("/stories/live", (req, res) => {
 // of MB if sent with blocks, but the chapter table only needs title + status. Individual
 // chapter content is fetched separately via /stories/:id/chapters/:order.
 router.get("/stories/:id", async (req, res) => {
-  const story = await storyStore.getOutline(req.params.id);
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
     return;
@@ -347,7 +466,9 @@ router.get("/stories/:id", async (req, res) => {
 // Downloaded cover image for the preview; if no cover exists, return 404 so
 // frontend shows an empty placeholder instead of a broken image.
 router.get("/stories/:id/cover", (req, res) => {
-  const cover = coverStore.find(req.params.id);
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const cover = library.covers.find(req.params.id);
   if (!cover) {
     res.status(404).json({ message: t("No cover image for this story") });
     return;
@@ -359,8 +480,10 @@ router.get("/stories/:id/cover", (req, res) => {
 // Save book metadata edited by user in the detail panel (multipart because a new
 // cover image may be included). Does not touch chapters, so can save mid-crawl.
 router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
-  const story = await storyStore.get(id);
+  const story = await library.stories.get(id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
     return;
@@ -373,7 +496,7 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
 
   let coverUrl = story.coverUrl;
   if (req.file) {
-    const savedCover = await coverStore.saveUpload(id, req.file.path);
+    const savedCover = await library.covers.saveUpload(id, req.file.path);
     if (!savedCover) {
       res.status(400).json({ message: t("Invalid cover file — only JPG, PNG, WebP, or GIF accepted") });
       return;
@@ -381,23 +504,25 @@ router.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
     coverUrl = savedCover;
   }
 
-  await storyStore.updateMeta(id, {
+  await library.stories.updateMeta(id, {
     title: title.trim(),
     author: author?.trim() || undefined,
     language: language?.trim() || undefined,
     coverUrl,
   });
-  res.json({ story: await storyStore.getOutline(id) });
+  res.json({ story: await library.stories.getOutline(id) });
 });
 
 // One chapter's content, fetched when user opens it to view/edit.
 router.get("/stories/:id/chapters/:order", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const order = Number(req.params.order);
   if (!Number.isInteger(order)) {
     res.status(400).json({ message: t("Invalid chapter order") });
     return;
   }
-  const chapter = await storyStore.getChapter(req.params.id, order);
+  const chapter = await library.stories.getChapter(req.params.id, order);
   if (!chapter) {
     res.status(404).json({ message: t("Chapter not found") });
     return;
@@ -408,6 +533,8 @@ router.get("/stories/:id/chapters/:order", async (req, res) => {
 // Export EPUB for saved story: content comes straight from DB, client only sends
 // chapters it's editing — no need to download the entire story and push it back.
 router.post("/stories/:id/export", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
   const { metadata, chapters } = req.body as {
     metadata?: BookMetadata;
@@ -418,7 +545,7 @@ router.post("/stories/:id/export", async (req, res) => {
     return;
   }
 
-  const story = await storyStore.get(id);
+  const story = await library.stories.get(id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
     return;
@@ -438,7 +565,7 @@ router.post("/stories/:id/export", async (req, res) => {
       included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
     }
 
-    await streamExport(res, metadata, included, epubFileName(metadata.title || story.title || "book"));
+    await streamExport(res, metadata, included, epubFileName(metadata.title || story.title || "book"), library.dataDir);
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "EPUB export error" });
   }
@@ -448,6 +575,8 @@ router.post("/stories/:id/export", async (req, res) => {
 // (web frame, ads, repeated chapter name), so user cleans it in the editor and saves
 // to override the fetched version.
 router.patch("/stories/:id/chapters/:order", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
   const order = Number(req.params.order);
   if (!Number.isInteger(order)) {
@@ -456,12 +585,12 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
   }
   // Active crawl will overwrite the chapter with newly extracted content, so block edits
   // to prevent user losing work after cleaning it up.
-  if (runningCrawls.has(id)) {
+  if (library.runningCrawls.has(id)) {
     res.status(409).json({ message: t("Story is currently crawling, cannot edit chapters") });
     return;
   }
 
-  const chapter = await storyStore.getChapter(id, order);
+  const chapter = await library.stories.getChapter(id, order);
   if (!chapter) {
     res.status(404).json({ message: t("Chapter not found") });
     return;
@@ -492,7 +621,7 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
     status: "done",
     error: undefined,
   };
-  await storyStore.saveChapter(id, updated);
+  await library.stories.saveChapter(id, updated);
   res.json({ chapter: updated });
 });
 
@@ -501,10 +630,14 @@ router.patch("/stories/:id/chapters/:order", async (req, res) => {
 // in the Electron build after making them in the browser — would be worse than the
 // extra routes.
 router.get("/stories/:id/highlights", async (req, res) => {
-  res.json({ highlights: await storyStore.listHighlights(req.params.id) });
+  const library = libraryFor(req, res);
+  if (!library) return;
+  res.json({ highlights: await library.stories.listHighlights(req.params.id) });
 });
 
 router.post("/stories/:id/highlights", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { chapterOrder, start, end, color, text } = req.body ?? {};
   if (!Number.isInteger(chapterOrder) || chapterOrder < 1) {
     res.status(400).json({ message: t("Invalid chapter order") });
@@ -522,11 +655,11 @@ router.post("/stories/:id/highlights", async (req, res) => {
     res.status(400).json({ message: t("Highlighted text is required") });
     return;
   }
-  if (!(await storyStore.getOutline(req.params.id))) {
+  if (!(await library.stories.getOutline(req.params.id))) {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  const highlight = await storyStore.addHighlight(req.params.id, {
+  const highlight = await library.stories.addHighlight(req.params.id, {
     chapterOrder,
     start,
     end,
@@ -537,12 +670,14 @@ router.post("/stories/:id/highlights", async (req, res) => {
 });
 
 router.patch("/stories/:id/highlights/:highlightId", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const color = req.body?.color;
   if (!HIGHLIGHT_COLORS.includes(color)) {
     res.status(400).json({ message: t("Invalid highlight colour") });
     return;
   }
-  const updated = await storyStore.setHighlightColor(req.params.id, req.params.highlightId, color);
+  const updated = await library.stories.setHighlightColor(req.params.id, req.params.highlightId, color);
   if (!updated) {
     res.status(404).json({ message: t("Highlight not found") });
     return;
@@ -551,7 +686,9 @@ router.patch("/stories/:id/highlights/:highlightId", async (req, res) => {
 });
 
 router.delete("/stories/:id/highlights/:highlightId", async (req, res) => {
-  const removed = await storyStore.removeHighlight(req.params.id, req.params.highlightId);
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const removed = await library.stories.removeHighlight(req.params.id, req.params.highlightId);
   if (!removed) {
     res.status(404).json({ message: t("Highlight not found") });
     return;
@@ -560,16 +697,18 @@ router.delete("/stories/:id/highlights/:highlightId", async (req, res) => {
 });
 
 router.delete("/stories/:id", async (req, res) => {
-  if (runningCrawls.has(req.params.id)) {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  if (library.runningCrawls.has(req.params.id)) {
     res.status(409).json({ message: t("Story is currently crawling, cannot delete") });
     return;
   }
-  const removed = await storyStore.remove(req.params.id);
+  const removed = await library.stories.remove(req.params.id);
   if (!removed) {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  await coverStore.remove(req.params.id);
+  await library.covers.remove(req.params.id);
   res.json({ ok: true });
 });
 
@@ -577,6 +716,8 @@ router.delete("/stories/:id", async (req, res) => {
 // reload, no polling needed. On connect, new sessions immediately get a snapshot
 // (crawl position or idle state).
 router.get("/stories/:id/live", (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
   res.writeHead(200, {
     "Content-Type": "text/event-stream",
@@ -586,15 +727,15 @@ router.get("/stories/:id/live", (req, res) => {
   });
   res.write("retry: 2000\n\n");
 
-  const current = runningCrawls.get(id);
+  const current = library.runningCrawls.get(id);
   const snapshot: ProgressEvent = current
     ? { type: "running", cursor: current.cursor, total: current.total }
     : { type: "idle" };
   res.write(`data: ${JSON.stringify(snapshot)}\n\n`);
 
-  const subs = liveSubscribers.get(id) ?? new Set<ExpressResponse>();
+  const subs = library.liveSubscribers.get(id) ?? new Set<ExpressResponse>();
   subs.add(res);
-  liveSubscribers.set(id, subs);
+  library.liveSubscribers.set(id, subs);
 
   // Keep connection alive through proxies and signal to client that server is still there.
   const beat = setInterval(() => {
@@ -604,33 +745,37 @@ router.get("/stories/:id/live", (req, res) => {
   req.on("close", () => {
     clearInterval(beat);
     subs.delete(res);
-    if (subs.size === 0) liveSubscribers.delete(id);
+    if (subs.size === 0) library.liveSubscribers.delete(id);
   });
 });
 
 // Enable/disable watching for new chapters of a story.
 router.post("/stories/:id/watch", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
   const { watching } = req.body as { watching?: unknown };
   if (typeof watching !== "boolean") {
     res.status(400).json({ message: t("watching must be true or false") });
     return;
   }
-  const story = await storyStore.getOutline(id);
+  const story = await library.stories.getOutline(id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  await storyStore.setWatching(id, watching);
-  res.json({ story: await storyStore.getOutline(id) });
+  await library.stories.setWatching(id, watching);
+  res.json({ story: await library.stories.getOutline(id) });
 });
 
 // Check current TOC to see if the story has new chapters. Only counts and saves result —
 // doesn't add chapters to library; user clicks "Load N new chapters" to actually load
 // them (via /stories/:id/refresh).
 router.post("/stories/:id/check", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
-  const story = await storyStore.getOutline(id);
+  const story = await library.stories.getOutline(id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
     return;
@@ -640,7 +785,7 @@ router.post("/stories/:id/check", async (req, res) => {
     res.status(400).json({ message: t("This story has no TOC adapter for checking") });
     return;
   }
-  if (runningCrawls.has(id)) {
+  if (library.runningCrawls.has(id)) {
     res.status(409).json({ message: t("Story is currently crawling") });
     return;
   }
@@ -649,13 +794,13 @@ router.post("/stories/:id/check", async (req, res) => {
     const toc = await adapter.fetchToc(story.storyUrl);
     const newChapterCount = countNewChapters(story.chapters, toc.chapters);
     const checkedAt = new Date().toISOString();
-    await storyStore.setCheckResult(id, { newChapterCount, checkedAt, error: null });
+    await library.stories.setCheckResult(id, { newChapterCount, checkedAt, error: null });
     res.json({ newChapterCount, lastCheckedAt: checkedAt, checkError: null });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not check for new chapters";
     // Keep previous new chapter count and last successful check; just record this error
     // so the UI can show a warning.
-    await storyStore.setCheckResult(id, { error: message });
+    await library.stories.setCheckResult(id, { error: message });
     res.status(502).json({ message });
   }
 });
@@ -663,8 +808,10 @@ router.post("/stories/:id/check", async (req, res) => {
 // Reload TOC for existing story: old chapters keep their content/status, new ones become
 // pending. Used by the "Load N new chapters" button in story detail.
 router.post("/stories/:id/refresh", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
-  const existing = await storyStore.get(id);
+  const existing = await library.stories.get(id);
   if (!existing) {
     res.status(404).json({ message: t("Story not found") });
     return;
@@ -675,19 +822,20 @@ router.post("/stories/:id/refresh", async (req, res) => {
     res.status(400).json({ message: t("This story has no TOC adapter") });
     return;
   }
-  if (runningCrawls.has(id)) {
+  if (library.runningCrawls.has(id)) {
     res.status(409).json({ message: t("Story is currently crawling, cannot update chapter list") });
     return;
   }
 
   try {
     const story = await refreshStoryToc({
+      library,
       existing,
       storyUrl: existing.storyUrl,
       site: site.domain,
       adapter,
     });
-    await storyStore.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
+    await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
@@ -695,16 +843,18 @@ router.post("/stories/:id/refresh", async (req, res) => {
 });
 
 router.post("/stories/:id/crawl", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
   const { id } = req.params;
   // Use getOutline not get: the loop below only needs url/order/status, while get()
   // parses content for every crawled chapter — a story with hundreds of chapters is
   // tens of MB sitting in RAM for the whole crawl unused.
-  const story: StoredStory | undefined = await storyStore.getOutline(id);
+  const story: StoredStory | undefined = await library.stories.getOutline(id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  if (runningCrawls.has(id)) {
+  if (library.runningCrawls.has(id)) {
     res.status(409).json({ message: t("Story is currently crawling") });
     return;
   }
@@ -719,21 +869,21 @@ router.post("/stories/:id/crawl", async (req, res) => {
   // in real time, even after reload.
   res.status(202).json({ started: true, total: plan.length });
 
-  const send = (event: ProgressEvent) => publish(id, event);
+  const send = (event: ProgressEvent) => publish(library, id, event);
 
   const startedAt = Date.now();
-  runningCrawls.set(id, { cursor: 0, total: plan.length, startedAt });
+  library.runningCrawls.set(id, { cursor: 0, total: plan.length, startedAt });
   try {
     // Cover is downloaded only once (subsequent crawls skip because file exists): stories
     // created before this feature will get their cover on the next "Continue crawl".
-    const savedCover = await coverStore.save(id, story.coverUrl, story.storyUrl);
+    const savedCover = await library.covers.save(id, story.coverUrl, story.storyUrl);
     if (savedCover && savedCover !== story.coverUrl) {
       story.coverUrl = savedCover;
       // Re-read before saving: user may have just clicked "Save metadata" during crawl —
       // don't overwrite with the stale in-memory copy.
-      const fresh = await storyStore.get(id);
+      const fresh = await library.stories.get(id);
       if (fresh) {
-        await storyStore.updateMeta(id, {
+        await library.stories.updateMeta(id, {
           title: fresh.title,
           author: fresh.author,
           language: fresh.language,
@@ -745,7 +895,7 @@ router.post("/stories/:id/crawl", async (req, res) => {
     for (let i = 0; i < plan.length; i++) {
       // Before chapter i completes, completed count is i — ETA keeps the previous chapter's
       // estimate until we have new data.
-      runningCrawls.set(id, {
+      library.runningCrawls.set(id, {
         cursor: i + 1,
         total: plan.length,
         startedAt,
@@ -763,7 +913,7 @@ router.post("/stories/:id/crawl", async (req, res) => {
         stored.error = extracted.error;
         stored.blocks = extracted.error ? undefined : extracted.blocks;
         if (!extracted.error) stored.title = pickChapterTitle(stored.title, extracted.title, stored.url);
-        await storyStore.saveChapter(story.id, stored);
+        await library.stories.saveChapter(story.id, stored);
         // Release content after saving: `stored` lives in story.chapters so holding it means
         // keeping the entire story in memory until crawl completes.
         stored.blocks = undefined;
@@ -782,10 +932,10 @@ router.post("/stories/:id/crawl", async (req, res) => {
     // Express 4 doesn't catch promise rejections in async handlers — handle manually
     // so a mid-crawl error (e.g., save failed) doesn't crash the process.
     const message = err instanceof Error ? err.message : "Unknown crawl error";
-    publish(id, { type: "error", message });
+    publish(library, id, { type: "error", message });
   } finally {
-    runningCrawls.delete(id);
-    publish(id, { type: "idle" });
+    library.runningCrawls.delete(id);
+    publish(library, id, { type: "idle" });
   }
 });
 

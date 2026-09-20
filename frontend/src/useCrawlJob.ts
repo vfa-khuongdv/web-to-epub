@@ -1,6 +1,7 @@
 import { currentLang, translate } from "./i18n";
 import { useCallback, useRef, useState } from "react";
 import { ProgressEvent } from "./types";
+import { currentVaultToken } from "./vaultToken";
 
 export interface CrawlLogLine {
   at: string;
@@ -196,7 +197,12 @@ export function useCrawlJob() {
   // still sees correct status for all stories.
   const subscribe = useCallback(() => {
     liveSource.current?.close();
-    const source = new EventSource("/api/stories/live");
+    // EventSource cannot send headers, so the private-mode token rides in the query
+    // string — the same channel, pointed at the other library.
+    const token = currentVaultToken();
+    const source = new EventSource(
+      token ? `/api/stories/live?vault=${encodeURIComponent(token)}` : "/api/stories/live"
+    );
     liveSource.current = source;
 
     source.onmessage = (message) => {

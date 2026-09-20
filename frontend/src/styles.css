@@ -1215,6 +1215,84 @@
     white-space: nowrap;
   }
 
+  /* Private mode: the chip is the only thing that shows while it is on, and the
+     card is the only thing that shows before it opens. */
+  .chip-private {
+    border-color: var(--color-rule-2);
+    background: var(--color-ink-2);
+    color: var(--color-chrome);
+    cursor: pointer;
+  }
+
+  .chip-private:hover {
+    background: var(--color-ink);
+  }
+
+  .vault-scrim {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+    background: color-mix(in srgb, var(--color-sunken) 72%, transparent);
+    backdrop-filter: blur(2px);
+  }
+
+  .vault-card {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    width: 100%;
+    max-width: 320px;
+    padding: 16px;
+    border: 1px solid var(--color-rule-2);
+    border-radius: var(--radius-tool);
+    background: var(--color-raised);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.22);
+  }
+
+  .vault-title {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .vault-note {
+    margin-top: -4px;
+    color: var(--color-ink-2);
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  .vault-code {
+    font-family: var(--font-mono);
+    font-size: 16px;
+    letter-spacing: 0.3em;
+    text-align: center;
+  }
+
+  .vault-error {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--color-error);
+    font-size: 12px;
+  }
+
+  .vault-error svg {
+    flex: none;
+  }
+
+  .vault-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+
   @media (max-width: 1100px) {
     .workbench {
       grid-template-columns: minmax(0, 1fr);
