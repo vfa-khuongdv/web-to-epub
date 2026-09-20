@@ -63,6 +63,15 @@ const vi: Record<string, string> = {
   "Story is currently crawling, cannot update chapter list":
     "Truyện đang được crawl, không thể cập nhật danh sách chương",
 
+  // Private mode
+  "The code must be exactly 6 digits": "Mã phải gồm đúng 6 chữ số",
+  "Wrong code": "Mã không đúng",
+  "Too many wrong codes — wait {seconds}s and try again":
+    "Sai mã quá nhiều lần — chờ {seconds}s rồi thử lại",
+  "A code has already been set for private mode": "Chế độ ẩn danh đã được đặt mã từ trước",
+  "No code has been set for private mode yet": "Chế độ ẩn danh chưa được đặt mã",
+  "Private mode has locked — enter your code again": "Chế độ ẩn danh đã khoá lại — nhập mã để mở",
+
   // Export
   "No chapters selected for export": "Không có chapter nào được chọn để export",
   "Export has expired or already been downloaded — click Export EPUB again":

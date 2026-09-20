@@ -12,10 +12,13 @@ img, video { height: auto; }
 
 export type ReaderTheme = "light" | "sepia" | "dark";
 
+export type ReaderFont = "book" | "georgia" | "palatino" | "system" | "verdana";
+
 export interface ReaderPrefs {
   fontSize: number;
   lineHeight: number;
   theme: ReaderTheme;
+  font: ReaderFont;
   // Whether the chapter list stays docked beside the page. Remembered because it is
   // how someone navigates a long story, not a panel they open once.
   toc: boolean;
@@ -23,7 +26,30 @@ export interface ReaderPrefs {
 
 // line-height 1.5 is what KINDLE_CSS sets, so the default preview matches the book
 // exactly; changing it is a reading comfort choice that does not affect the export.
-export const DEFAULT_PREFS: ReaderPrefs = { fontSize: 18, lineHeight: 1.5, theme: "light", toc: true };
+export const DEFAULT_PREFS: ReaderPrefs = {
+  fontSize: 18,
+  lineHeight: 1.5,
+  theme: "light",
+  font: "book",
+  toc: true,
+};
+
+// Only families a machine already has: the app reads offline, so a web font would be a
+// blank page on a bad day. "book" is the `serif` KINDLE_CSS sets, so the default preview
+// still matches the export exactly; the rest are a reading comfort choice, like the
+// font button on a Kindle, and are not written into the file.
+export const READER_FONTS: { id: ReaderFont; label: string; stack: string }[] = [
+  { id: "book", label: "Book serif", stack: "serif" },
+  { id: "georgia", label: "Georgia", stack: "Georgia, serif" },
+  { id: "palatino", label: "Palatino", stack: '"Palatino Linotype", Palatino, "Book Antiqua", serif' },
+  { id: "system", label: "System sans", stack: 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif' },
+  { id: "verdana", label: "Verdana", stack: "Verdana, Geneva, sans-serif" },
+];
+
+const FONT_STACK = Object.fromEntries(READER_FONTS.map((f) => [f.id, f.stack])) as Record<
+  ReaderFont,
+  string
+>;
 
 export const FONT_SIZE_RANGE = { min: 14, max: 28, step: 2 };
 export const LINE_HEIGHTS = [1.4, 1.5, 1.8];
@@ -59,6 +85,7 @@ export function readerDocument(
   prefs: ReaderPrefs
 ): string {
   const page = PAGE_THEME[prefs.theme];
+  const font = FONT_STACK[prefs.font] ?? FONT_STACK.book;
   return `<!doctype html>
 <html lang="${escapeXml(language || "en")}">
 <head>
@@ -75,6 +102,7 @@ body {
   padding: 2.4em 1.5em 6em;
   background: ${page.bg};
   color: ${page.fg};
+  font-family: ${font};
   font-size: ${prefs.fontSize}px;
   line-height: ${prefs.lineHeight};
 }
@@ -93,7 +121,29 @@ ${contentHtml}
 }
 
 const PREFS_KEY = "reader-prefs";
-const positionKey = (storyId: string) => `reader-position:${storyId}`;
+const PRIVATE_POSITION_PREFIX = "reader-position:private:";
+
+// Reading positions are per-browser, so a private story would otherwise leave its id
+// sitting in localStorage long after the library was locked. In private mode they go
+// under their own prefix and are wiped the moment the session ends; the reader's font
+// and theme stay shared, as those say nothing about what is being read.
+let privateScope = false;
+
+export function setPrivateScope(on: boolean): void {
+  privateScope = on;
+}
+
+export function forgetPrivatePositions(): void {
+  try {
+    const keys = Object.keys(localStorage).filter((key) => key.startsWith(PRIVATE_POSITION_PREFIX));
+    for (const key of keys) localStorage.removeItem(key);
+  } catch {
+    /* Nothing was stored in the first place */
+  }
+}
+
+const positionKey = (storyId: string) =>
+  privateScope ? `${PRIVATE_POSITION_PREFIX}${storyId}` : `reader-position:${storyId}`;
 
 // localStorage can throw (private window, cookies blocked): reading still works, the
 // preference or position just is not remembered — same handling as the theme switch.
@@ -104,6 +154,7 @@ export function readPrefs(): ReaderPrefs {
       fontSize: typeof saved.fontSize === "number" ? saved.fontSize : DEFAULT_PREFS.fontSize,
       lineHeight: typeof saved.lineHeight === "number" ? saved.lineHeight : DEFAULT_PREFS.lineHeight,
       theme: saved.theme === "sepia" || saved.theme === "dark" ? saved.theme : DEFAULT_PREFS.theme,
+      font: READER_FONTS.some((f) => f.id === saved.font) ? saved.font : DEFAULT_PREFS.font,
       toc: typeof saved.toc === "boolean" ? saved.toc : DEFAULT_PREFS.toc,
     };
   } catch {

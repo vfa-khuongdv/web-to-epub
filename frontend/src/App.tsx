@@ -7,6 +7,7 @@ import { fetchSupportedSites } from "./api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
 import { SupportedSite } from "./types";
 import { useCrawlJob } from "./useCrawlJob";
+import { useVault } from "./vault";
 
 type Theme = "system" | "light" | "dark";
 
@@ -37,6 +38,7 @@ export default function App() {
   const [tab, setTab] = useState<"library" | "manual">("library");
   const [theme, setTheme] = useState<Theme>(readTheme);
   const { lang, setLang, t } = useLang();
+  const vault = useVault();
   const { job, live, run, attach, subscribe, clearChapters } = useCrawlJob();
   const nextTheme = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
   // Only two languages, so the button swaps between them rather than opening a menu.
@@ -105,6 +107,20 @@ export default function App() {
         </nav>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-ink-2">
+          {/* The only trace of private mode in the UI, and only while it is open — it
+              doubles as the way out for anyone who did not use the shortcut. */}
+          {vault.active && (
+            <button
+              type="button"
+              className="chip chip-private"
+              title={t("Private mode — click to leave")}
+              onClick={vault.leave}
+            >
+              <Icon name="lock" size={12} />
+              {t("Private")}
+            </button>
+          )}
+
           <button
             type="button"
             className="btn btn-quiet btn-tiny"

@@ -7,6 +7,7 @@ import { timeAgo } from "../timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../useCrawlJob";
 import { exportProgressLabel, useEpubExport } from "../useEpubExport";
+import { vaultQuery } from "../vaultToken";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
 import ReaderOverlay from "./ReaderOverlay";
@@ -124,7 +125,9 @@ export default function StoryDetail({
         // show temp image from original URL; load error shows empty frame.
         coverUrl.startsWith("http")
         ? coverUrl
-        : `/api/stories/${encodeURIComponent(story.id)}/cover?v=${encodeURIComponent(coverUrl)}`
+        : // An <img> cannot send headers either, so a private cover carries the token
+          // in the query string the same way the live channel does.
+          `/api/stories/${encodeURIComponent(story.id)}/cover?v=${encodeURIComponent(coverUrl)}${vaultQuery()}`
       : undefined;
   const chapterPageCount = Math.max(1, Math.ceil(story.chapters.length / CHAPTERS_PER_PAGE));
   const currentChapterPage = Math.min(chapterPage, chapterPageCount);
