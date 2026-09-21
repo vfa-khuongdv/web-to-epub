@@ -30,10 +30,12 @@ function paragraph(slug, n, i) {
 
 function chapterPage(slug, n, locked) {
   const title = `Chương ${n}: Kiểm thử ${slug}`;
+  const filler = Array.from({ length: 5 }, (_, i) => `<p>${paragraph(slug, n, i)}</p>`).join("\n");
   const body = locked
-    ? `<p>Nội dung chương đang bị khóa, vui lòng tắt quảng cáo để đọc tiếp.</p>`
+    ? `<p>Nội dung chương đang bị khóa, vui lòng tắt quảng cáo để đọc tiếp.</p>
+${filler}`
     : `<p><img src="/media/pixel.png" alt="minh họa"></p>
-${Array.from({ length: 5 }, (_, i) => `<p>${paragraph(slug, n, i)}</p>`).join("\n")}`;
+${filler}`;
   return `<!doctype html>
 <html lang="vi">
 <head><meta charset="utf-8"><title>${title}</title></head>
