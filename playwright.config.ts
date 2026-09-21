@@ -17,6 +17,12 @@ export default defineConfig({
   },
   webServer: [
     {
+      command: "node e2e/fixture-site.mjs",
+      url: `${FIXTURE_URL}/healthz`,
+      env: { ...(process.env as Record<string, string>), PORT: String(FIXTURE_PORT) },
+      reuseExistingServer: false,
+    },
+    {
       // Wipe the library in the one process that opens it: Playwright config modules can
       // be re-evaluated per worker, so a wipe at config scope could run mid-suite.
       command: 'rm -rf "${E2E_DATA_DIR:-e2e/.data}" && node dist/server.js',
