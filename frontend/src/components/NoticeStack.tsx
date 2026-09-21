@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { Notice } from "../useCrawlJob";
+import { Notice } from "../hooks/useCrawlJob";
 import { useLang } from "../i18n";
 import { Icon } from "./Icon";
 

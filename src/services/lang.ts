@@ -5,10 +5,10 @@
  * have to be in the reader's language. Threading a language through every service,
  * TOC adapter and chapter fetcher would touch code that has nothing else to do with
  * presentation, so the current language is module state instead, set from the
- * `X-Lang` header by the middleware in routes/api.ts.
+ * `X-Lang` header by the middleware in routes/index.ts.
  *
  * That is a deliberate trade for this app and not a general pattern: it is local-first
- * and single-process (see `runningCrawls` in routes/api.ts), so there is exactly one
+ * and single-process (see `runningCrawls` in routes/library.ts), so there is exactly one
  * reader, and a background crawl started from a request inherits that request's
  * language. In a multi-user server this would have to be per-request.
  *

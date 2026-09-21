@@ -1,6 +1,6 @@
-import { currentLang, translate } from "./i18n";
-import { currentVaultToken, noteVaultExpired } from "./vaultToken";
-import { BookMetadata, StoredChapter, StoredStory, StorySummary, SupportedSite } from "./types";
+import { currentLang, translate } from "../i18n";
+import { currentVaultToken, noteVaultExpired } from "../vault/token";
+import { BookMetadata, StoredChapter, StoredStory, StorySummary, SupportedSite } from "../types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites", { headers: langHeaders() });

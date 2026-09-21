@@ -12,10 +12,10 @@
  * (Electron) and in Safari the documented shortcut works.
  */
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { closeVault, fetchVaultStatus, openVault } from "./api";
-import { forgetPrivatePositions, setPrivateScope } from "./readerPreview";
-import { onVaultExpired, setVaultToken } from "./vaultToken";
-import VaultPrompt from "./components/VaultPrompt";
+import { closeVault, fetchVaultStatus, openVault } from "../lib/api";
+import { forgetPrivatePositions, setPrivateScope } from "../lib/readerPreview";
+import { onVaultExpired, setVaultToken } from "./token";
+import VaultPrompt from "../components/VaultPrompt";
 
 // "setup" the first time (pick a code and confirm it), "unlock" every time after.
 export type VaultPromptMode = "setup" | "unlock";

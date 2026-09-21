@@ -189,7 +189,15 @@ Backend serves both the built frontend and a REST API under `/api`.
 │   ├── config/
 │   │   ├── paths.ts              # DATA_DIR
 │   │   └── supportedSites.ts     # Domain whitelist
-│   ├── routes/api.ts             # All /api endpoints
+│   ├── routes/                   # /api endpoints, one module per resource
+│   │   ├── index.ts              # Router + X-Lang middleware + mounts
+│   │   ├── library.ts            # Public/private library, per-request selection
+│   │   ├── stories.ts            # Story CRUD, TOC, meta, watch/check
+│   │   ├── chapters.ts           # Chapter content load/save
+│   │   ├── highlights.ts         # Reader highlights
+│   │   ├── crawl.ts              # Background story crawl
+│   │   ├── live.ts               # SSE live channels
+│   │   └── exports.ts            # EPUB build + download
 │   └── services/
 │       ├── renderer.ts           # Playwright: render page + auto-scroll
 │       ├── extractor.ts          # Readability + filter chrome + DOM -> blocks
@@ -200,7 +208,12 @@ Backend serves both the built frontend and a REST API under `/api`.
 │       ├── toc/                  # TOC adapters for each site
 │       └── chapters/             # Chapter fetcher specific to Wattpad
 ├── frontend/                     # React + TypeScript, built with Vite
-│   └── src/components/           # LibraryView, StoryDetail, ChapterCard...
+│   └── src/
+│       ├── components/           # LibraryView, StoryDetail, ChapterCard...
+│       ├── hooks/                # useCrawlJob, useEpubExport
+│       ├── lib/                  # API client + pure helpers
+│       ├── vault/                # Private-mode provider + token
+│       └── i18n/                 # One locale file per language
 ├── electron/main.js              # Main process for macOS app
 ├── scripts/                      # Icon generation, ad-hoc signing
 ├── public/                       # Frontend build output (auto-generated)

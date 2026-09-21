@@ -4,7 +4,7 @@ import {
   exportStoryEpub,
   StoryExportChapter,
   uploadCover,
-} from "./api";
+} from "../lib/api";
 
 // Keep in sync with epubFileName in src/services/epubBuilder.ts: keep diacritics,
 // only replace invalid filename characters.
@@ -19,8 +19,8 @@ function epubFileName(title: string): string {
     .trim();
   return `${base || "book"}.epub`;
 }
-import { Translate } from "./i18n";
-import { BookMetadata } from "./types";
+import { Translate } from "../i18n";
+import { BookMetadata } from "../types";
 
 // Description for progress bar. Image download is longest phase so show count;
 // packaging runs in one batch, cannot be subdivided.
