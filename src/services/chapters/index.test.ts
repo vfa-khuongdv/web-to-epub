@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import { getChapterFetcher } from "./index";
+import { fetchAsianfanficsChapter } from "./asianfanfics";
 import { fetchTruyenfullChapter } from "./truyenfull";
 import { fetchWattpadChapter } from "./wattpad";
 
 describe("getChapterFetcher", () => {
   it("chọn fetcher theo hostname, bỏ tiền tố www", () => {
     expect(getChapterFetcher("https://www.wattpad.com/148415654-a")?.fetchChapter).toBe(fetchWattpadChapter);
+    expect(getChapterFetcher("https://www.asianfanfics.com/story/view/1143593/1/attraction")?.fetchChapter).toBe(
+      fetchAsianfanficsChapter
+    );
   });
 
   it("chọn fetcher khi hostname viết hoa", () => {

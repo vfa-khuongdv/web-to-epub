@@ -81,6 +81,25 @@ adding a new domain only requires editing this file.
 | `truyencom.com` | ✅ (scrape TOC pages) | |
 | `truyenhoan.com` | ✅ (scrape TOC pages) | Same theme as truyenfull; chapters served in HTML |
 | `wattpad.com` | ✅ (internal API `/api/v3/stories/<id>`) | Paid chapters not supported |
+| `asianfanfics.com` | ✅ (render story page) | Cloudflare-protected; rated M / subscribers-only needs an imported browser session (see below) |
+
+### Asianfanfics sessions
+
+Asianfanfics sits behind Cloudflare, and rated-M / subscribers-only stories need a logged-in
+account. The tool never types your password or solves a bot check — you log in with your own
+browser, then hand the session over as a cURL copy:
+
+1. Log in at `https://www.asianfanfics.com` in Chrome/Brave/Safari.
+2. Open DevTools → **Network**, reload the page.
+3. Right-click the first request → **Copy** → **Copy as cURL**.
+4. Paste it into the app — adding an Asianfanfics story asks for it automatically (skip it and
+   public stories still load). Import, replace, or remove it any time in **Settings → Site
+   sessions**.
+
+The session is saved to `DATA_DIR/sessions/asianfanfics.com.json` (owner-only) and reused for
+that site from then on. For M-rated stories the account must also have **Settings → Content
+filter → "Filter mature content"** unchecked — the site's own setting for adults; the tool does
+not toggle it for you.
 
 ## Installation
 
@@ -188,6 +207,7 @@ Backend serves both the built frontend and a REST API under `/api`.
 │   ├── server.ts                 # Start Express, serve public/ + API
 │   ├── config/
 │   │   ├── paths.ts              # DATA_DIR
+│   │   ├── browser.json          # User agent shared by renderer + session import
 │   │   └── supportedSites.ts     # Domain whitelist
 │   ├── routes/                   # /api endpoints, one module per resource
 │   │   ├── index.ts              # Router + X-Lang middleware + mounts
@@ -200,13 +220,14 @@ Backend serves both the built frontend and a REST API under `/api`.
 │   │   └── exports.ts            # EPUB build + download
 │   └── services/
 │       ├── renderer.ts           # Playwright: render page + auto-scroll
+│       ├── siteSession.ts        # Saved logged-in sessions per site
 │       ├── extractor.ts          # Readability + filter chrome + DOM -> blocks
 │       ├── crawl.ts              # Crawl loop + automatic retries
 │       ├── epubBuilder.ts        # Chapters + metadata -> EPUB buffer
 │       ├── storyStore.ts         # SQLite: stories and chapters tables
 │       ├── coverStore.ts         # Download & save cover images
 │       ├── toc/                  # TOC adapters for each site
-│       └── chapters/             # Chapter fetcher specific to Wattpad
+│       └── chapters/             # Chapter fetchers (Wattpad, TruyenFull, Asianfanfics)
 ├── frontend/                     # React + TypeScript, built with Vite
 │   └── src/
 │       ├── components/           # LibraryView, StoryDetail, ChapterCard...
@@ -297,6 +318,11 @@ links, host-blocked) become a text block with a link to the source, rather than 
 - **Wattpad**: chapters load via standard HTTP (faster than opening a browser) because the site
   server-renders content. Paid Stories report an error, no bypass. The TOC API is internal and
   undocumented — if the site changes it, the adapter will error clearly.
+- **Asianfanfics**: Cloudflare-protected, so every page goes through the browser renderer; the
+  chapter body arrives via the site's own htmx fragment, which the adapter reads from the
+  rendered DOM. Rated M / subscribers-only stories need an imported session (see
+  [Asianfanfics sessions](#asianfanfics-sessions)) and the account's mature filter off; without
+  them they report a clear error instead of returning empty chapters.
 - **"Load more" buttons** aren't clicked automatically yet; currently only auto-scroll to trigger
   lazy-load via scroll events.
 - **Watch for new chapters only runs while the app is open** — each watched story costs one TOC
@@ -305,7 +331,9 @@ links, host-blocked) become a text block with a link to the source, rather than 
 - **ETA is an estimate** based on average speed of the current crawl — slow chapters or retries
   change the number; only shows after several chapters and doesn't persist across server restart.
 - **Tables (`<table>`)** are flattened into separate paragraphs.
-- **No automatic login** — sites requiring login are out of scope.
+- **No automatic login** — the tool never types your password or solves a bot check. For
+  Asianfanfics you can import a session from your own browser (Settings → Site sessions); other
+  sites requiring login remain out of scope.
 - **Chapter names depend on the site's TOC.** `xtruyen.vn` TOC only returns chapter numbers
   ("Volume 1 Chapter 2"); subtitles ("… : Opening") sit on individual chapter pages so only
   appear after crawling. Chapters crawled from old backups keep their old names — crawl again

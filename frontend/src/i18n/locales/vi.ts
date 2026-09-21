@@ -296,4 +296,26 @@ export const vi: Record<string, string> = {
   "{stories} stories, {chapters} chapters": "{stories} truyện, {chapters} chương",
   "Could not load settings": "Không tải được cài đặt",
   "Could not save settings": "Không lưu được cài đặt",
+  "Site sessions": "Phiên đăng nhập theo trang",
+  "Import session": "Nhập phiên đăng nhập",
+  "Replace session": "Thay phiên đăng nhập",
+  "Remove": "Xoá",
+  "A saved login is in use for rated-M and subscribers-only stories.":
+    "Đang dùng phiên đăng nhập đã lưu cho truyện rated M và truyện của tác giả bạn đăng ký.",
+  "Rated-M and subscribers-only stories need a login saved from your own browser.":
+    "Truyện rated M và truyện chỉ dành cho người đăng ký cần phiên đăng nhập lấy từ chính trình duyệt của bạn.",
+  "Asianfanfics session": "Phiên đăng nhập Asianfanfics",
+  "Rated-M and subscribers-only stories need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.":
+    "Truyện rated M và truyện chỉ dành cho người đăng ký cần phiên đăng nhập lấy từ chính trình duyệt của bạn. Công cụ không bao giờ thấy mật khẩu — bạn đăng nhập ở đó rồi dán bản copy của request.",
+  "Log in at asianfanfics.com in your browser.": "Đăng nhập asianfanfics.com trong trình duyệt của bạn.",
+  "Open DevTools → Network and reload the page.": "Mở DevTools → Network rồi tải lại trang.",
+  "Right-click the first request → Copy → Copy as cURL.": "Chuột phải vào request đầu tiên → Copy → Copy as cURL.",
+  "Paste the result below.": "Dán kết quả vào ô dưới đây.",
+  "cURL from your browser": "cURL từ trình duyệt",
+  "You can skip this — public stories still load.": "Có thể bỏ qua — truyện công khai vẫn tải được.",
+  "Skip": "Bỏ qua",
+  "Save session": "Lưu phiên",
+  "Could not check the saved session": "Không kiểm tra được phiên đã lưu",
+  "Could not save the session": "Không lưu được phiên",
+  "Could not remove the session": "Không xoá được phiên",
 };
