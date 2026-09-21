@@ -1,12 +1,10 @@
 import { useState } from "react";
 import {
-  exportEpub,
-  ExportChapterPayload,
   ExportProgress,
   exportStoryEpub,
   StoryExportChapter,
   uploadCover,
-} from "./api";
+} from "../lib/api";
 
 // Keep in sync with epubFileName in src/services/epubBuilder.ts: keep diacritics,
 // only replace invalid filename characters.
@@ -21,8 +19,8 @@ function epubFileName(title: string): string {
     .trim();
   return `${base || "book"}.epub`;
 }
-import { Translate } from "./i18n";
-import { BookMetadata } from "./types";
+import { Translate } from "../i18n";
+import { BookMetadata } from "../types";
 
 // Description for progress bar. Image download is longest phase so show count;
 // packaging runs in one batch, cannot be subdivided.
@@ -68,23 +66,5 @@ export function useEpubExport() {
     }
   }
 
-  async function exportBook(
-    metadata: BookMetadata,
-    chapters: ExportChapterPayload[],
-    coverFile: File | null
-  ): Promise<void> {
-    setIsExporting(true);
-    setProgress(null);
-    try {
-      // If file chosen, it wins (only for this export); otherwise use story's saved cover
-      // (downloaded during crawl).
-      const coverUrl = coverFile ? await uploadCover(coverFile) : metadata.coverUrl;
-      download(await exportEpub({ ...metadata, coverUrl }, chapters, setProgress), metadata.title);
-    } finally {
-      setIsExporting(false);
-      setProgress(null);
-    }
-  }
-
-  return { isExporting, progress, exportBook, exportStoryBook };
+  return { isExporting, progress, exportStoryBook };
 }

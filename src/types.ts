@@ -15,10 +15,6 @@ export interface ExtractedChapter {
   error?: string; // set when extraction failed after retries; blocks will be empty
 }
 
-export interface ExtractRequest {
-  urls: string[];
-}
-
 export interface ExportChapter {
   title: string;
   includeInBook: boolean;
@@ -30,11 +26,6 @@ export interface BookMetadata {
   author: string;
   language: string;
   coverUrl?: string; // remote URL or uploaded file path
-}
-
-export interface ExportRequest {
-  metadata: BookMetadata;
-  chapters: ExportChapter[];
 }
 
 export interface ProgressEvent {

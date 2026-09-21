@@ -52,6 +52,10 @@ Dark theme (click the icon in the header to change, or set to "auto" to follow O
   progress, no automatic crawling.
 - **Remaining time estimate** — during crawl, ETA and chapters/minute show in the progress bar
   and story detail.
+- **Crawl finished notification** — a toast reports "Downloaded N chapters" when a background
+  crawl ends, even if you have navigated to another story or back to the library.
+- **Supported sites at a glance** — click the site count in the header to see every accepted
+  domain without leaving the page.
 - **Fast open for massive stories** — chapter list doesn't include content, chapters only load
   when opened; the chapter table is paginated (100 chapters/page).
 - **Handle failed chapters** — retry individual chapters, or manually paste content for chapters
@@ -128,21 +132,18 @@ All these commands are in the `Makefile` — run `make` to see the full list.
 
 ## Usage
 
-UI has two tabs:
-
-**My Stories** — the main workflow:
-
 1. Paste a story URL (e.g., `https://example.com/story-name/`)
    and click "Load chapter list".
 2. Click "Crawl" — progress updates in real time, closing the tab doesn't lose progress.
+   A toast tells you when the crawl has finished.
 3. Open story detail to edit book name / author / cover image, edit chapter names and
    content if needed.
 4. Click "Export EPUB" — the book includes every chapter with content.
 
-**Manual Crawl** — paste a list of chapter URLs directly (one URL per line).
-
 Failed chapters show a red frame with a "Retry" button and an "Enter content manually"
 button to paste content directly.
+
+Not sure which sites are accepted? Click the site count in the header for the full list.
 
 ## Configuration
 
@@ -176,11 +177,8 @@ Backend serves both the built frontend and a REST API under `/api`.
 | `GET` | `/api/stories/:id/cover` | Saved cover image |
 | `GET` | `/api/stories/live` | **SSE** — progress of all crawling stories (with `storyId`) |
 | `GET` | `/api/stories/:id/live` | **SSE** — progress of one story |
-| `POST` | `/api/extract` | `{ urls }` — crawl a URL list, return **NDJSON** (one event per line) |
-| `POST` | `/api/extract-one` | `{ url }` — re-crawl one chapter |
 | `POST` | `/api/cover-upload` | Upload temporary cover image (multipart) |
 | `POST` | `/api/stories/:id/export` | `{ metadata, chapters }` — build EPUB from DB content, client only sends chapters being edited |
-| `POST` | `/api/export` | `{ metadata, chapters }` — return `.epub` file (used by Manual Crawl tab) |
 
 ## Project Structure
 
@@ -191,7 +189,15 @@ Backend serves both the built frontend and a REST API under `/api`.
 │   ├── config/
 │   │   ├── paths.ts              # DATA_DIR
 │   │   └── supportedSites.ts     # Domain whitelist
-│   ├── routes/api.ts             # All /api endpoints
+│   ├── routes/                   # /api endpoints, one module per resource
+│   │   ├── index.ts              # Router + X-Lang middleware + mounts
+│   │   ├── library.ts            # Public/private library, per-request selection
+│   │   ├── stories.ts            # Story CRUD, TOC, meta, watch/check
+│   │   ├── chapters.ts           # Chapter content load/save
+│   │   ├── highlights.ts         # Reader highlights
+│   │   ├── crawl.ts              # Background story crawl
+│   │   ├── live.ts               # SSE live channels
+│   │   └── exports.ts            # EPUB build + download
 │   └── services/
 │       ├── renderer.ts           # Playwright: render page + auto-scroll
 │       ├── extractor.ts          # Readability + filter chrome + DOM -> blocks
@@ -202,7 +208,12 @@ Backend serves both the built frontend and a REST API under `/api`.
 │       ├── toc/                  # TOC adapters for each site
 │       └── chapters/             # Chapter fetcher specific to Wattpad
 ├── frontend/                     # React + TypeScript, built with Vite
-│   └── src/components/           # LibraryView, StoryDetail, ChapterCard...
+│   └── src/
+│       ├── components/           # LibraryView, StoryDetail, ChapterCard...
+│       ├── hooks/                # useCrawlJob, useEpubExport
+│       ├── lib/                  # API client + pure helpers
+│       ├── vault/                # Private-mode provider + token
+│       └── i18n/                 # One locale file per language
 ├── electron/main.js              # Main process for macOS app
 ├── scripts/                      # Icon generation, ad-hoc signing
 ├── public/                       # Frontend build output (auto-generated)

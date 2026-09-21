@@ -1,6 +1,6 @@
 import express from "express";
 import path from "path";
-import apiRouter from "./routes/api";
+import apiRouter from "./routes";
 import { closeBrowser } from "./services/renderer";
 
 const app = express();

@@ -10,14 +10,17 @@ import { Icon } from "./Icon";
 import { Translate, useLang } from "../i18n";
 import { VaultPromptMode } from "../vault";
 
-const CODE_LENGTH = 6;
+export const CODE_LENGTH = 6;
 
 /**
  * Six boxes, one digit each. The code is still a plain string in state — the boxes
  * only read `value[i]`, so it can never drift out of step with what is typed, and
  * a code is always filled left to right with no holes in the middle.
+ *
+ * Exported for the settings page, which asks for the same kind of code when changing
+ * it — one code box in the app, not two that drift apart.
  */
-function PinInput({
+export function PinInput({
   id,
   label,
   value,
@@ -192,7 +195,7 @@ export default function VaultPrompt({
         </h2>
         <p className="vault-note">
           {mode === "setup"
-            ? t("Pick a 6-digit code. There is no way to recover it, and no way to change it later.")
+            ? t("Pick a 6-digit code. There is no way to recover it; you can change it later in Settings.")
             : t("Enter your 6-digit code to open your private library.")}
         </p>
 

@@ -1,4 +1,4 @@
-import { SupportedSite } from "./types";
+import { SupportedSite } from "../types";
 
 export function isSupportedUrl(url: string, sites: SupportedSite[]): boolean {
   let hostname: string;

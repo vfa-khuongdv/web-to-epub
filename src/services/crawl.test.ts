@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWattpadChapter } from "./chapters/wattpad";
-import { estimateRemainingMs, extractWithRetry } from "./crawl";
+import { estimateRemainingMs, extractWithRetry, MAX_ATTEMPTS } from "./crawl";
 import { LockedContentError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
@@ -25,7 +25,7 @@ const OTHER_URL = "https://xtruyen.vn/truyen/a/chuong-1/";
 
 describe("extractWithRetry", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   it("uses site's chapter fetcher when available (Wattpad), does not render browser", async () => {
@@ -81,8 +81,10 @@ describe("extractWithRetry", () => {
       vi.mocked(extractChapter).mockReturnValue({ sourceUrl: OTHER_URL, title: "Chương 1", blocks: [] });
 
       const promise = extractWithRetry(OTHER_URL);
-      // Advance only 300ms: old backoff (1000ms) would prevent second attempt from running.
-      await vi.advanceTimersByTimeAsync(300);
+      // Old backoff (1000ms) would prevent the second attempt from running this early.
+      await vi.advanceTimersByTimeAsync(299);
+      expect(renderPageHtml).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
       const chapter = await promise;
 
       expect(chapter.error).toBeUndefined();
@@ -101,18 +103,99 @@ describe("extractWithRetry", () => {
     expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
   });
 
+  it("locked content from the extractor stops the renderer branch immediately", async () => {
+    const { extractChapter } = await import("./extractor");
+    vi.mocked(renderPageHtml).mockResolvedValue("<html>rendered</html>");
+    vi.mocked(extractChapter).mockImplementation(() => {
+      throw new LockedContentError("Chương này thuộc chương trả phí");
+    });
+
+    const chapter = await extractWithRetry(OTHER_URL);
+
+    expect(renderPageHtml).toHaveBeenCalledTimes(1);
+    expect(extractChapter).toHaveBeenCalledTimes(1);
+    expect(chapter.error).toBe("Chương này thuộc chương trả phí");
+  });
+
   it("exceeds MAX_ATTEMPTS returns chapter with error, does not throw", async () => {
     vi.useFakeTimers();
     try {
       vi.mocked(fetchWattpadChapter).mockRejectedValue(new Error(" lỗi mạng "));
 
-      const promise = extractWithRetry(WATTPAD_URL);
+      const attempts: number[] = [];
+      const promise = extractWithRetry(WATTPAD_URL, (n) => attempts.push(n));
       await vi.advanceTimersByTimeAsync(60_000);
       const chapter = await promise;
 
       expect(chapter.sourceUrl).toBe(WATTPAD_URL);
+      expect(chapter.title).toBe(WATTPAD_URL);
       expect(chapter.error).toBe(" lỗi mạng ");
       expect(chapter.blocks).toEqual([]);
+      expect(fetchWattpadChapter).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+      expect(attempts).toEqual(Array.from({ length: MAX_ATTEMPTS }, (_, i) => i + 1));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("caps backoff at 3s: 9s of waiting reaches the 5th attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchWattpadChapter).mockRejectedValue(new Error("lỗi mạng"));
+
+      const promise = extractWithRetry(WATTPAD_URL);
+      // Delays 1s, 2s, 3s, 3s (4s capped) → attempt 5 starts at 9s.
+      // Without the cap attempt 5 would only start at 10s.
+      await vi.advanceTimersByTimeAsync(8999);
+      expect(fetchWattpadChapter).toHaveBeenCalledTimes(4);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(fetchWattpadChapter).toHaveBeenCalledTimes(5);
+
+      await vi.advanceTimersByTimeAsync(60_000);
+      const chapter = await promise;
+      expect(chapter.error).toBe("lỗi mạng");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("non-Error rejection falls back to 'Unknown error'", async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(fetchWattpadChapter).mockRejectedValue("boom");
+
+      const promise = extractWithRetry(WATTPAD_URL);
+      await vi.advanceTimersByTimeAsync(60_000);
+      const chapter = await promise;
+
+      expect(chapter.error).toBe("Unknown error");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("succeeds on the final allowed attempt", async () => {
+    vi.useFakeTimers();
+    try {
+      for (let i = 1; i < MAX_ATTEMPTS; i++) {
+        vi.mocked(fetchWattpadChapter).mockRejectedValueOnce(new Error(`lỗi ${i}`));
+      }
+      vi.mocked(fetchWattpadChapter).mockResolvedValueOnce({
+        sourceUrl: WATTPAD_URL,
+        title: "Chương cuối",
+        blocks: [{ type: "paragraph", text: "ok" }],
+      });
+
+      const promise = extractWithRetry(WATTPAD_URL);
+      // Attempt MAX_ATTEMPTS starts at 30s (1s + 2s + 3s×9); at 29 999ms it hasn't run yet.
+      await vi.advanceTimersByTimeAsync(29_999);
+      expect(fetchWattpadChapter).toHaveBeenCalledTimes(MAX_ATTEMPTS - 1);
+      await vi.advanceTimersByTimeAsync(1);
+      const chapter = await promise;
+
+      expect(fetchWattpadChapter).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+      expect(chapter.error).toBeUndefined();
+      expect(chapter.title).toBe("Chương cuối");
     } finally {
       vi.useRealTimers();
     }
@@ -182,9 +265,7 @@ describe("extractWithRetry", () => {
       await vi.advanceTimersByTimeAsync(60_000);
       await promise;
 
-      expect(attempts.length).toBeGreaterThan(1);
-      expect(attempts[0]).toBe(1);
-      expect(attempts[attempts.length - 1]).toBe(attempts.length);
+      expect(attempts).toEqual(Array.from({ length: MAX_ATTEMPTS }, (_, i) => i + 1));
     } finally {
       vi.useRealTimers();
     }
@@ -208,9 +289,34 @@ describe("estimateRemainingMs", () => {
     expect(estimateRemainingMs({ ...base, completed: 3, now: 0 })).toBeUndefined();
   });
 
+  it("returns undefined when the clock moved backwards", () => {
+    expect(estimateRemainingMs({ ...base, completed: 3, now: -1 })).toBeUndefined();
+    expect(estimateRemainingMs({ ...base, startedAt: 10_000, completed: 3, now: 9_999 })).toBeUndefined();
+  });
+
+  it("returns undefined when there is nothing to complete", () => {
+    expect(estimateRemainingMs({ startedAt: 0, completed: 0, total: 0, now: 10_000 })).toBeUndefined();
+  });
+
+  it("uses Date.now() when now is omitted", () => {
+    vi.useFakeTimers();
+    try {
+      vi.setSystemTime(30_000);
+      // Same as completed: 3, now: 30_000 above.
+      expect(estimateRemainingMs({ ...base, completed: 3 })).toBe(70_000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("estimates by average speed of completed chapters", () => {
     // 3 chapters in 30 seconds → 10 seconds/chapter, 7 chapters left → 70 seconds.
     expect(estimateRemainingMs({ ...base, completed: 3, now: 30_000 })).toBe(70_000);
+  });
+
+  it("estimates when exactly one chapter is left", () => {
+    // 9 chapters in 30 seconds → 10/3 seconds/chapter, 1 left → 3333ms.
+    expect(estimateRemainingMs({ ...base, completed: 9, now: 30_000 })).toBe(3333);
   });
 
   it("rounds milliseconds", () => {

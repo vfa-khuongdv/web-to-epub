@@ -1,41 +1,34 @@
 import { createContext, ReactNode, useContext, useEffect, useState } from "react";
-import { vi } from "./messages";
+import { DEFAULT_LANG, LOCALES, Lang } from "./locales";
 
-export type Lang = "vi" | "en";
-
-export const LANGUAGES: { code: Lang; label: string }[] = [
-  { code: "vi", label: "Tiếng Việt" },
-  { code: "en", label: "English" },
-];
+export type { Lang } from "./locales";
+export { LANGUAGES } from "./locales";
 
 const LANG_KEY = "lang";
 
-// Vietnamese by default: the sites this tool crawls are Vietnamese, and so is
-// almost everyone reading from it.
-const DEFAULT_LANG: Lang = "vi";
-
-// localStorage can throw (private window, cookies blocked): the language still
-// switches, it just won't be remembered — same handling as the theme switch.
-function readLang(): Lang {
-  try {
-    return localStorage.getItem(LANG_KEY) === "en" ? "en" : DEFAULT_LANG;
-  } catch {
-    return DEFAULT_LANG;
-  }
-}
-
 /**
- * Keys are the English text itself, not invented identifiers: a string with no
- * entry in the dictionary falls back to readable English instead of a blank or a
- * bare key, and the source stays legible at the call site.
+ * Keys are the English source text itself, not invented identifiers: a string with
+ * no entry in the selected language falls back to en.ts (which holds a value for
+ * every key) and then to the key, so the UI never shows a raw key name.
  */
 export function translate(lang: Lang, key: string, params?: Record<string, string | number>): string {
-  const text = (lang === "vi" ? vi[key] : undefined) ?? key;
+  const text = LOCALES[lang].messages[key] ?? LOCALES.en.messages[key] ?? key;
   if (!params) return text;
   return text.replace(/\{(\w+)\}/g, (whole, name: string) => String(params[name] ?? whole));
 }
 
 export type Translate = (key: string, params?: Record<string, string | number>) => string;
+
+// localStorage can throw (private window, cookies blocked): the language still
+// switches, it just won't be remembered — same handling as the theme switch.
+function readLang(): Lang {
+  try {
+    const saved = localStorage.getItem(LANG_KEY);
+    return saved && saved in LOCALES ? (saved as Lang) : DEFAULT_LANG;
+  } catch {
+    return DEFAULT_LANG;
+  }
+}
 
 interface LangValue {
   lang: Lang;

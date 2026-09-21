@@ -85,3 +85,18 @@ export interface StorySummary {
   checkError?: string;
   updatedAt: string;
 }
+
+export interface AppSettings {
+  autoScanOnOpen: boolean;
+  defaultBookLanguage: string;
+  defaultAuthor: string;
+}
+
+// Read-only facts about this installation, shown beside the settings.
+export interface AppInfo {
+  version: string;
+  dataDir: string;
+  storyCount: number;
+  chapterCount: number;
+  privateConfigured: boolean;
+}

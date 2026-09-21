@@ -1,6 +1,6 @@
-import { currentLang, translate } from "./i18n";
-import { currentVaultToken, noteVaultExpired } from "./vaultToken";
-import { BookMetadata, ProgressEvent, StoredChapter, StoredStory, StorySummary, SupportedSite } from "./types";
+import { currentLang, translate } from "../i18n";
+import { currentVaultToken, noteVaultExpired } from "../vault/token";
+import { AppInfo, AppSettings, BookMetadata, StoredChapter, StoredStory, StorySummary, SupportedSite } from "../types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites", { headers: langHeaders() });
@@ -56,6 +56,17 @@ export async function openVault(code: string, mode: "setup" | "unlock"): Promise
   return ((await res.json()) as { token: string }).token;
 }
 
+// Replacing the code proves the current one, so this works from the settings page
+// whether or not private mode is open right now. Open sessions keep working.
+export async function changeVaultCode(code: string, newCode: string): Promise<void> {
+  const res = await fetch("/api/vault/change-code", {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ code, newCode }),
+  });
+  if (!res.ok) throw apiError(await readJsonError(res, tr("Wrong code")), res.status);
+}
+
 export async function closeVault(): Promise<void> {
   // A failure here only means the server keeps a token nobody will send again; the
   // client forgets it regardless, so there is nothing for the user to act on.
@@ -105,12 +116,6 @@ async function streamNdjson<T>(path: string, body: unknown, onEvent: (event: T) 
       onEvent(JSON.parse(line));
     }
   }
-}
-
-// Streams NDJSON progress events from POST /api/extract, invoking onEvent
-// for each line as it arrives.
-export async function extractChapters(urls: string[], onEvent: (event: ProgressEvent) => void): Promise<void> {
-  await streamNdjson<ProgressEvent>("/api/extract", { urls }, onEvent);
 }
 
 // Start crawling a story: server responds immediately, crawls in background,
@@ -298,20 +303,6 @@ export async function exportStoryEpub(
   return runExport(`/api/stories/${encodeURIComponent(storyId)}/export`, { metadata, chapters }, onProgress);
 }
 
-export interface ExportChapterPayload {
-  title: string;
-  includeInBook: boolean;
-  contentHtml: string;
-}
-
-export async function exportEpub(
-  metadata: BookMetadata,
-  chapters: ExportChapterPayload[],
-  onProgress?: (progress: ExportProgress) => void
-): Promise<Blob> {
-  return runExport("/api/export", { metadata, chapters }, onProgress);
-}
-
 export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"] as const;
 export type HighlightColor = (typeof HIGHLIGHT_COLORS)[number];
 
@@ -364,4 +355,23 @@ export async function deleteHighlight(storyId: string, id: string): Promise<void
     { method: "DELETE", headers: langHeaders() }
   );
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete the highlight")));
+}
+
+// ---- App settings (see src/services/settingsStore.ts) -----------------------
+
+// One request: the values the page can change, plus the read-only facts it shows.
+export async function fetchSettings(): Promise<{ settings: AppSettings; app: AppInfo }> {
+  const res = await apiFetch("/api/settings", { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load settings")));
+  return (await res.json()) as { settings: AppSettings; app: AppInfo };
+}
+
+export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSettings> {
+  const res = await apiFetch("/api/settings", {
+    method: "PATCH",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(patch),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save settings")));
+  return ((await res.json()) as { settings: AppSettings }).settings;
 }

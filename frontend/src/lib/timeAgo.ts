@@ -1,4 +1,4 @@
-import { Lang, translate } from "./i18n";
+import { Lang, translate } from "../i18n";
 
 // "Updated" and "last checked" both need relative time; keep in one place so both
 // display sites match.
