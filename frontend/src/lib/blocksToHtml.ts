@@ -1,4 +1,4 @@
-import { ContentBlock } from "./types";
+import { ContentBlock } from "../types";
 
 // Keep in sync with mediaTag in src/services/chapterHtml.ts.
 function mediaTag(type: "audio" | "video", src: string): string {

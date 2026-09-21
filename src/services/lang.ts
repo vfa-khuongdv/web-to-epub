@@ -5,10 +5,10 @@
  * have to be in the reader's language. Threading a language through every service,
  * TOC adapter and chapter fetcher would touch code that has nothing else to do with
  * presentation, so the current language is module state instead, set from the
- * `X-Lang` header by the middleware in routes/api.ts.
+ * `X-Lang` header by the middleware in routes/index.ts.
  *
  * That is a deliberate trade for this app and not a general pattern: it is local-first
- * and single-process (see `runningCrawls` in routes/api.ts), so there is exactly one
+ * and single-process (see `runningCrawls` in routes/library.ts), so there is exactly one
  * reader, and a background crawl started from a request inherits that request's
  * language. In a multi-user server this would have to be per-request.
  *
@@ -24,14 +24,13 @@ export type Lang = "vi" | "en";
 const DEFAULT_LANG: Lang = "en";
 
 const vi: Record<string, string> = {
-  // UI names the server has to spell out inside a message
-  "Manual Crawl": "Crawl thủ công",
-
   // Request validation
   "url is required": "url là bắt buộc",
-  "urls is required and must be a non-empty array": "urls là bắt buộc và phải là mảng không rỗng",
   "metadata and chapters are required": "metadata và chapters là bắt buộc",
   "watching must be true or false": "watching phải là true hoặc false",
+  "autoScanOnOpen must be true or false": "autoScanOnOpen phải là true hoặc false",
+  "Unsupported book language": "Ngôn ngữ sách không được hỗ trợ",
+  "Default author is too long": "Tên tác giả mặc định quá dài",
   "Book title is required": "Tên sách là bắt buộc",
   "Chapter title is required": "Tên chương là bắt buộc",
   "Chapter content is required": "Nội dung chương là bắt buộc",
@@ -86,9 +85,8 @@ const vi: Record<string, string> = {
   "This site is not yet supported: {url}": "Trang này chưa được hỗ trợ: {url}",
   "This is not a Wattpad story page: {url} — paste a URL like https://www.wattpad.com/story/<id>":
     "URL này không phải trang truyện Wattpad: {url} — cần dán URL dạng https://www.wattpad.com/story/<id>",
-  "{count} URL(s) are from unsupported sites": "{count} URL không thuộc trang được hỗ trợ",
-  "{site} does not yet support automatic chapter list loading — enter chapter URLs manually in the {tab} tab":
-    "{site} chưa hỗ trợ tự động load danh sách chương — hãy nhập URL từng chương ở tab {tab}",
+  "{site} does not yet support automatic chapter list loading":
+    "{site} chưa hỗ trợ tự động load danh sách chương",
 
   "Chapter is locked behind an ad blocker notice (requires disabling/enabling ads), cannot extract: {url}":
     "Chương này đang bị website khóa nội dung (yêu cầu tắt/mở lại quảng cáo), không thể trích xuất: {url}",

@@ -1,7 +1,6 @@
-import { currentLang, translate } from "./i18n";
 import { useCallback, useRef, useState } from "react";
-import { ProgressEvent } from "./types";
-import { currentVaultToken } from "./vaultToken";
+import { ProgressEvent } from "../types";
+import { currentVaultToken } from "../vault/token";
 
 export interface CrawlLogLine {
   at: string;
@@ -59,12 +58,6 @@ export function advanceChapterStates(
   return { ...states, [url]: next };
 }
 
-export type RunCrawl = (
-  label: string,
-  stream: (emit: (event: ProgressEvent) => void) => Promise<void>,
-  onEvent?: (event: ProgressEvent) => void
-) => Promise<void>;
-
 // Chapters the running crawl has finished (or failed) but whose stored status is
 // still `pending`: views add these on top of server's counts, so in-progress crawl
 // shows without waiting for final refetch.
@@ -95,8 +88,19 @@ type LiveEvent = (ProgressEvent & { storyId?: string }) | LiveSnapshot;
 export interface LiveCrawl {
   cursor: number;
   total: number;
+  // Failed chapters counted from the live channel; seeded at 0 for a crawl that was
+  // already running when this session attached (the snapshot carries no errors).
+  errors: number;
   etaMs?: number;
 }
+
+// Toasts the app can raise. Kept as data, not text, so the stack re-renders them
+// in whichever language is on screen.
+export type NoticeInput =
+  | { kind: "crawl-done"; done: number; total: number; errors: number }
+  | { kind: "toc-loaded"; count: number };
+
+export type Notice = NoticeInput & { id: number };
 
 function stamp(): string {
   return new Date().toLocaleTimeString("en-US", { hour12: false });
@@ -111,15 +115,27 @@ export function useCrawlJob() {
   // Which story is crawling, for ALL stories not just the open story: the library
   // table shows "Crawling" chip without needing to select story.
   const [live, setLive] = useState<Record<string, LiveCrawl | undefined>>({});
-  const liveRef = useRef(live);
-  liveRef.current = live;
+  // Crawls that finished while this session was open, oldest first: the toast stack.
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const nextNoticeId = useRef(0);
+  // Latest crawl state by story. The live channel writes this ref and the state
+  // together, so a handler always reads what the previous handler wrote even when
+  // React has not re-rendered in between (SSE events can arrive in the same task,
+  // and a chapter table mid-render delays the state update).
+  const liveRef = useRef<Record<string, LiveCrawl | undefined>>({});
   const watchedId = useRef<string | null>(null);
   const liveSource = useRef<EventSource | null>(null);
 
-  const applyEvent = useCallback((event: ProgressEvent, onEvent?: (event: ProgressEvent) => void) => {
+  // Raise a toast from anywhere in the app: the stack renders it and it dismisses
+  // itself (or the user closes it) like the crawl notices do.
+  const pushNotice = useCallback((notice: NoticeInput) => {
+    setNotices((ns) => [...ns, { ...notice, id: ++nextNoticeId.current }]);
+  }, []);
+
+  const applyEvent = useCallback((event: ProgressEvent) => {
     if (event.type === "progress" && event.index !== undefined && event.total) {
-      // Backend `cursor` is chapters done; only infer from chapter position when
-      // missing (manual crawl stream is inherently sequential).
+      // Backend `cursor` is chapters done; only fall back to the chapter position
+      // when it is missing.
       const cursor = event.cursor ?? event.index + 1;
       setJob((j) => ({
         ...j,
@@ -168,29 +184,7 @@ export function useCrawlJob() {
     } else if (event.type === "done") {
       setJob((j) => ({ ...j, cursor: j.total, pct: 100, etaMs: undefined }));
     }
-    onEvent?.(event);
   }, []);
-
-  const run = useCallback(
-    async (
-      label: string,
-      stream: (emit: (event: ProgressEvent) => void) => Promise<void>,
-      onEvent?: (event: ProgressEvent) => void
-    ) => {
-      setJob({ ...IDLE, label, running: true });
-      try {
-        await stream((event) => applyEvent(event, onEvent));
-      } catch (err) {
-        setJob((j) => ({
-          ...j,
-          log: appendLog(j.log, { at: stamp(), text: translate(currentLang(), "Connection error: {message}", { message: (err as Error).message }), isError: true }),
-        }));
-      } finally {
-        setJob((j) => ({ ...j, running: false }));
-      }
-    },
-    [applyEvent]
-  );
 
   // Open shared realtime channel (once for app): all running crawls pushed here
   // with storyId, so a just-reloaded session — or one that never started crawl —
@@ -216,8 +210,9 @@ export function useCrawlJob() {
       if (event.type === "snapshot") {
         const next: Record<string, LiveCrawl | undefined> = {};
         for (const crawl of event.crawls ?? []) {
-          next[crawl.storyId] = { cursor: crawl.cursor, total: crawl.total, etaMs: crawl.etaMs };
+          next[crawl.storyId] = { cursor: crawl.cursor, total: crawl.total, errors: 0, etaMs: crawl.etaMs };
         }
+        liveRef.current = next;
         setLive(next);
         // After connection loss, snapshot is truth: resync the open story
         // (crawl may have finished while listening failed).
@@ -236,16 +231,32 @@ export function useCrawlJob() {
       const storyId = event.storyId;
       if (!storyId) return;
       if (event.type === "idle") {
-        setLive((l) => ({ ...l, [storyId]: undefined }));
+        // The run just left the live channel: report what it managed, but only if
+        // there was something to crawl — an empty plan is not worth a toast.
+        const finished = liveRef.current[storyId];
+        if (finished && finished.total > 0) {
+          pushNotice({
+            kind: "crawl-done",
+            done: finished.cursor,
+            total: finished.total,
+            errors: finished.errors,
+          });
+        }
+        const next = { ...liveRef.current, [storyId]: undefined };
+        liveRef.current = next;
+        setLive(next);
       } else if (event.type !== "done") {
-        setLive((l) => ({
-          ...l,
+        const next = {
+          ...liveRef.current,
           [storyId]: {
-            cursor: event.cursor ?? l[storyId]?.cursor ?? 0,
-            total: event.total ?? l[storyId]?.total ?? 0,
-            etaMs: event.etaMs ?? l[storyId]?.etaMs,
+            cursor: event.cursor ?? liveRef.current[storyId]?.cursor ?? 0,
+            total: event.total ?? liveRef.current[storyId]?.total ?? 0,
+            errors: (liveRef.current[storyId]?.errors ?? 0) + (event.type === "error" ? 1 : 0),
+            etaMs: event.etaMs ?? liveRef.current[storyId]?.etaMs,
           },
-        }));
+        };
+        liveRef.current = next;
+        setLive(next);
       }
 
       // Log and per-chapter state belong only to the open story.
@@ -268,7 +279,7 @@ export function useCrawlJob() {
       source.close();
       if (liveSource.current === source) liveSource.current = null;
     };
-  }, [applyEvent]);
+  }, [applyEvent, pushNotice]);
 
   // Switch to viewing a story: log resets from shared channel's current state
   // (crawling stories show correct progress immediately, don't wait for events).
@@ -295,5 +306,9 @@ export function useCrawlJob() {
     setJob((j) => ({ ...j, chapters: {} }));
   }, []);
 
-  return { job, live, run, attach, subscribe, clearChapters };
+  const dismissNotice = useCallback((id: number) => {
+    setNotices((ns) => ns.filter((n) => n.id !== id));
+  }, []);
+
+  return { job, live, attach, subscribe, clearChapters, notices, dismissNotice, pushNotice };
 }

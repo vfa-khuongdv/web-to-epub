@@ -55,6 +55,10 @@ describe("findSupportedSite", () => {
   });
 
   it("bỏ qua www prefix cho mọi supported site", () => {
+    // This pins the user-facing expectation (a www host maps to the site), not
+    // the `www.` strip itself: subdomain matching (`endsWith("." + domain)`)
+    // already accepts www hosts, so removing `.replace(/^www\./, "")` would
+    // leave this test green.
     for (const site of SUPPORTED_SITES) {
       expect(findSupportedSite(`https://www.${site.domain}/x`)?.domain).toBe(site.domain);
     }
@@ -62,6 +66,34 @@ describe("findSupportedSite", () => {
 
   it("từ chối domain lạ", () => {
     expect(findSupportedSite("https://example.com/a")).toBeUndefined();
+  });
+
+  it("từ chối domain trông giống supported site (ranh giới tin cậy)", () => {
+    // The dot in `endsWith("." + domain)` (supportedSites.ts:27) is the trust
+    // boundary: a bare suffix like "notwattpad.com" must not pass.
+    expect(findSupportedSite("https://notwattpad.com/x")).toBeUndefined();
+    expect(findSupportedSite("https://wattpad.com.evil.com/x")).toBeUndefined();
+    expect(findSupportedSite("https://truyenfull.vn.evil.com/x")).toBeUndefined();
+  });
+
+  it("trả undefined cho FQDN có dấu chấm cuối (fail-closed)", () => {
+    // new URL() keeps the trailing dot in hostname (supportedSites.ts:23), so
+    // "wattpad.com." matches neither equality nor `.<domain>` (line 27). Pin
+    // the fail-closed behavior instead of normalizing the URL.
+    expect(findSupportedSite("https://wattpad.com./x")).toBeUndefined();
+  });
+
+  it("khớp bất kể scheme, chữ hoa/thường và port", () => {
+    expect(findSupportedSite("http://wattpad.com/x")?.domain).toBe("wattpad.com");
+    expect(findSupportedSite("https://WattPad.COM/x")?.domain).toBe("wattpad.com");
+    expect(findSupportedSite("https://wattpad.com:8443/x")?.domain).toBe("wattpad.com");
+  });
+
+  it("trả undefined khi URL parse được nhưng host rỗng", () => {
+    // Both parse without throwing and yield hostname "", which then goes
+    // through the same comparison path as any other host.
+    expect(findSupportedSite("file:///x")).toBeUndefined();
+    expect(findSupportedSite("mailto:a@wattpad.com")).toBeUndefined();
   });
 
   it("trả undefined cho URL không hợp lệ", () => {

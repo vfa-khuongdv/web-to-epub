@@ -14,6 +14,7 @@
     "dev": "tsc --watch & nodemon dist/server.js",
     "dev:frontend": "npm run dev -w frontend",
     "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
     "app:mac": "npm run build && npm run app:browser && npm run app:icon && electron-builder --mac --arm64",
     "app:browser": "PLAYWRIGHT_BROWSERS_PATH=\"$PWD/build/ms-playwright\" playwright install --only-shell chromium",
     "app:icon": "node scripts/make-icon.js"
@@ -28,6 +29,7 @@
     "playwright": "^1.47.0"
   },
   "devDependencies": {
+    "@playwright/test": "^1.63.0",
     "@types/express": "^4.17.21",
     "@types/jsdom": "^21.1.7",
     "@types/multer": "^1.4.11",

@@ -1,6 +1,6 @@
 /**
- * Vietnamese for every string the app shows. Keys are the English source text, so
- * anything missing here simply renders in English (see translate() in i18n.tsx).
+ * Vietnamese translations. Keys are the English source text (en.ts); anything
+ * missing there falls back to English rather than showing a key.
  *
  * Placeholders are `{name}` and are filled in by translate(); keep them identical
  * on both sides or the value will be dropped.
@@ -11,30 +11,30 @@
 export const vi: Record<string, string> = {
   // App shell
   "for Kindle": "cho Kindle",
-  Workspace: "Khu vực làm việc",
   "My Stories": "Truyện của tôi",
-  "Manual Crawl": "Crawl thủ công",
-  Auto: "Tự động",
-  Light: "Sáng",
-  Dark: "Tối",
+  "Auto": "Tự động",
+  "Light": "Sáng",
+  "Dark": "Tối",
   "Theme: {theme}": "Giao diện: {theme}",
   "Theme: {theme} (system)": "Giao diện: {theme} (theo hệ điều hành)",
   "Click to switch to {theme}": "Bấm để chuyển sang {theme}",
   "Language: {language}": "Ngôn ngữ: {language}",
   "Click to switch to {language}": "Bấm để chuyển sang {language}",
   "Crawling {done}/{total}": "Đang crawl {done}/{total}",
-  Crawling: "Đang crawl",
+  "Crawling": "Đang crawl",
   "{count} sites supported": "{count} trang hỗ trợ",
   "Loading supported sites…": "Đang tải danh sách trang hỗ trợ…",
+  "Supported sites": "Trang được hỗ trợ",
+  "Click to view the supported sites": "Bấm để xem danh sách trang hỗ trợ",
 
   // Chapter status
   "Pending crawl": "Chờ crawl",
-  Done: "Xong",
-  Error: "Lỗi",
+  "Done": "Xong",
+  "Error": "Lỗi",
   "New chapters": "Chương mới",
 
   // Job strip
-  Ready: "Sẵn sàng",
+  "Ready": "Sẵn sàng",
   "Crawl progress": "Tiến trình crawl",
   "Crawl completed": "Lần crawl đã xong",
   "Preparing…": "Đang chuẩn bị…",
@@ -42,6 +42,9 @@ export const vi: Record<string, string> = {
   "{eta} remaining": "còn {eta}",
   "{count} errors": "{count} lỗi",
   "Log ({count})": "Nhật ký ({count})",
+  "Downloaded {count} chapters": "Đã tải xong {count} chương",
+  "Downloaded {done}/{total} chapters": "Đã tải xong {done}/{total} chương",
+  "Loaded {count} chapters": "Đã tải xong danh sách {count} chương",
 
   // Relative time and estimates
   "just now": "vừa xong",
@@ -74,24 +77,23 @@ export const vi: Record<string, string> = {
   "Export EPUB": "Xuất EPUB",
   "Stop watching for new chapters": "Bỏ theo dõi chương mới",
   "Check for new chapters when opening app": "Kiểm tra chương mới khi mở app",
-  Watching: "Đang theo dõi",
+  "Watching": "Đang theo dõi",
   "Watch for new chapters": "Theo dõi chương mới",
   "Saving…": "Đang lưu…",
-  Saved: "Đã lưu",
+  "Saved": "Đã lưu",
   "Save metadata": "Lưu thông tin",
   "Book title": "Tên sách",
-  Author: "Tác giả",
+  "Author": "Tác giả",
   "Book language": "Ngôn ngữ sách",
-  Vietnamese: "Tiếng Việt",
-  English: "Tiếng Anh",
+  "Vietnamese": "Tiếng Việt",
+  "English": "Tiếng Anh",
   "Cover image": "Ảnh bìa",
-  "Cover auto-downloads during crawl. Select a new image, then click Save metadata to change it.":
-    "Bìa tự tải về khi crawl. Chọn ảnh mới rồi bấm Lưu thông tin để thay bìa.",
-  Chapter: "Chương",
-  Status: "Trạng thái",
+  "Cover auto-downloads during crawl. Select a new image, then click Save metadata to change it.": "Bìa tự tải về khi crawl. Chọn ảnh mới rồi bấm Lưu thông tin để thay bìa.",
+  "Chapter": "Chương",
+  "Status": "Trạng thái",
   "Chapters {from}–{to} / {total}": "Chương {from}–{to} / {total}",
-  Previous: "Trước",
-  Next: "Sau",
+  "Previous": "Trước",
+  "Next": "Sau",
   "Page {page}/{total}": "Trang {page}/{total}",
 
   // Library
@@ -100,8 +102,7 @@ export const vi: Record<string, string> = {
   "Crawl complete": "Đã crawl xong",
   "Sort by {label} — hold Shift to add secondary criteria": "Sắp xếp theo {label} — giữ Shift để thêm tiêu chí phụ",
   "Paste a story URL first.": "Dán URL trang truyện trước đã.",
-  "URL is not from a supported site. Supported: {sites}.":
-    "URL không thuộc trang được hỗ trợ. Chỉ nhận: {sites}.",
+  "URL is not from a supported site. Supported: {sites}.": "URL không thuộc trang được hỗ trợ. Chỉ nhận: {sites}.",
   "Checking…": "Đang kiểm tra…",
   "Check for new chapters": "Kiểm tra chương mới",
   "{shown}/{total} stories": "{shown}/{total} truyện",
@@ -109,84 +110,47 @@ export const vi: Record<string, string> = {
   "Story page URL": "URL trang truyện",
   "Loading…": "Đang tải…",
   "Load chapters": "Tải danh sách chương",
-  "Paste a story page URL to load the full chapter list. Auto-loading sites:":
-    "Dán URL trang truyện để nạp toàn bộ mục lục. Tự động load được:",
+  "Paste a story page URL to load the full chapter list. Auto-loading sites:": "Dán URL trang truyện để nạp toàn bộ mục lục. Tự động load được:",
   "loading…": "đang tải…",
   "Search stories": "Tìm truyện",
   "Search by story name or site…": "Tìm theo tên truyện hoặc site…",
   "Selected {count} stories": "Đã chọn {count} truyện",
   "Deleting…": "Đang xoá…",
   "Delete {count} stories": "Xoá {count} truyện",
-  Cancel: "Huỷ",
+  "Cancel": "Huỷ",
   "Delete selected": "Xoá đã chọn",
-  Deselect: "Bỏ chọn",
+  "Deselect": "Bỏ chọn",
   "Loading story list": "Đang tải danh sách truyện",
   "Library is empty": "Thư viện đang trống",
-  "Paste a story URL above and click Load chapters.":
-    "Dán URL trang truyện vào ô trên rồi bấm Tải danh sách chương.",
-  "The entire chapter list loads with Pending status.":
-    "Toàn bộ mục lục được nạp về với trạng thái Chờ crawl.",
-  "Click Crawl to crawl gradually. Close the tab anytime — progress is saved in the library, reopen to see where you left off.":
-    "Bấm Crawl tiếp để crawl dần. Đóng tab lúc nào cũng được — tiến độ nằm trong thư viện, mở lại là thấy đang ở đâu.",
+  "Paste a story URL above and click Load chapters.": "Dán URL trang truyện vào ô trên rồi bấm Tải danh sách chương.",
+  "The entire chapter list loads with Pending status.": "Toàn bộ mục lục được nạp về với trạng thái Chờ crawl.",
+  "Click Crawl to crawl gradually. Close the tab anytime — progress is saved in the library, reopen to see where you left off.": "Bấm Crawl tiếp để crawl dần. Đóng tab lúc nào cũng được — tiến độ nằm trong thư viện, mở lại là thấy đang ở đâu.",
   "No stories match": "Không có truyện nào khớp",
-  "No stories with name or site containing “{query}”. Try shorter keywords.":
-    "Không tìm thấy truyện nào có tên hoặc site chứa “{query}”. Thử từ khoá ngắn hơn.",
+  "No stories with name or site containing “{query}”. Try shorter keywords.": "Không tìm thấy truyện nào có tên hoặc site chứa “{query}”. Thử từ khoá ngắn hơn.",
   "Select all stories on this page": "Chọn tất cả truyện trong trang",
-  Story: "Truyện",
-  Site: "Site",
-  Chapters: "Chương",
-  Errors: "Lỗi",
-  Updated: "Cập nhật",
+  "Story": "Truyện",
+  "Site": "Site",
+  "Chapters": "Chương",
+  "Errors": "Lỗi",
+  "Updated": "Cập nhật",
   "Check error": "Lỗi kiểm tra",
-  Delete: "Xoá",
+  "Delete": "Xoá",
   "Stop watching {title}": "Bỏ theo dõi {title}",
   "Watch {title}": "Theo dõi {title}",
   "Crawling, cannot delete": "Đang crawl, chưa xoá được",
   "Delete story from library": "Xoá truyện khỏi thư viện",
   "Delete {title}": "Xoá {title}",
   "No story selected": "Chưa chọn truyện nào",
-  "The table on the left lists saved stories with progress. Select a story to view its chapters, continue crawling, edit content, and export to EPUB.":
-    "Bảng bên trái liệt kê các truyện đã lưu kèm tiến độ. Chọn một truyện để xem danh sách chương, crawl tiếp, sửa nội dung và xuất EPUB.",
-
-  // Manual crawl
-  "Enter at least one chapter URL.": "Nhập ít nhất một URL chương.",
-  "{count} URLs are not from supported sites.": "{count} URL không thuộc trang được hỗ trợ.",
-  "Manual crawl": "Crawl thủ công",
-  "Retry one chapter": "Thử lại một chương",
-  "Retry {count} failed chapters": "Thử lại {count} chương lỗi",
-  "Content source": "Nguồn nội dung",
-  "No story account needed — just URLs": "Không cần tài khoản truyện — chỉ cần URL",
-  "URL list — one chapter per line, in order": "Danh sách URL — mỗi dòng một chương, theo đúng thứ tự",
-  "Supported sites:": "Chỉ hỗ trợ:",
-  "loading site list…": "đang tải danh sách trang…",
-  "Leave empty to use the first chapter's title": "Để trống sẽ lấy từ chương đầu tiên",
-  "Cover image (optional)": "Ảnh bìa (tùy chọn)",
-  "Crawl & extract content": "Crawl & trích xuất nội dung",
-  Results: "Kết quả",
-  "No content yet": "Chưa có nội dung nào",
-  "Paste a list of chapter URLs in the left panel — one chapter per line, in the order you want them in the book — then click Crawl & extract content.":
-    "Dán danh sách URL chương ở khung bên trái — mỗi dòng một chương, đúng theo thứ tự bạn muốn trong sách — rồi bấm Crawl & trích xuất nội dung.",
-  "The tool opens each page in a headless browser and reads the rendered content, so it's not blocked by copy-protection.":
-    "Tool mở từng trang bằng trình duyệt ẩn, đọc nội dung đã render nên không bị chặn copy.",
-  "Failed chapters have a Retry button; if retry doesn't work, you can paste the content manually.":
-    "Chương lỗi có nút Thử lại; thử lại không được thì bạn tự dán nội dung vào.",
-  "Edit the title and content right in the table, then export to EPUB to read on Kindle.":
-    "Sửa tiêu đề và nội dung ngay trong bảng, rồi xuất EPUB để đọc trên Kindle.",
-  "For stories with hundreds of chapters, use the My Stories tab instead: just paste the story page URL and progress is saved.":
-    "Truyện dài hàng trăm chương nên dùng tab Truyện của tôi: chỉ cần dán URL trang truyện và tiến độ được lưu lại.",
-  "chapters extracted": "chương trích xuất được",
-  "All chapters extracted successfully": "Tất cả chương đã trích xuất thành công",
+  "The table on the left lists saved stories with progress. Select a story to view its chapters, continue crawling, edit content, and export to EPUB.": "Bảng bên trái liệt kê các truyện đã lưu kèm tiến độ. Chọn một truyện để xem danh sách chương, crawl tiếp, sửa nội dung và xuất EPUB.",
 
   // Chapter card
-  "Chapter {order} not crawled yet": "Chương {order} chưa crawl",
   "Open source page": "Mở trang nguồn",
   "Open source page for chapter {order}": "Mở trang nguồn của chương {order}",
-  "Include chapter {order} in book": "Đưa chương {order} vào sách",
-  Unsaved: "Chưa lưu",
-  Retrying: "Đang thử lại",
+  "Unsaved": "Chưa lưu",
+  "Retrying": "Đang thử lại",
   "Manual input": "Nhập thủ công",
   "Retrying…": "Đang thử lại…",
-  Retry: "Thử lại",
+  "Retry": "Thử lại",
   "Source:": "Nguồn:",
   "Could not extract this chapter": "Không trích xuất được chương này",
   "Enter content manually": "Nhập nội dung thủ công",
@@ -196,11 +160,9 @@ export const vi: Record<string, string> = {
   "Content for chapter {order}": "Nội dung chương {order}",
   "Paste chapter content here": "Dán nội dung chương vào đây",
   "Save chapter": "Lưu chương",
-  Undo: "Hoàn tác",
-  "Remember to click Save chapter after editing, or changes will be lost when you close.":
-    "Sửa xong nhớ bấm Lưu chương, nếu không đóng app là mất.",
-  "Edit the title and content to remove unwanted source page elements.":
-    "Sửa tên và nội dung để bỏ phần thừa của trang nguồn.",
+  "Undo": "Hoàn tác",
+  "Remember to click Save chapter after editing, or changes will be lost when you close.": "Sửa xong nhớ bấm Lưu chương, nếu không đóng app là mất.",
+  "Edit the title and content to remove unwanted source page elements.": "Sửa tên và nội dung để bỏ phần thừa của trang nguồn.",
 
   // API client fallbacks (used when the server sends no message of its own)
   "Crawl failed": "Crawl thất bại",
@@ -222,10 +184,9 @@ export const vi: Record<string, string> = {
 
   // Reader
   "Read / preview": "Đọc / xem thử",
-  "See the chapters exactly as the exported EPUB will show them — and read them here":
-    "Xem chương đúng như file EPUB xuất ra sẽ hiển thị — và đọc luôn tại đây",
+  "See the chapters exactly as the exported EPUB will show them — and read them here": "Xem chương đúng như file EPUB xuất ra sẽ hiển thị — và đọc luôn tại đây",
   "Reading {title}": "Đang đọc {title}",
-  Close: "Đóng",
+  "Close": "Đóng",
   "Chapter {number} / {total}": "Chương {number} / {total}",
   "Hide the chapter list": "Ẩn danh sách chương",
   "Show the chapter list": "Hiện danh sách chương",
@@ -234,7 +195,7 @@ export const vi: Record<string, string> = {
   "Leave full screen": "Thoát toàn màn hình",
   "Read full screen (F)": "Đọc toàn màn hình (F)",
   "Leave full screen (F)": "Thoát toàn màn hình (F)",
-  Unknown: "Không rõ",
+  "Unknown": "Không rõ",
   "{count} chapters in the book": "{count} chương trong sách",
   "Find a chapter…": "Tìm chương…",
   "No chapter matches “{query}”.": "Không có chương nào khớp “{query}”.",
@@ -249,30 +210,29 @@ export const vi: Record<string, string> = {
   "Smaller text": "Chữ nhỏ hơn",
   "Larger text": "Chữ to hơn",
   "Line spacing": "Giãn dòng",
-  Tight: "Hẹp",
-  Book: "Như sách",
-  Loose: "Rộng",
-  Font: "Phông chữ",
+  "Tight": "Hẹp",
+  "Book": "Như sách",
+  "Loose": "Rộng",
+  "Font": "Phông chữ",
+
   // Georgia/Palatino/Verdana are family names, so they stay as they are.
   "Book serif": "Serif của sách",
   "System sans": "Sans hệ thống",
-  Page: "Nền trang",
-  Paper: "Giấy",
-  Sepia: "Ngà",
-  Night: "Đêm",
-  "Spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file.":
-    "Khoảng cách và ảnh đều lấy từ chính stylesheet của sách, nên trang này đúng bằng nội dung file EPUB xuất ra. Các tuỳ chỉnh ở đây chỉ đổi cách bạn đọc tại chỗ — giống nút chỉnh chữ trên Kindle, chúng không được ghi vào file.",
+  "Page": "Nền trang",
+  "Paper": "Giấy",
+  "Sepia": "Ngà",
+  "Night": "Đêm",
+  "Spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file.": "Khoảng cách và ảnh đều lấy từ chính stylesheet của sách, nên trang này đúng bằng nội dung file EPUB xuất ra. Các tuỳ chỉnh ở đây chỉ đổi cách bạn đọc tại chỗ — giống nút chỉnh chữ trên Kindle, chúng không được ghi vào file.",
 
   // Highlights
   "Highlights ({count})": "Đã tô ({count})",
   "Chapter {order}": "Chương {order}",
-  "Nothing highlighted yet — select any text in the page to colour it.":
-    "Chưa tô đoạn nào — bôi đen bất kỳ đoạn nào trong trang để tô màu.",
+  "Nothing highlighted yet — select any text in the page to colour it.": "Chưa tô đoạn nào — bôi đen bất kỳ đoạn nào trong trang để tô màu.",
   "Highlight colour": "Màu tô",
-  Yellow: "Vàng",
-  Green: "Xanh lá",
-  Blue: "Xanh dương",
-  Pink: "Hồng",
+  "Yellow": "Vàng",
+  "Green": "Xanh lá",
+  "Blue": "Xanh dương",
+  "Pink": "Hồng",
   "Remove highlight": "Bỏ tô",
   "Could not load highlights": "Không tải được các đoạn đã tô",
   "Could not save the highlight": "Không lưu được đoạn tô",
@@ -281,20 +241,19 @@ export const vi: Record<string, string> = {
 
   // Private mode
   "Private mode": "Chế độ ẩn danh",
-  Private: "Ẩn danh",
+  "Private": "Ẩn danh",
   "Private mode — click to leave": "Chế độ ẩn danh — bấm để thoát",
   "Set a code for private mode": "Đặt mã cho chế độ ẩn danh",
-  "Pick a 6-digit code. There is no way to recover it, and no way to change it later.":
-    "Chọn mã 6 số. Không có cách nào lấy lại hay đổi mã này về sau.",
-  "Enter your 6-digit code to open your private library.":
-    "Nhập mã 6 số để mở thư viện ẩn danh.",
+  "Pick a 6-digit code. There is no way to recover it; you can change it later in Settings.":
+    "Chọn mã 6 số. Không có cách nào lấy lại; có thể đổi mã sau trong Cài đặt.",
+  "Enter your 6-digit code to open your private library.": "Nhập mã 6 số để mở thư viện ẩn danh.",
   "New code": "Mã mới",
   "Digit {position}": "Ô số {position}",
-  Code: "Mã",
+  "Code": "Mã",
   "Repeat the code": "Nhập lại mã",
   "The two codes do not match": "Hai lần nhập mã không khớp",
-  Create: "Tạo",
-  Open: "Mở",
+  "Create": "Tạo",
+  "Open": "Mở",
   "Opening…": "Đang mở…",
   "Wrong code": "Mã không đúng",
   "Could not check private mode": "Không kiểm tra được chế độ ẩn danh",
@@ -303,4 +262,38 @@ export const vi: Record<string, string> = {
   "Packaging EPUB…": "Đang đóng gói EPUB…",
   "Downloading images {done}/{total}…": "Đang tải ảnh {done}/{total}…",
   "Downloading audio/video {done}/{total}…": "Đang tải audio/video {done}/{total}…",
+
+  // Settings page
+  "Loading story details": "Đang tải thông tin truyện",
+  "Loading settings": "Đang tải cài đặt",
+  "Settings": "Cài đặt",
+  "Try again": "Thử lại",
+  "Appearance": "Giao diện",
+  "Theme": "Chủ đề",
+  "Kept in this browser only.": "Chỉ lưu trong trình duyệt này.",
+  "Interface language": "Ngôn ngữ giao diện",
+  "Library": "Thư viện",
+  "Check for new chapters when the app opens": "Kiểm tra chương mới khi mở ứng dụng",
+  "Only stories you are watching are checked. With this off, check them yourself from the button above the story list.":
+    "Chỉ kiểm tra những truyện đang theo dõi. Tắt đi thì tự bấm nút phía trên danh sách truyện để kiểm tra.",
+  "New book defaults": "Mặc định cho sách mới",
+  "Filled in when a story is added. Editing the story's own info always wins.":
+    "Điền sẵn khi thêm truyện. Sửa thông tin riêng của truyện vẫn được ưu tiên.",
+  "Used when the chapter list does not name one. Leave empty for none.":
+    "Dùng khi mục lục không ghi tên tác giả. Để trống nếu không cần.",
+  "A code has been set": "Đã đặt mã",
+  "No code has been set": "Chưa đặt mã",
+  "Private mode is a lock on this app, not encryption — the private library is a plain file on this machine.":
+    "Chế độ ẩn danh là khoá của ứng dụng, không phải mã hoá — thư viện riêng vẫn là một file thường trên máy.",
+  "Press Cmd/Ctrl+Shift+N to open private mode and pick a code.":
+    "Bấm Cmd/Ctrl+Shift+N để mở chế độ ẩn danh và chọn mã.",
+  "Change code": "Đổi mã",
+  "Current code": "Mã hiện tại",
+  "About": "Giới thiệu",
+  "Version": "Phiên bản",
+  "Library folder": "Thư mục thư viện",
+  "Stored": "Đã lưu trữ",
+  "{stories} stories, {chapters} chapters": "{stories} truyện, {chapters} chương",
+  "Could not load settings": "Không tải được cài đặt",
+  "Could not save settings": "Không lưu được cài đặt",
 };
