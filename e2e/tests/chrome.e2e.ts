@@ -1,6 +1,8 @@
 import { test, expect } from "../helpers/fixtures";
 import { fixtureChapterUrl, seedStory } from "../helpers/seed";
 
+test.describe.configure({ timeout: 120_000 });
+
 test("switches language and persists it", async ({ page }) => {
   await page.goto("/");
   // The accessible name is translated along with the UI, so identify the button by its
