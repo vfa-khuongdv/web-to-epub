@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import LibraryView from "./components/LibraryView";
-import ManualCrawlView from "./components/ManualCrawlView";
 import { JobStrip } from "./components/JobStrip";
+import { NoticeStack } from "./components/NoticeStack";
 import { Icon, IconName } from "./components/Icon";
 import { fetchSupportedSites } from "./api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
@@ -35,11 +35,11 @@ function applyTheme(theme: Theme): void {
 
 export default function App() {
   const [supportedSites, setSupportedSites] = useState<SupportedSite[]>([]);
-  const [tab, setTab] = useState<"library" | "manual">("library");
+  const [sitesOpen, setSitesOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(readTheme);
   const { lang, setLang, t } = useLang();
   const vault = useVault();
-  const { job, live, run, attach, subscribe, clearChapters } = useCrawlJob();
+  const { job, live, attach, subscribe, clearChapters, notices, dismissNotice, pushNotice } = useCrawlJob();
   const nextTheme = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
   // Only two languages, so the button swaps between them rather than opening a menu.
   const nextLang: Lang = lang === "vi" ? "en" : "vi";
@@ -51,6 +51,17 @@ export default function App() {
 
   // Shared live channel: open once for the whole app, close on unmount.
   useEffect(() => subscribe(), [subscribe]);
+
+  // The supported-sites popover closes on Escape; clicking outside is handled by
+  // its own backdrop (see below).
+  useEffect(() => {
+    if (!sitesOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setSitesOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [sitesOpen]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -84,27 +95,6 @@ export default function App() {
             {t("for Kindle")}
           </small>
         </span>
-
-        <nav className="tabs" role="tablist" aria-label={t("Workspace")}>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "library"}
-            onClick={() => setTab("library")}
-          >
-            <Icon name="library" size={14} />
-            {t("My Stories")}
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={tab === "manual"}
-            onClick={() => setTab("manual")}
-          >
-            <Icon name="crawl" size={14} />
-            {t("Manual Crawl")}
-          </button>
-        </nav>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-ink-2">
           {/* The only trace of private mode in the UI, and only while it is open — it
@@ -158,25 +148,77 @@ export default function App() {
               {job.total > 0 ? t("Crawling {done}/{total}", { done: job.cursor, total: job.total }) : t("Crawling")}
             </span>
           ) : (
-            <span className="flex items-center gap-1.5">
-              <Icon name="info" size={13} className="text-ink-3" />
-              {supportedSites.length > 0
-                ? t("{count} sites supported", { count: supportedSites.length })
-                : t("Loading supported sites…")}
+            // Help: the count alone doesn't say *which* sites are accepted, and that
+            // is the first thing someone with a URL in hand wants to know.
+            <span className="relative flex items-center">
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                aria-expanded={sitesOpen}
+                aria-controls="supported-sites"
+                disabled={supportedSites.length === 0}
+                title={t("Click to view the supported sites")}
+                onClick={() => setSitesOpen((open) => !open)}
+              >
+                <Icon name="info" size={13} className="text-ink-3" />
+                {supportedSites.length > 0
+                  ? t("{count} sites supported", { count: supportedSites.length })
+                  : t("Loading supported sites…")}
+              </button>
+              {sitesOpen && (
+                <>
+                  <button
+                    type="button"
+                    className="fixed inset-0 z-20 cursor-default"
+                    aria-label={t("Close")}
+                    onClick={() => setSitesOpen(false)}
+                  />
+                  <div
+                    id="supported-sites"
+                    className="absolute right-0 top-full z-30 mt-1.5 w-64 rounded-tool border border-rule-2 bg-raised p-2.5 text-left shadow-lg"
+                  >
+                    <h3 className="mb-1.5 text-[10.5px] font-[650] tracking-[0.07em] uppercase text-ink-2">
+                      {t("Supported sites")}
+                    </h3>
+                    <ul>
+                      {supportedSites.map((site) => (
+                        <li key={site.domain} className="py-0.5 text-[12.5px] whitespace-nowrap">
+                          {/* Opens in a new tab: the reader keeps the library they
+                              were about to paste a URL from. */}
+                          <a
+                            href={`https://${site.domain}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="group flex items-baseline justify-between gap-2.5 text-inherit no-underline hover:text-select hover:underline"
+                            onClick={() => setSitesOpen(false)}
+                          >
+                            <span>{site.name}</span>
+                            <span className="text-ink-3 group-hover:text-inherit">{site.domain}</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </>
+              )}
             </span>
           )}
         </div>
       </header>
 
       <div className="workbench">
-        {tab === "library" ? (
-          <LibraryView job={job} live={live} attach={attach} clearChapters={clearChapters} supportedSites={supportedSites} />
-        ) : (
-          <ManualCrawlView run={run} job={job} clearChapters={clearChapters} supportedSites={supportedSites} />
-        )}
+        <LibraryView
+          job={job}
+          live={live}
+          attach={attach}
+          clearChapters={clearChapters}
+          supportedSites={supportedSites}
+          pushNotice={pushNotice}
+        />
       </div>
 
       <JobStrip job={job} />
+      <NoticeStack notices={notices} onDismiss={dismissNotice} />
     </div>
   );
 }

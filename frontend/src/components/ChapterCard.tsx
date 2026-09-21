@@ -13,23 +13,15 @@ export function PendingChapterRow({
   title,
   url,
   state = "pending",
-  includeColumn = false,
 }: {
   order: number;
   title: string;
   url: string;
   state?: ChipState;
-  // Keep the same column count as the table using it (see ChapterCardProps.included).
-  includeColumn?: boolean;
 }) {
   const { t } = useLang();
   return (
     <tr>
-      {includeColumn && (
-        <td className="w-9 pr-1">
-          <input type="checkbox" className="checkbox" disabled aria-label={t("Chapter {order} not crawled yet", { order })} />
-        </td>
-      )}
       <td className="num w-11">
         <b>{order}</b>
       </td>
@@ -61,20 +53,15 @@ interface ChapterCardProps {
   chapter: ExtractedChapter;
   order: number;
   title: string;
-  // Missing on library tab: saved stories export all crawled chapters, nothing to pick.
-  // Manual crawl tab needs it since users paste individual chapters.
-  included?: boolean;
   onTitleChange: (title: string) => void;
-  onIncludedChange?: (included: boolean) => void;
   onRetry: () => void;
   retrying: boolean;
   retriedOnce: boolean;
   onBodyChange: (html: string) => void;
   // Chapter content no longer pairs with chapter list: open a chapter, load it.
-  // Missing on manual crawl tab since content already in RAM.
   loadBody?: () => Promise<string>;
-  // Missing on manual crawl tab: chapter not yet in library, nothing to save,
-  // just edit temporarily then export to EPUB.
+  // Missing when the chapter is not in the library yet: nothing to save, just
+  // edit temporarily then export.
   onSave?: (title: string, contentHtml: string) => Promise<void>;
 }
 
@@ -103,9 +90,7 @@ export default function ChapterCard({
   chapter,
   order,
   title,
-  included,
   onTitleChange,
-  onIncludedChange,
   onRetry,
   retrying,
   retriedOnce,
@@ -191,7 +176,6 @@ export default function ChapterCard({
   function enterManualMode() {
     setManualMode(true);
     setOpen(true);
-    onIncludedChange?.(true);
   }
 
   async function handleSave() {
@@ -226,18 +210,6 @@ export default function ChapterCard({
   return (
     <>
       <tr className={open ? "row-open" : undefined}>
-        {onIncludedChange && (
-          <td className="w-9 pr-1">
-            <input
-              type="checkbox"
-              className="checkbox"
-              checked={included}
-              disabled={failed}
-              onChange={(e) => onIncludedChange(e.target.checked)}
-              aria-label={t("Include chapter {order} in book", { order })}
-            />
-          </td>
-        )}
         <td className="num w-11">
           <b>{order}</b>
         </td>
@@ -280,7 +252,7 @@ export default function ChapterCard({
 
       {open && (
         <tr className="chapter-open" id={panelId}>
-          <td colSpan={onIncludedChange ? 5 : 4}>
+          <td colSpan={4}>
             <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
               <span className="break-all">
                 {t("Source:")}{" "}

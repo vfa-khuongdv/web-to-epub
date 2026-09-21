@@ -74,7 +74,7 @@ export function toExtractedChapter(chapter: StoredChapter): ExtractedChapter {
 export function pickChapterTitle(tocTitle: string | undefined, pageTitle: string, chapterUrl: string): string {
   const toc = tocTitle?.trim();
   const page = pageTitle.trim();
-  // Manual crawl has no TOC: name is currently the URL itself.
+  // A TOC entry with no name keeps the URL as its title.
   if (!toc || toc === chapterUrl) return page || toc || chapterUrl;
   if (!page) return toc;
   const normalize = (text: string) => text.replace(/\s+/g, " ").toLowerCase();
