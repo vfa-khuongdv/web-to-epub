@@ -128,8 +128,25 @@ export default function ChapterCard({
   // A locked chapter is not a transient failure: the site withholds the text until the
   // reader has access (login/session, mature opt-in, subscription), so it reads differently.
   const locked = failed && chapter.errorKind === "locked";
+  // Withheld until the reader subscribes, or behind the mature opt-in: same kind of dead
+  // end as a lock, but each has its own fix worth naming.
+  const subscribers = failed && chapter.errorKind === "subscribers";
+  const mature = failed && chapter.errorKind === "mature";
+  const gated = locked || subscribers || mature;
   const panelId = `chapter-panel-${order}`;
-  const chip: ChipState | null = retrying ? "running" : locked ? "locked" : failed ? "error" : manualMode ? null : "done";
+  const chip: ChipState | null = retrying
+    ? "running"
+    : gated
+      ? subscribers
+        ? "subscribers"
+        : mature
+          ? "mature"
+          : "locked"
+      : failed
+        ? "error"
+        : manualMode
+          ? null
+          : "done";
 
   // Flash "Saved" on button after successful save.
   useEffect(() => {
@@ -268,10 +285,16 @@ export default function ChapterCard({
             {failed ? (
               <>
                 <div className="banner mt-2">
-                  <Icon name={locked ? "lock" : "alert"} size={14} />
+                  <Icon name={gated ? "lock" : "alert"} size={14} />
                   <div className="min-w-0">
                     <p className="font-semibold">
-                      {locked ? t("This chapter is locked") : t("Could not extract this chapter")}
+                      {gated
+                        ? subscribers
+                          ? t("This chapter is for subscribers only")
+                          : mature
+                            ? t("This chapter is rated M (18+)")
+                            : t("This chapter is locked")
+                        : t("Could not extract this chapter")}
                     </p>
                     <p className="mt-0.5 font-mono text-[11.5px] leading-relaxed">{tidyError(chapter.error ?? "")}</p>
                   </div>
@@ -287,11 +310,15 @@ export default function ChapterCard({
                       {t("Enter content manually")}
                     </button>
                   ) : (
-                    !locked && <span className="text-xs text-ink-3">{t("Many errors are temporary — try again first.")}</span>
+                    !gated && <span className="text-xs text-ink-3">{t("Many errors are temporary — try again first.")}</span>
                   )}
-                  {locked && (
+                  {gated && (
                     <span className="text-xs text-ink-3">
-                      {t("Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.")}
+                      {subscribers
+                        ? t("Subscribe to the author on asianfanfics.com, then retry.")
+                        : mature
+                          ? t("Enable mature content on your asianfanfics.com account, then retry.")
+                          : t("Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.")}
                     </span>
                   )}
                 </div>

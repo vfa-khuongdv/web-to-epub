@@ -1,10 +1,11 @@
 export type BlockType = "heading" | "paragraph" | "image" | "audio" | "video";
 
 // Why a crawl failed. "locked" means a retry cannot change the outcome until the site
-// grants access (missing/expired login, mature opt-in, subscribers-only content); "other"
-// is everything else, where retrying may well work. The UI reacts to this instead of
-// matching message text, which is translated.
-export type ChapterErrorKind = "locked" | "other";
+// grants access (missing/expired login); "subscribers" and "mature" are that same kind of
+// lock with a known fix the reader can apply (subscribe, enable mature content), so the UI
+// names them instead of the generic "Locked"; "other" is everything else, where retrying
+// may well work. The UI reacts to this instead of matching message text, which is translated.
+export type ChapterErrorKind = "locked" | "subscribers" | "mature" | "other";
 
 export interface ContentBlock {
   type: BlockType;

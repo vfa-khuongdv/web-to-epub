@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWattpadChapter } from "./chapters/wattpad";
 import { estimateRemainingMs, extractWithRetry, MAX_ATTEMPTS } from "./crawl";
-import { LockedContentError } from "./extractor";
+import { LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
 vi.mock("./chapters/wattpad", async (importOriginal) => {
@@ -101,6 +101,26 @@ describe("extractWithRetry", () => {
 
     expect(chapter.error).toMatch(/paid program/);
     expect(chapter.errorKind).toBe("locked");
+    expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
+  });
+
+  it("subscribers-only content stops immediately and keeps its own kind", async () => {
+    vi.mocked(fetchWattpadChapter).mockRejectedValue(
+      new SubscribersOnlyError("This Asianfanfics content is for subscribers only")
+    );
+
+    const chapter = await extractWithRetry(WATTPAD_URL);
+
+    expect(chapter.errorKind).toBe("subscribers");
+    expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
+  });
+
+  it("mature (18+) content stops immediately and keeps its own kind", async () => {
+    vi.mocked(fetchWattpadChapter).mockRejectedValue(new MatureContentError("This content is rated M"));
+
+    const chapter = await extractWithRetry(WATTPAD_URL);
+
+    expect(chapter.errorKind).toBe("mature");
     expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
   });
 

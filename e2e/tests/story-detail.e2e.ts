@@ -128,3 +128,51 @@ test("shows a locked chapter as Locked, with how to unlock it", async ({ page })
   await expect(page.getByText("This chapter is locked")).toBeVisible();
   await expect(page.getByText(/Unlock it on the site first/)).toBeVisible();
 });
+
+test("shows a subscribers-only chapter with the fix, not a plain lock", async ({ page }) => {
+  await seedStory({
+    title: "Subscribers story",
+    chapters: [
+      {
+        title: "Chương 1",
+        url: fixtureChapterUrl("subs", 1),
+        status: "error",
+        error: "This Asianfanfics content is for subscribers only — it needs an account subscribed to the author",
+        errorKind: "subscribers",
+      },
+    ],
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Subscribers story", exact: true }).click();
+  await expect(page.getByText("Subscribers only", { exact: true })).toBeVisible();
+
+  await page.locator('button[aria-controls="chapter-panel-1"]').click();
+  await expect(page.getByText("This chapter is for subscribers only")).toBeVisible();
+  await expect(page.getByText(/Subscribe to the author on asianfanfics.com/)).toBeVisible();
+  await expect(page.getByText(/Unlock it on the site first/)).toHaveCount(0);
+});
+
+test("shows a rated-M chapter with the mature opt-in fix", async ({ page }) => {
+  await seedStory({
+    title: "Mature story",
+    chapters: [
+      {
+        title: "Chương 1",
+        url: fixtureChapterUrl("mature", 1),
+        status: "error",
+        error: "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled",
+        errorKind: "mature",
+      },
+    ],
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Mature story", exact: true }).click();
+  await expect(page.getByText("Rated M (18+)", { exact: true })).toBeVisible();
+
+  await page.locator('button[aria-controls="chapter-panel-1"]').click();
+  await expect(page.getByText("This chapter is rated M (18+)", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Enable mature content on your asianfanfics.com account/)).toBeVisible();
+  await expect(page.getByText(/Unlock it on the site first/)).toHaveCount(0);
+});

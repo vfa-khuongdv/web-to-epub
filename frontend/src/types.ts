@@ -46,8 +46,8 @@ export interface BookMetadata {
 
 export type ChapterStatus = "pending" | "done" | "error";
 
-// Why a crawl failed; the UI shows "locked" chapters differently from plain errors.
-export type ChapterErrorKind = "locked" | "other";
+// Why a crawl failed; the UI shows "locked"/"subscribers"/"mature" chapters differently from plain errors.
+export type ChapterErrorKind = "locked" | "subscribers" | "mature" | "other";
 
 export interface StoredChapter {
   order: number;

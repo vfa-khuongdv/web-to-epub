@@ -154,6 +154,14 @@ export const en: Record<string, string> = {
   "Could not extract this chapter": "Could not extract this chapter",
   "Locked": "Locked",
   "This chapter is locked": "This chapter is locked",
+  "Subscribers only": "Subscribers only",
+  "Rated M (18+)": "Rated M (18+)",
+  "This chapter is for subscribers only": "This chapter is for subscribers only",
+  "This chapter is rated M (18+)": "This chapter is rated M (18+)",
+  "Subscribe to the author on asianfanfics.com, then retry.":
+    "Subscribe to the author on asianfanfics.com, then retry.",
+  "Enable mature content on your asianfanfics.com account, then retry.":
+    "Enable mature content on your asianfanfics.com account, then retry.",
   "Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.":
     "Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.",
   "Enter content manually": "Enter content manually",

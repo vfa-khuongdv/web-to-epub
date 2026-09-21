@@ -378,6 +378,13 @@ describe("createStoryStore", () => {
     // The outline the story detail loads must carry it too, or the chip cannot tell.
     expect((await store.getOutline(story.id))?.chapters[0].errorKind).toBe("locked");
 
+    // Subscribers-only is the same column, its own value.
+    await store.saveChapter(story.id, { ...locked, errorKind: "subscribers" });
+    expect((await store.getChapter(story.id, 1))?.errorKind).toBe("subscribers");
+    expect((await store.getOutline(story.id))?.chapters[0].errorKind).toBe("subscribers");
+    await store.saveChapter(story.id, { ...locked, errorKind: "mature" });
+    expect((await store.getChapter(story.id, 1))?.errorKind).toBe("mature");
+
     // A successful re-crawl (or manual save) clears it again.
     await store.saveChapter(story.id, { ...locked, status: "done", error: undefined, errorKind: undefined, blocks: [] });
     expect((await store.getChapter(story.id, 1))?.errorKind).toBeUndefined();
