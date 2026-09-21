@@ -30,7 +30,9 @@ COPY frontend/package.json ./frontend/
 RUN npm ci --omit=dev && npm cache clean --force
 
 # Chromium + thư viện hệ thống cho Playwright (cần quyền root, làm trước USER).
-RUN npx playwright install --with-deps chromium \
+# Gọi thẳng cli.js: playwright (prod) và @playwright/test (dev) trùng tên bin "playwright",
+# npm chỉ link .bin/playwright -> @playwright/test/cli.js, mà dep dev đã bị --omit=dev bỏ đi.
+RUN node node_modules/playwright/cli.js install --with-deps chromium \
     && rm -rf /var/lib/apt/lists/* \
     && chmod -R a+rx /ms-playwright
 
