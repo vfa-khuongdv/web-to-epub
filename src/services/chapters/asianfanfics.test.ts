@@ -1,11 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 import { LockedContentError } from "../extractor";
-import { BlankedPageError, renderPageHtml } from "../renderer";
+import { renderPageHtml } from "../renderer";
 import { fetchAsianfanficsChapter, parseAsianfanficsChapter } from "./asianfanfics";
 
 vi.mock("../renderer", () => ({
   renderPageHtml: vi.fn(),
-  BlankedPageError: class BlankedPageError extends Error {},
 }));
 
 const mockedRender = vi.mocked(renderPageHtml);
@@ -67,15 +66,18 @@ describe("parseAsianfanficsChapter", () => {
     expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/rated M/);
   });
 
-  it("nội dung rỗng + subscribers only → LockedContentError", () => {
-    const html = chapterPage("", { extra: `<div>Subscribers only</div>` });
-    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(LockedContentError);
-    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/subscribers only/);
+  it("badge 'Subscribers only' trên header KHÔNG phải khoá: chương lỗi tạm thời vẫn thử lại được", () => {
+    // Every page of a subscribers-only story carries that badge, readable or not. Treating
+    // it as a lock would turn a failed content load into a permanent error with no retry.
+    const html = chapterPage("", { extra: `<div><span>Subscribers only</span></div>` });
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).not.toThrow(LockedContentError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/Could not find chapter content/);
   });
 
-  it("nội dung rỗng + trang Cloudflare → BlankedPageError (thử lại ngay)", () => {
+  it("trang Cloudflare → lỗi tạm thời có thể thử lại, không phải LockedContentError", () => {
     const html = '<html><head><title>Just a moment...</title></head><body>Performing security verification</body></html>';
-    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(BlankedPageError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).not.toThrow(LockedContentError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/Cloudflare verification did not finish/);
   });
 
   it("nội dung rỗng không rõ nguyên nhân → lỗi có thể thử lại", () => {
@@ -130,6 +132,20 @@ describe("parseAsianfanficsChapter", () => {
     </main></body></html>`;
     const chapter = parseAsianfanficsChapter(html, "https://www.asianfanfics.com/story/view/1143593/attraction");
     expect(chapter.blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+  });
+
+  it("phiên đã lưu nhưng trang trả về khách → báo phiên hết hạn", () => {
+    const html = `<!doctype html><html><body>
+      <header data-aff-userbar-shell><a href="/login">Log In</a> <a href="/register">Register</a></header>
+      <main><h1>Purr-fect</h1>
+        <div id="bodyText"><div class="mb-4">Please subscribe to read further chapters.</div><div hx-get="/htmx/teaser/1/tok">Đoạn đầu…</div></div>
+      </main>
+    </body></html>`;
+    // With a saved session, the real reason is the expired login, not the guest-level lock.
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL, { sessionSaved: true })).toThrow(LockedContentError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL, { sessionSaved: true })).toThrow(/session has expired/);
+    // Without a saved session it is a genuine guest lock and reads as such.
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL, { sessionSaved: false })).toThrow(/subscribers only/);
   });
 });
 

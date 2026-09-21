@@ -120,7 +120,9 @@ describe("save / remove / status", () => {
     );
     expect(siteSession.siteSessionStatus("saved.example")).toEqual({ configured: false });
     siteSession.saveSiteSession("saved.example", { userAgent: parsed.userAgent, cookies: parsed.cookies, origins: [] });
-    expect(siteSession.siteSessionStatus("saved.example")).toEqual({ configured: true });
+    const status = siteSession.siteSessionStatus("saved.example");
+    expect(status.configured).toBe(true);
+    expect(typeof status.savedAt).toBe("string");
     const loaded = siteSession.loadSiteSession("https://saved.example/x");
     expect(loaded?.cookies?.[0]?.name).toBe("atokun");
     expect(siteSession.removeSiteSession("saved.example")).toBe(true);

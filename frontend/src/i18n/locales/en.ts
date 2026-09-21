@@ -301,6 +301,9 @@ export const en: Record<string, string> = {
   "Remove": "Remove",
   "A saved login is in use for rated-M and subscribers-only stories.":
     "A saved login is in use for rated-M and subscribers-only stories.",
+  "Saved {ago}.": "Saved {ago}.",
+  "The saved login lasts about an hour; import a fresh one when it expires.":
+    "The saved login lasts about an hour; import a fresh one when it expires.",
   "Rated-M and subscribers-only stories need a login saved from your own browser.":
     "Rated-M and subscribers-only stories need a login saved from your own browser.",
   "Asianfanfics session": "Asianfanfics session",

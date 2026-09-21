@@ -8,6 +8,7 @@ import {
 } from "../lib/api";
 import { LANGUAGES, useLang } from "../i18n";
 import { Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "../lib/theme";
+import { timeAgo } from "../lib/timeAgo";
 import { AppInfo, AppSettings } from "../types";
 import { Icon } from "./Icon";
 import SiteSessionDialog from "./SiteSessionDialog";
@@ -155,11 +156,14 @@ function SettingsBody({
   const [author, setAuthor] = useState(settings.defaultAuthor);
   const [error, setError] = useState<string | null>(null);
   const [sessionConfigured, setSessionConfigured] = useState<boolean | null>(null);
+  const [sessionSavedAt, setSessionSavedAt] = useState<string | undefined>(undefined);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
 
   const loadSession = useCallback(async () => {
     try {
-      setSessionConfigured((await fetchSiteSession()).configured);
+      const status = await fetchSiteSession();
+      setSessionConfigured(status.configured);
+      setSessionSavedAt(status.savedAt);
     } catch {
       setSessionConfigured(null);
     }
@@ -334,7 +338,9 @@ function SettingsBody({
           label="Asianfanfics"
           hint={
             sessionConfigured
-              ? t("A saved login is in use for rated-M and subscribers-only stories.")
+              ? `${t("A saved login is in use for rated-M and subscribers-only stories.")}${
+                  sessionSavedAt ? ` ${t("Saved {ago}.", { ago: timeAgo(sessionSavedAt, lang) })}` : ""
+                }`
               : t("Rated-M and subscribers-only stories need a login saved from your own browser.")
           }
           control={

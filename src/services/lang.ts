@@ -94,6 +94,8 @@ const vi: Record<string, string> = {
     "Chương này thuộc chương trình trả phí (Paid Stories) của Wattpad, không thể trích xuất: {url}",
   "Could not find chapter content at {url} — the site may have changed structure or the chapter is locked":
     "Không tìm thấy nội dung chương tại {url} — trang có thể đã đổi cấu trúc hoặc chương bị khoá",
+  "Cloudflare verification did not finish — try again in a moment ({url})":
+    "Cloudflare chưa xác minh xong — thử lại sau một lát ({url})",
   "Page blanked before content could be read (temporary error, can retry): {url}":
     "Trang bị xoá trắng trước khi kịp đọc nội dung (lỗi tạm thời, thử lại được): {url}",
   "Failed to connect to {host} ({code}) — connection dropped before getting a response. If your network is blocking this site or the site is blocking your IP, try a VPN/proxy and run again. URL: {url}":
@@ -130,6 +132,8 @@ const vi: Record<string, string> = {
     "cURL này không phải của {domain} — hãy copy một request từ chính trang đó khi đã đăng nhập",
   "No cookies found in that cURL — copy a request from the site while logged in":
     "Không thấy cookie trong cURL này — hãy copy một request từ chính trang đó khi đã đăng nhập",
+  "Saved Asianfanfics session has expired — log in again in your browser, then re-import it in Settings → Site sessions: {url}":
+    "Phiên đăng nhập Asianfanfics đã hết hạn — đăng nhập lại bằng trình duyệt rồi nhập lại phiên trong Cài đặt → Phiên đăng nhập theo trang: {url}",
 };
 
 let current: Lang = DEFAULT_LANG;

@@ -17,8 +17,9 @@ const CHROME_TOKEN_RE =
 // the language the supported sites publish in — translating it turns the check off.
 const LOCKED_CONTENT_RE = /nội dung (chương|chapter).{0,20}(đang bị khóa|bị khóa)|vui lòng (tắt|mở lại).{0,30}quảng cáo/i;
 
-// Thrown when a chapter is locked behind an ad interaction. Retrying can't
-// unlock it, so callers must not spend their retry budget on it.
+// Thrown when a chapter is locked for a reason a retry cannot fix (an anti-adblock
+// notice, a missing or expired login, subscribers-only content). Callers must not
+// spend their retry budget on it.
 export class LockedContentError extends Error {}
 
 function stripChrome(document: Document): void {
