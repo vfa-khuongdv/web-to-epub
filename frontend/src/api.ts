@@ -1,6 +1,6 @@
 import { currentLang, translate } from "./i18n";
 import { currentVaultToken, noteVaultExpired } from "./vaultToken";
-import { BookMetadata, ProgressEvent, StoredChapter, StoredStory, StorySummary, SupportedSite } from "./types";
+import { BookMetadata, StoredChapter, StoredStory, StorySummary, SupportedSite } from "./types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites", { headers: langHeaders() });
@@ -105,12 +105,6 @@ async function streamNdjson<T>(path: string, body: unknown, onEvent: (event: T) 
       onEvent(JSON.parse(line));
     }
   }
-}
-
-// Streams NDJSON progress events from POST /api/extract, invoking onEvent
-// for each line as it arrives.
-export async function extractChapters(urls: string[], onEvent: (event: ProgressEvent) => void): Promise<void> {
-  await streamNdjson<ProgressEvent>("/api/extract", { urls }, onEvent);
 }
 
 // Start crawling a story: server responds immediately, crawls in background,
@@ -296,20 +290,6 @@ export async function exportStoryEpub(
   onProgress?: (progress: ExportProgress) => void
 ): Promise<Blob> {
   return runExport(`/api/stories/${encodeURIComponent(storyId)}/export`, { metadata, chapters }, onProgress);
-}
-
-export interface ExportChapterPayload {
-  title: string;
-  includeInBook: boolean;
-  contentHtml: string;
-}
-
-export async function exportEpub(
-  metadata: BookMetadata,
-  chapters: ExportChapterPayload[],
-  onProgress?: (progress: ExportProgress) => void
-): Promise<Blob> {
-  return runExport("/api/export", { metadata, chapters }, onProgress);
 }
 
 export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"] as const;

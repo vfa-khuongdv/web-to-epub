@@ -61,8 +61,7 @@ export async function extractWithRetry(
     } catch (err) {
       lastError = err instanceof Error ? err.message : lastError;
       // Locked chapter can't be unlocked by re-rendering — fail fast instead
-      // of wasting the whole retry budget. (The preview UI still offers manual
-      // retry per chapter.)
+      // of wasting the whole retry budget. (The UI still offers a per-chapter retry.)
       if (err instanceof LockedContentError) break;
       if (attempt < MAX_ATTEMPTS) await sleep(retryDelayMs(err, attempt));
     }

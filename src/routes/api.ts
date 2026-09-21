@@ -25,9 +25,6 @@ import { TocAdapter } from "../services/toc/types";
 import {
   BookMetadata,
   ExportChapter,
-  ExportRequest,
-  ExtractedChapter,
-  ExtractRequest,
   ProgressEvent,
   StoredChapter,
   StoredStory,
@@ -159,77 +156,6 @@ router.get("/supported-sites", (_req, res) => {
   res.json({ sites: SUPPORTED_SITES });
 });
 
-// Returns hostnames (without protocol) that aren't in the supported-site
-// allowlist, or null if every URL is supported.
-function findUnsupportedUrls(urls: string[]): string[] | null {
-  const unsupported = urls.filter((url) => !findSupportedSite(url));
-  return unsupported.length > 0 ? unsupported : null;
-}
-
-// Streams NDJSON progress events (one JSON object per line) while crawling
-// each chapter URL sequentially, so the frontend can show a progress bar
-// without holding a long-lived request open per chapter.
-router.post("/extract", async (req, res) => {
-  const { urls } = req.body as ExtractRequest;
-  if (!Array.isArray(urls) || urls.length === 0) {
-    res.status(400).json({ message: t("urls is required and must be a non-empty array") });
-    return;
-  }
-
-  const unsupported = findUnsupportedUrls(urls);
-  if (unsupported) {
-    res.status(400).json({
-      message: t("{count} URL(s) are from unsupported sites", { count: unsupported.length }),
-      unsupportedUrls: unsupported,
-    });
-    return;
-  }
-
-  res.writeHead(200, {
-    "Content-Type": "application/x-ndjson",
-    "Cache-Control": "no-cache",
-    "Transfer-Encoding": "chunked",
-  });
-
-  const send = (event: ProgressEvent) => res.write(JSON.stringify(event) + "\n");
-  const chapters: ExtractedChapter[] = [];
-  const startedAt = Date.now();
-
-  for (let i = 0; i < urls.length; i++) {
-    const url = urls[i];
-    const chapter = await extractWithRetry(url, (attempt) => {
-      const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
-      send({ type: "progress", index: i, total: urls.length, url, message: t("Loading & extracting…{attempt}", { attempt: attemptSuffix }) });
-    });
-    chapters.push(chapter);
-    const etaMs = estimateRemainingMs({ startedAt, completed: i + 1, total: urls.length });
-    if (chapter.error) {
-      send({ type: "error", index: i, total: urls.length, url, message: chapter.error, etaMs });
-    } else {
-      send({ type: "chapter-done", index: i, cursor: i + 1, total: urls.length, url, etaMs });
-    }
-  }
-
-  send({ type: "done", chapters });
-  res.end();
-});
-
-// Non-streaming single-URL re-extract, used by the "Retry" button in the
-// preview UI to recover one failed chapter without re-running the batch.
-router.post("/extract-one", async (req, res) => {
-  const { url } = req.body as { url: string };
-  if (!url) {
-    res.status(400).json({ message: t("url is required") });
-    return;
-  }
-  if (!findSupportedSite(url)) {
-    res.status(400).json({ message: t("This site is not yet supported: {url}", { url }) });
-    return;
-  }
-  const chapter = await extractWithRetry(url);
-  res.json({ chapter });
-});
-
 router.post("/cover-upload", upload.single("cover"), (req, res) => {
   if (!req.file) {
     res.status(400).json({ message: t("Cover file is required") });
@@ -240,8 +166,8 @@ router.post("/cover-upload", upload.single("cover"), (req, res) => {
 
 // Exporting EPUB with many images takes tens of seconds. A single response that both
 // reports progress and returns binary data is not feasible, so we split it: POST streams
-// NDJSON progress (like /api/extract) then returns an export ID, client GET that ID
-// to fetch the file. File waits in RAM — single machine, single process, like library.runningCrawls.
+// NDJSON progress then returns an export ID, client GET that ID to fetch the file.
+// File waits in RAM — single machine, single process, like library.runningCrawls.
 const EXPORT_TTL_MS = 5 * 60_000;
 // With many images the progress stream sends one line per image; batch them to avoid
 // flooding the network with thousands of useless lines and thousands of re-renders.
@@ -316,15 +242,6 @@ router.get("/exports/:exportId", (req, res) => {
   res.end(pending.buffer);
 });
 
-router.post("/export", async (req, res) => {
-  const { metadata, chapters } = req.body as ExportRequest;
-  if (!metadata || !Array.isArray(chapters)) {
-    res.status(400).json({ message: t("metadata and chapters are required") });
-    return;
-  }
-  await streamExport(res, metadata, chapters, epubFileName(metadata.title || "book"), DATA_DIR);
-});
-
 function writeSse(res: ExpressResponse, payload: unknown) {
   if (res.destroyed || res.writableEnded) return false;
   res.write(`data: ${JSON.stringify(payload)}\n\n`);
@@ -386,10 +303,7 @@ router.post("/stories", async (req, res) => {
   const adapter = getTocAdapter(url);
   if (!adapter) {
     res.status(400).json({
-      message: t(
-        "{site} does not yet support automatic chapter list loading — enter chapter URLs manually in the {tab} tab",
-        { site: site.name, tab: t("Manual Crawl") }
-      ),
+      message: t("{site} does not yet support automatic chapter list loading", { site: site.name }),
     });
     return;
   }

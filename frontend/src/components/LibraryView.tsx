@@ -4,7 +4,7 @@ import { Translate, useLang } from "../i18n";
 import { isSupportedUrl } from "../isSupportedUrl";
 import { timeAgo } from "../timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
-import { CrawlJobState, LiveCrawl, liveCounts } from "../useCrawlJob";
+import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../useCrawlJob";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
 import StoryDetail from "./StoryDetail";
@@ -130,12 +130,14 @@ export default function LibraryView({
   attach,
   clearChapters,
   supportedSites,
+  pushNotice,
 }: {
   job: CrawlJobState;
   live: Record<string, LiveCrawl | undefined>;
   attach: (label: string, storyId: string) => () => void;
   clearChapters: () => void;
   supportedSites: SupportedSite[];
+  pushNotice: (notice: NoticeInput) => void;
 }) {
   const { lang, t } = useLang();
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -245,8 +247,10 @@ export default function LibraryView({
     setBusy(true);
     setError(null);
     try {
-      setSelected(await createStory(url));
+      const created = await createStory(url);
+      setSelected(created);
       setStoryUrl("");
+      pushNotice({ kind: "toc-loaded", count: created.chapters.length });
       await loadStories();
     } catch (err) {
       setError((err as Error).message);

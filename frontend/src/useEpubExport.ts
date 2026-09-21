@@ -1,7 +1,5 @@
 import { useState } from "react";
 import {
-  exportEpub,
-  ExportChapterPayload,
   ExportProgress,
   exportStoryEpub,
   StoryExportChapter,
@@ -68,23 +66,5 @@ export function useEpubExport() {
     }
   }
 
-  async function exportBook(
-    metadata: BookMetadata,
-    chapters: ExportChapterPayload[],
-    coverFile: File | null
-  ): Promise<void> {
-    setIsExporting(true);
-    setProgress(null);
-    try {
-      // If file chosen, it wins (only for this export); otherwise use story's saved cover
-      // (downloaded during crawl).
-      const coverUrl = coverFile ? await uploadCover(coverFile) : metadata.coverUrl;
-      download(await exportEpub({ ...metadata, coverUrl }, chapters, setProgress), metadata.title);
-    } finally {
-      setIsExporting(false);
-      setProgress(null);
-    }
-  }
-
-  return { isExporting, progress, exportBook, exportStoryBook };
+  return { isExporting, progress, exportStoryBook };
 }
