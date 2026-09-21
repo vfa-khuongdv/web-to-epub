@@ -59,7 +59,8 @@ test("recovers from a blanked page and fails fast on a locked chapter", async ({
   expect(stored?.chapters[1].error).toContain("Chapter is locked behind an ad blocker notice");
 
   const row = page.locator("tr", { hasText: "Chương khóa" });
-  await expect(row.getByText("Error", { exact: true })).toBeVisible();
+  // Locked content reads as "Locked", not the generic "Error": a retry cannot fix it.
+  await expect(row.getByText("Locked", { exact: true })).toBeVisible();
   await expect(row.getByRole("button", { name: "Retry" })).toBeVisible();
   await expect(page.locator("tr", { hasText: "Crawl failures" })).toContainText("Done · 1 errors");
 });

@@ -100,6 +100,7 @@ describe("extractWithRetry", () => {
     const chapter = await extractWithRetry(WATTPAD_URL);
 
     expect(chapter.error).toMatch(/paid program/);
+    expect(chapter.errorKind).toBe("locked");
     expect(fetchWattpadChapter).toHaveBeenCalledTimes(1);
   });
 
@@ -115,6 +116,7 @@ describe("extractWithRetry", () => {
     expect(renderPageHtml).toHaveBeenCalledTimes(1);
     expect(extractChapter).toHaveBeenCalledTimes(1);
     expect(chapter.error).toBe("Chương này thuộc chương trả phí");
+    expect(chapter.errorKind).toBe("locked");
   });
 
   it("exceeds MAX_ATTEMPTS returns chapter with error, does not throw", async () => {
@@ -130,6 +132,7 @@ describe("extractWithRetry", () => {
       expect(chapter.sourceUrl).toBe(WATTPAD_URL);
       expect(chapter.title).toBe(WATTPAD_URL);
       expect(chapter.error).toBe(" lỗi mạng ");
+      expect(chapter.errorKind).toBe("other");
       expect(chapter.blocks).toEqual([]);
       expect(fetchWattpadChapter).toHaveBeenCalledTimes(MAX_ATTEMPTS);
       expect(attempts).toEqual(Array.from({ length: MAX_ATTEMPTS }, (_, i) => i + 1));

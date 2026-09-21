@@ -153,6 +153,10 @@ export const vi: Record<string, string> = {
   "Retry": "Thử lại",
   "Source:": "Nguồn:",
   "Could not extract this chapter": "Không trích xuất được chương này",
+  "Locked": "Bị khoá",
+  "This chapter is locked": "Chương này bị khoá",
+  "Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.":
+    "Hãy mở khoá trên trang trước — đăng ký theo dõi tác giả, bật nội dung người lớn, hoặc nhập lại phiên đăng nhập — rồi bấm Thử lại.",
   "Enter content manually": "Nhập nội dung thủ công",
   "Many errors are temporary — try again first.": "Nhiều lỗi chỉ là tạm thời — thử lại trước đã.",
   "Title for chapter {order}": "Tiêu đề chương {order}",

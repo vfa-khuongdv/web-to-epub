@@ -72,6 +72,7 @@ chaptersRouter.patch("/stories/:id/chapters/:order", async (req, res) => {
     blocks,
     status: "done",
     error: undefined,
+    errorKind: undefined,
   };
   await library.stories.saveChapter(id, updated);
   res.json({ chapter: updated });

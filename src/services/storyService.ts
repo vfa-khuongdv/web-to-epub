@@ -60,7 +60,13 @@ export function countNewChapters(stored: { url: string }[], toc: TocChapter[]): 
 
 export function toExtractedChapter(chapter: StoredChapter): ExtractedChapter {
   if (chapter.status === "error") {
-    return { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || "Unknown error" };
+    return {
+      sourceUrl: chapter.url,
+      title: chapter.title,
+      blocks: [],
+      error: chapter.error || "Unknown error",
+      errorKind: chapter.errorKind,
+    };
   }
   return { sourceUrl: chapter.url, title: chapter.title, blocks: chapter.blocks ?? [] };
 }

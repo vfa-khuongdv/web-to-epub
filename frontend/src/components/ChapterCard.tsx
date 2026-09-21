@@ -125,8 +125,11 @@ export default function ChapterCard({
   const [editorKey, setEditorKey] = useState(0);
 
   const failed = !!chapter.error && !manualMode;
+  // A locked chapter is not a transient failure: the site withholds the text until the
+  // reader has access (login/session, mature opt-in, subscription), so it reads differently.
+  const locked = failed && chapter.errorKind === "locked";
   const panelId = `chapter-panel-${order}`;
-  const chip: ChipState | null = retrying ? "running" : failed ? "error" : manualMode ? null : "done";
+  const chip: ChipState | null = retrying ? "running" : locked ? "locked" : failed ? "error" : manualMode ? null : "done";
 
   // Flash "Saved" on button after successful save.
   useEffect(() => {
@@ -265,9 +268,11 @@ export default function ChapterCard({
             {failed ? (
               <>
                 <div className="banner mt-2">
-                  <Icon name="alert" size={14} />
+                  <Icon name={locked ? "lock" : "alert"} size={14} />
                   <div className="min-w-0">
-                    <p className="font-semibold">{t("Could not extract this chapter")}</p>
+                    <p className="font-semibold">
+                      {locked ? t("This chapter is locked") : t("Could not extract this chapter")}
+                    </p>
                     <p className="mt-0.5 font-mono text-[11.5px] leading-relaxed">{tidyError(chapter.error ?? "")}</p>
                   </div>
                 </div>
@@ -282,7 +287,12 @@ export default function ChapterCard({
                       {t("Enter content manually")}
                     </button>
                   ) : (
-                    <span className="text-xs text-ink-3">{t("Many errors are temporary — try again first.")}</span>
+                    !locked && <span className="text-xs text-ink-3">{t("Many errors are temporary — try again first.")}</span>
+                  )}
+                  {locked && (
+                    <span className="text-xs text-ink-3">
+                      {t("Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.")}
+                    </span>
                   )}
                 </div>
               </>

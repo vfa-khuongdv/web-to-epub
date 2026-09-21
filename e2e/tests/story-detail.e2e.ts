@@ -105,3 +105,26 @@ test("shows watch state and reports the missing TOC adapter", async ({ page }) =
   await page.getByRole("button", { name: "Load 2 new chapters" }).click();
   await expect(page.getByText("This story has no TOC adapter")).toBeVisible();
 });
+
+test("shows a locked chapter as Locked, with how to unlock it", async ({ page }) => {
+  await seedStory({
+    title: "Locked story",
+    chapters: [
+      {
+        title: "Chương 1",
+        url: fixtureChapterUrl("locked", 1),
+        status: "error",
+        error: "This Asianfanfics content is for subscribers only — it needs an account subscribed to the author",
+        errorKind: "locked",
+      },
+    ],
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Locked story", exact: true }).click();
+  await expect(page.getByText("Locked", { exact: true })).toBeVisible();
+
+  await page.locator('button[aria-controls="chapter-panel-1"]').click();
+  await expect(page.getByText("This chapter is locked")).toBeVisible();
+  await expect(page.getByText(/Unlock it on the site first/)).toBeVisible();
+});

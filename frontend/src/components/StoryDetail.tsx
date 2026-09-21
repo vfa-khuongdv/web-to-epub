@@ -36,7 +36,13 @@ interface ChapterState {
 function toChapterState(chapter: StoredChapter, version: number, t: Translate): ChapterState {
   const data: ExtractedChapter =
     chapter.status === "error"
-      ? { sourceUrl: chapter.url, title: chapter.title, blocks: [], error: chapter.error || t("Unknown error") }
+      ? {
+          sourceUrl: chapter.url,
+          title: chapter.title,
+          blocks: [],
+          error: chapter.error || t("Unknown error"),
+          errorKind: chapter.errorKind,
+        }
       : { sourceUrl: chapter.url, title: chapter.title, blocks: chapter.blocks ?? [] };
   return {
     id: `stored-${chapter.order}`,

@@ -77,6 +77,7 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
       if (stored) {
         stored.status = extracted.error ? "error" : "done";
         stored.error = extracted.error;
+        stored.errorKind = extracted.error ? extracted.errorKind : undefined;
         stored.blocks = extracted.error ? undefined : extracted.blocks;
         if (!extracted.error) stored.title = pickChapterTitle(stored.title, extracted.title, stored.url);
         await library.stories.saveChapter(story.id, stored);
