@@ -81,6 +81,56 @@ describe("parseAsianfanficsChapter", () => {
   it("nội dung rỗng không rõ nguyên nhân → lỗi có thể thử lại", () => {
     expect(() => parseAsianfanficsChapter(chapterPage(""), CHAPTER_URL)).toThrow(/Could not find chapter content/);
   });
+
+  it("không lấy nhầm section comments/feed làm nội dung chương", () => {
+    // Shape of a page whose chapter body never arrived: the only htmx targets left are
+    // other parts of the page. Their text must never be filed as the chapter.
+    const html = `<!doctype html><html><body><main>
+      <h1>Lost in memories</h1>
+      <div id="bodyText">
+        <div class="mb-4 text-center"><img src="https://photo.asianfanfics.com/story_cover/1.jpg" alt=""></div>
+      </div>
+      <section id="comments" hx-get="/htmx/story/comments/1143593?chapter=1">Bình luận: truyện hay quá, hóng chap mới!</section>
+      <div hx-get="/htmx/story/author/1143593?return_to=%2F">Về tác giả</div>
+      <div hx-get="/htmx/story/feed/1143593">Hoạt động</div>
+    </main></body></html>`;
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/Could not find chapter content/);
+  });
+
+  it("teaser của truyện subscribers-only → LockedContentError, không lưu chương cụt", () => {
+    // Real shape: the chapter container never loads; #bodyText holds a teaser (the first
+    // paragraphs) plus the notice.
+    const html = `<!doctype html><html><body><main>
+      <h1>初次合作</h1>
+      <div id="bodyText">
+        <div class="mb-4 rounded-[3px] border border-dashed p-3 text-center font-semibold">Please subscribe to read further chapters.</div>
+        <div hx-get="/htmx/teaser/5943590/token123">Phần đầu của chương mà tài khoản chưa đăng ký đọc được…</div>
+        <div id="content-load-error" class="hidden">This content couldn't be loaded.</div>
+      </div>
+    </main></body></html>`;
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(LockedContentError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/subscribers only/);
+  });
+
+  it("không cần notice tiếng Anh: chỉ cần div teaser là đủ", () => {
+    // The site translates its notices; the teaser container is the language-independent signal.
+    const html = `<!doctype html><html><body><main>
+      <h1>初次合作</h1>
+      <div id="bodyText"><div hx-get="/htmx/teaser/5943590/token123">请订阅以阅读更多章节。第一章的内容……</div></div>
+    </main></body></html>`;
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(LockedContentError);
+  });
+
+  it("foreword đọc từ /htmx/story/<id>/<token>", () => {
+    const html = `<!doctype html><html><body><main>
+      <h1>Attraction</h1>
+      <div id="bodyText">
+        <div hx-get="/htmx/story/1143593/tokenabc"><h2>Description</h2><p>A story about a girl.</p></div>
+      </div>
+    </main></body></html>`;
+    const chapter = parseAsianfanficsChapter(html, "https://www.asianfanfics.com/story/view/1143593/attraction");
+    expect(chapter.blocks.map((b) => b.type)).toEqual(["heading", "paragraph"]);
+  });
 });
 
 describe("fetchAsianfanficsChapter", () => {
