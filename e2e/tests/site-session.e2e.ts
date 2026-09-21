@@ -82,3 +82,27 @@ test("settings shows the saved session and removes it", async ({ page, request }
   ).toBeVisible();
   expect(fs.existsSync(SESSION_FILE)).toBe(false);
 });
+
+// A token whose `exp` is long past: the app must treat it as needing a fresh import.
+const EXPIRED_CURL =
+  "curl 'https://www.asianfanfics.com/story/view/1426810' " +
+  "-H 'cookie: atokun=eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjEwMDAwMDAwMDB9.sig' -H 'user-agent: UA-TEST'";
+
+test("asks to import again when the saved login has expired", async ({ page, request }) => {
+  await request.post("/api/site-sessions/asianfanfics", { data: { curl: EXPIRED_CURL } });
+
+  await page.goto("/");
+  await page.getByLabel("Story page URL").fill(STORY_URL);
+  await page.getByRole("button", { name: "Load chapters" }).click();
+  await expect(page.getByRole("dialog", { name: "Asianfanfics session" })).toBeVisible();
+});
+
+test("settings shows the saved login as expired", async ({ page, request }) => {
+  await request.post("/api/site-sessions/asianfanfics", { data: { curl: EXPIRED_CURL } });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const panel = page.getByRole("dialog", { name: "Settings" });
+  await expect(panel.getByText("Session has expired — import a fresh one.")).toBeVisible();
+  await expect(panel.getByRole("button", { name: "Import session" })).toBeVisible();
+});

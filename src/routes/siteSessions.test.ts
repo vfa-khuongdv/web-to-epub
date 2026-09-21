@@ -15,8 +15,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DATA_DIR = mkdtempSync(path.join(os.tmpdir(), "site-sessions-route-test-"));
 process.env.DATA_DIR = DATA_DIR;
 
+const JWT_FUTURE = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
 const VALID_CURL =
-  "curl 'https://www.asianfanfics.com/story/view/1191193' -H 'cookie: atokun=jwt-value; cf_clearance=clear-value' -H 'user-agent: UA-TEST'";
+  `curl 'https://www.asianfanfics.com/story/view/1191193' -H 'cookie: atokun=${JWT_FUTURE}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
 
 describe("site session routes", () => {
   let server: Server;
@@ -85,7 +86,7 @@ describe("site session routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { cookieCount: number };
     expect(body.cookieCount).toBe(2);
-    expect(JSON.stringify(body)).not.toContain("jwt-value");
+    expect(JSON.stringify(body)).not.toContain(JWT_FUTURE);
     expect(JSON.stringify(body)).not.toContain("clear-value");
     expect(existsSync(path.join(DATA_DIR, "sessions", "asianfanfics.com.json"))).toBe(true);
   });
@@ -95,6 +96,7 @@ describe("site session routes", () => {
     const status = (await res.json()) as { configured: boolean; savedAt?: string };
     expect(status.configured).toBe(true);
     expect(typeof status.savedAt).toBe("string");
+    expect(status.expiresAt).toBe(new Date(4_102_444_800 * 1000).toISOString());
   });
 
   it("xoá phiên đã lưu", async () => {

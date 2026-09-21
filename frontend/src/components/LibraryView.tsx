@@ -184,10 +184,10 @@ export default function LibraryView({
   const [checking, setChecking] = useState(false);
   const checkedOnOpen = useRef(false);
   // The URL waiting behind the Asianfanfics session dialog, and a one-shot check of
-  // whether that site has no saved login. The add flow awaits the check, so the very
-  // first add after opening the app cannot race its answer.
+  // whether that site needs a login import (none saved, or the saved one has expired).
+  // The add flow awaits the check, so the very first add cannot race its answer.
   const [sessionPromptUrl, setSessionPromptUrl] = useState<string | null>(null);
-  const sessionMissingCheck = useRef<Promise<boolean> | null>(null);
+  const sessionNeedsImport = useRef<Promise<boolean> | null>(null);
 
   async function loadStories() {
     try {
@@ -232,11 +232,14 @@ export default function LibraryView({
     loadStories().finally(() => setLoading(false));
   }, []);
 
-  // Whether an Asianfanfics login is already saved, so the add form knows whether to ask
-  // for one. A failure reads as "nothing missing": never block an add on this check.
+  // Whether an Asianfanfics login has to be imported before adding, so the add form knows
+  // whether to ask. A failure reads as "nothing to ask for": never block an add on this.
   useEffect(() => {
-    sessionMissingCheck.current = fetchSiteSession()
-      .then((status) => !status.configured)
+    sessionNeedsImport.current = fetchSiteSession()
+      .then(
+        (status) =>
+          !status.configured || (!!status.expiresAt && Date.parse(status.expiresAt) <= Date.now())
+      )
       .catch(() => false);
   }, []);
 
@@ -299,7 +302,7 @@ export default function LibraryView({
     }
     // Asianfanfics hides rated-M / subscribers-only stories from guests. Ask for a saved
     // login first (skippable — public stories load without one).
-    if (isAsianfanficsUrl(url) && (await (sessionMissingCheck.current ?? Promise.resolve(false)))) {
+    if (isAsianfanficsUrl(url) && (await (sessionNeedsImport.current ?? Promise.resolve(false)))) {
       setSessionPromptUrl(url);
       return;
     }
@@ -780,7 +783,7 @@ export default function LibraryView({
       {sessionPromptUrl && (
         <SiteSessionDialog
           onSaved={() => {
-            sessionMissingCheck.current = Promise.resolve(false);
+            sessionNeedsImport.current = Promise.resolve(false);
             const url = sessionPromptUrl;
             setSessionPromptUrl(null);
             void createStoryFrom(url);

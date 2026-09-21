@@ -130,6 +130,33 @@ describe("save / remove / status", () => {
     expect(siteSession.siteSessionStatus("saved.example")).toEqual({ configured: false });
   });
 
+  it("báo hạn của token sớm nhất trong các cookie JWT", () => {
+    // AFF hands out rtokun (a year) and atokun (an hour); the session ends with the
+    // short one, so the earliest expiry is the one that matters.
+    const year = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
+    const hour = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjEwMDAwMDAwMDB9.sig";
+    expect(
+      siteSession.sessionExpiresAt({ cookies: [{ name: "rtokun", value: year }, { name: "atokun", value: hour }] })
+    ).toBe(new Date(1_000_000_000 * 1000).toISOString());
+  });
+
+  it("không có cookie JWT → không rõ hạn", () => {
+    expect(siteSession.sessionExpiresAt({ cookies: [{ name: "csrf_token", value: "abc" }] })).toBeUndefined();
+    expect(siteSession.sessionExpiresAt({ cookies: [] })).toBeUndefined();
+  });
+
+  it("status kèm hạn token và savedAt", () => {
+    const token = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
+    siteSession.saveSiteSession("expiry.example", {
+      cookies: [{ name: "atokun", value: token }],
+      origins: [],
+    });
+    const status = siteSession.siteSessionStatus("expiry.example");
+    expect(status.configured).toBe(true);
+    expect(status.expiresAt).toBe(new Date(4_102_444_800 * 1000).toISOString());
+    expect(typeof status.savedAt).toBe("string");
+  });
+
   it("file hỏng: trạng thái là chưa cấu hình, không phải lỗi đọc", () => {
     // broken.example.json was written by an earlier test in this file.
     expect(siteSession.siteSessionStatus("broken.example")).toEqual({ configured: false });

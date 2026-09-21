@@ -61,12 +61,43 @@ export function loadSiteSession(url: string): SiteSession | undefined {
   return loadSessionByHostname(hostname);
 }
 
+// A JWT cookie's `exp` claim, seconds since epoch. undefined for anything that is not a
+// readable JWT — the session also holds cookies like csrf_token and _ga.
+function jwtExpiry(value: string): number | undefined {
+  const parts = value.split(".");
+  if (parts.length !== 3) return undefined;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as { exp?: unknown };
+    return typeof payload.exp === "number" ? payload.exp : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * When the saved login stops working: the earliest expiry among its JWT cookies. A site
+ * hands out a long-lived refresh token and a short-lived access token, and it is the short
+ * one that ends the session. Undefined when no cookie carries a readable expiry.
+ */
+export function sessionExpiresAt(session: SiteSession): string | undefined {
+  const expiries = (session.cookies ?? [])
+    .map((cookie) => jwtExpiry(cookie.value))
+    .filter((exp): exp is number => exp !== undefined);
+  if (expiries.length === 0) return undefined;
+  return new Date(Math.min(...expiries) * 1000).toISOString();
+}
+
 // A corrupt file counts as "no session": the settings page offers Import again, which
 // overwrites it, instead of showing a saved state the crawler cannot use.
-export function siteSessionStatus(hostname: string): { configured: boolean; savedAt?: string } {
+export function siteSessionStatus(hostname: string): {
+  configured: boolean;
+  savedAt?: string;
+  expiresAt?: string;
+} {
   try {
     const session = loadSessionByHostname(hostname);
-    return session ? { configured: true, savedAt: session.savedAt } : { configured: false };
+    if (!session) return { configured: false };
+    return { configured: true, savedAt: session.savedAt, expiresAt: sessionExpiresAt(session) };
   } catch {
     return { configured: false };
   }

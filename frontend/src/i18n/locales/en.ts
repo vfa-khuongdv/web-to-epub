@@ -306,6 +306,8 @@ export const en: Record<string, string> = {
   "A saved login is in use for rated-M and subscribers-only stories.":
     "A saved login is in use for rated-M and subscribers-only stories.",
   "Saved {ago}.": "Saved {ago}.",
+  "Expires in about {minutes} min.": "Expires in about {minutes} min.",
+  "Session has expired — import a fresh one.": "Session has expired — import a fresh one.",
   "The saved login lasts about an hour; import a fresh one when it expires.":
     "The saved login lasts about an hour; import a fresh one when it expires.",
   "Rated-M and subscribers-only stories need a login saved from your own browser.":
