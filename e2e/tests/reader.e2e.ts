@@ -153,12 +153,16 @@ test("creates a highlight from a selection", async ({ page }) => {
         title: "Chương 1",
         url: fixtureChapterUrl("selection", 1),
         status: "done",
-        // One short word so a selection drag lands offsets 1–6 deterministically (the
-        // srcdoc template's newline before the content is part of the offset root).
+        // One short word so the synthesised Range selection lands offsets 1–6
+        // deterministically (the srcdoc template's newline before the content is part
+        // of the offset root).
         blocks: [{ type: "paragraph", text: "Alpha" }],
       },
     ],
   });
+  // A retry re-seeds the same deterministic story id; clear leftovers so the UI creates
+  // exactly one highlight on every attempt.
+  await resetHighlights(story.id);
 
   await page.goto("/");
   await openReader(page, "Selection story");

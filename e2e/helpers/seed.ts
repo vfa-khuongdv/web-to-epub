@@ -101,7 +101,7 @@ async function seedInto(target: StoryStore, input: SeedStoryInput): Promise<Stor
     createdAt: now,
     updatedAt: now,
   });
-  if (input.watching) await target.setWatching(id, true);
+  await target.setWatching(id, Boolean(input.watching));
   if (input.newChapterCount !== undefined || input.checkError !== undefined) {
     await target.setCheckResult(id, {
       newChapterCount: input.newChapterCount,
