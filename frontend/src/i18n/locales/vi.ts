@@ -244,7 +244,8 @@ export const vi: Record<string, string> = {
   "Private": "Ẩn danh",
   "Private mode — click to leave": "Chế độ ẩn danh — bấm để thoát",
   "Set a code for private mode": "Đặt mã cho chế độ ẩn danh",
-  "Pick a 6-digit code. There is no way to recover it, and no way to change it later.": "Chọn mã 6 số. Không có cách nào lấy lại hay đổi mã này về sau.",
+  "Pick a 6-digit code. There is no way to recover it; you can change it later in Settings.":
+    "Chọn mã 6 số. Không có cách nào lấy lại; có thể đổi mã sau trong Cài đặt.",
   "Enter your 6-digit code to open your private library.": "Nhập mã 6 số để mở thư viện ẩn danh.",
   "New code": "Mã mới",
   "Digit {position}": "Ô số {position}",
@@ -261,4 +262,38 @@ export const vi: Record<string, string> = {
   "Packaging EPUB…": "Đang đóng gói EPUB…",
   "Downloading images {done}/{total}…": "Đang tải ảnh {done}/{total}…",
   "Downloading audio/video {done}/{total}…": "Đang tải audio/video {done}/{total}…",
+
+  // Settings page
+  "Loading story details": "Đang tải thông tin truyện",
+  "Loading settings": "Đang tải cài đặt",
+  "Settings": "Cài đặt",
+  "Try again": "Thử lại",
+  "Appearance": "Giao diện",
+  "Theme": "Chủ đề",
+  "Kept in this browser only.": "Chỉ lưu trong trình duyệt này.",
+  "Interface language": "Ngôn ngữ giao diện",
+  "Library": "Thư viện",
+  "Check for new chapters when the app opens": "Kiểm tra chương mới khi mở ứng dụng",
+  "Only stories you are watching are checked. With this off, check them yourself from the button above the story list.":
+    "Chỉ kiểm tra những truyện đang theo dõi. Tắt đi thì tự bấm nút phía trên danh sách truyện để kiểm tra.",
+  "New book defaults": "Mặc định cho sách mới",
+  "Filled in when a story is added. Editing the story's own info always wins.":
+    "Điền sẵn khi thêm truyện. Sửa thông tin riêng của truyện vẫn được ưu tiên.",
+  "Used when the chapter list does not name one. Leave empty for none.":
+    "Dùng khi mục lục không ghi tên tác giả. Để trống nếu không cần.",
+  "A code has been set": "Đã đặt mã",
+  "No code has been set": "Chưa đặt mã",
+  "Private mode is a lock on this app, not encryption — the private library is a plain file on this machine.":
+    "Chế độ ẩn danh là khoá của ứng dụng, không phải mã hoá — thư viện riêng vẫn là một file thường trên máy.",
+  "Press Cmd/Ctrl+Shift+N to open private mode and pick a code.":
+    "Bấm Cmd/Ctrl+Shift+N để mở chế độ ẩn danh và chọn mã.",
+  "Change code": "Đổi mã",
+  "Current code": "Mã hiện tại",
+  "About": "Giới thiệu",
+  "Version": "Phiên bản",
+  "Library folder": "Thư mục thư viện",
+  "Stored": "Đã lưu trữ",
+  "{stories} stories, {chapters} chapters": "{stories} truyện, {chapters} chương",
+  "Could not load settings": "Không tải được cài đặt",
+  "Could not save settings": "Không lưu được cài đặt",
 };

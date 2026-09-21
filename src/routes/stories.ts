@@ -2,6 +2,7 @@ import multer from "multer";
 import os from "os";
 import { Router } from "express";
 import { findSupportedSite } from "../config/supportedSites";
+import { settingsStore } from "../services/settingsStore";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
@@ -26,6 +27,14 @@ async function refreshStoryToc(params: {
   const library = params.library;
   const toc = await params.adapter.fetchToc(params.storyUrl);
   const story = mergeStory({ existing: params.existing, site: params.site, storyUrl: params.storyUrl, toc });
+  // A story being added for the first time starts from the defaults on the settings
+  // page; reloading the TOC of one already in the library must not write over what the
+  // reader saved on it, so only a new story is filled in.
+  if (!params.existing) {
+    const defaults = settingsStore.get();
+    story.language ??= defaults.defaultBookLanguage;
+    story.author ??= defaults.defaultAuthor || undefined;
+  }
   // Download cover to data/covers/ once we know the story URL; if download fails, keep
   // the original URL so epub-gen can fetch it during export.
   const savedCover = await library.covers.save(story.id, story.coverUrl, params.storyUrl);

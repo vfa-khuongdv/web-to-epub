@@ -7,7 +7,7 @@ import { StoredStory, StorySummary, SupportedSite } from "../types";
 import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../hooks/useCrawlJob";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
-import StoryDetail from "./StoryDetail";
+import StoryDetail, { StoryDetailSkeleton } from "./StoryDetail";
 
 // Crawl status for the entire story, combining saved count with running crawl: if
 // chapters are waiting, report how many remain; if all waiting chapters are done,
@@ -131,6 +131,7 @@ export default function LibraryView({
   clearChapters,
   supportedSites,
   pushNotice,
+  autoScan,
 }: {
   job: CrawlJobState;
   live: Record<string, LiveCrawl | undefined>;
@@ -138,6 +139,9 @@ export default function LibraryView({
   clearChapters: () => void;
   supportedSites: SupportedSite[];
   pushNotice: (notice: NoticeInput) => void;
+  // The settings page's "check when the app opens". Undefined while it is still being
+  // read: the launch check waits rather than guessing.
+  autoScan: boolean | undefined;
 }) {
   const { lang, t } = useLang();
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -145,6 +149,10 @@ export default function LibraryView({
   const [busy, setBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<StoredStory | null>(null);
+  // A story's outline is a few hundred KB on a long story, so opening one shows the
+  // detail pane's skeleton rather than leaving the previous story on screen.
+  const [opening, setOpening] = useState(false);
+  const openRequest = useRef(0);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -199,15 +207,17 @@ export default function LibraryView({
     loadStories().finally(() => setLoading(false));
   }, []);
 
-  // On app open: check watched stories once (no background, no schedule). Crawling
-  // stories are skipped — server blocks them too.
+  // On app open: check watched stories once (no background, no schedule), unless the
+  // settings page has that turned off. Crawling stories are skipped — server blocks
+  // them too.
   useEffect(() => {
-    if (loading || checkedOnOpen.current) return;
+    if (loading || autoScan === undefined || checkedOnOpen.current) return;
     checkedOnOpen.current = true;
+    if (!autoScan) return;
     const targets = stories.filter((s) => s.watching && !live[s.id]);
     if (targets.length > 0) void runChecks(targets);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, stories, live]);
+  }, [loading, autoScan, stories, live]);
 
   // Selected story: StoryDetail refetches when crawl done. Others don't, so we
   // refetch when a story leaves the realtime channel so status chip doesn't stale.
@@ -221,12 +231,22 @@ export default function LibraryView({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [crawlingIds]);
 
+  // Clicking a second story before the first arrives must not end with the first one
+  // on screen, and must not clear the skeleton the second one is still waiting behind:
+  // only the newest request is allowed to finish.
   async function openStory(id: string) {
+    const request = ++openRequest.current;
+    setOpening(true);
     try {
-      setSelected(await fetchStory(id));
+      const story = await fetchStory(id);
+      if (openRequest.current !== request) return;
+      setSelected(story);
       setError(null);
     } catch (err) {
+      if (openRequest.current !== request) return;
       setError((err as Error).message);
+    } finally {
+      if (openRequest.current === request) setOpening(false);
     }
   }
 
@@ -686,7 +706,9 @@ export default function LibraryView({
         )}
       </section>
 
-      {selected ? (
+      {opening ? (
+        <StoryDetailSkeleton />
+      ) : selected ? (
         <StoryDetail
           key={selected.id}
           story={selected}

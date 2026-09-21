@@ -51,6 +51,10 @@ export function parseWattpadStory(text: string, storyUrl: string): TocResult {
     throw new Error(t("Wattpad's chapter list API did not return JSON ({url})", { url: storyUrl }));
   }
 
+  if (!data || typeof data !== "object") {
+    throw new Error(t("Wattpad's chapter list API did not return JSON ({url})", { url: storyUrl }));
+  }
+
   if (data.error_type) {
     const detail = data.message ? `: ${data.message}` : "";
     if (data.error_type === "NotFound") {

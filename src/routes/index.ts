@@ -6,6 +6,7 @@ import { crawlRouter } from "./crawl";
 import { exportsRouter } from "./exports";
 import { highlightsRouter } from "./highlights";
 import { liveRouter } from "./live";
+import { settingsRouter } from "./settings";
 import { storiesRouter } from "./stories";
 import { vaultRouter } from "./vault";
 
@@ -23,6 +24,7 @@ router.get("/supported-sites", (_req, res) => {
 });
 
 router.use(vaultRouter);
+router.use(settingsRouter);
 router.use(exportsRouter);
 // Mounted before storiesRouter: GET /stories/live would otherwise match GET /stories/:id
 // with "live" as the story id.
