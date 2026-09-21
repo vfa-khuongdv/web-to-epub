@@ -1,6 +1,6 @@
 import { JSDOM } from "jsdom";
 import { ContentBlock, ExtractedChapter } from "../../types";
-import { LockedContentError, walkToBlocks } from "../extractor";
+import { LockedContentError, MatureContentError, SubscribersOnlyError, walkToBlocks } from "../extractor";
 import { renderPageHtml } from "../renderer";
 import { loadSiteSession } from "../siteSession";
 import { t } from "../lang";
@@ -68,14 +68,14 @@ export function parseAsianfanficsChapter(
     // notice. Saving that would silently export a truncated chapter, so it stays locked.
     // The teaser div is the signal, not the notice text: the site translates its wording.
     if (hasTeaser(doc)) {
-      throw new LockedContentError(
+      throw new SubscribersOnlyError(
         t("This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}", {
           url,
         })
       );
     }
     if (/are you over 18\?/i.test(body)) {
-      throw new LockedContentError(
+      throw new MatureContentError(
         t(
           "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled. Turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com, then retry: {url}",
           { url }

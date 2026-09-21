@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { LockedContentError } from "../extractor";
+import { LockedContentError, MatureContentError, SubscribersOnlyError } from "../extractor";
 import { renderPageHtml } from "../renderer";
 import { fetchAsianfanficsChapter, parseAsianfanficsChapter } from "./asianfanfics";
 
@@ -60,9 +60,9 @@ describe("parseAsianfanficsChapter", () => {
     expect(chapter.blocks.some((b) => b.src?.includes("story_cover"))).toBe(false);
   });
 
-  it("nội dung rỗng + có gate 18+ → LockedContentError", () => {
+  it("nội dung rỗng + có gate 18+ → MatureContentError (status riêng, không chỉ 'Locked')", () => {
     const html = chapterPage("", { extra: `<div>You are trying to access: Chapter 1 <p>Are you over 18?</p></div>` });
-    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(LockedContentError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(MatureContentError);
     expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/rated M/);
   });
 
@@ -99,7 +99,7 @@ describe("parseAsianfanficsChapter", () => {
     expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/Could not find chapter content/);
   });
 
-  it("teaser của truyện subscribers-only → LockedContentError, không lưu chương cụt", () => {
+  it("teaser của truyện subscribers-only → SubscribersOnlyError, không lưu chương cụt", () => {
     // Real shape: the chapter container never loads; #bodyText holds a teaser (the first
     // paragraphs) plus the notice.
     const html = `<!doctype html><html><body><main>
@@ -110,7 +110,8 @@ describe("parseAsianfanficsChapter", () => {
         <div id="content-load-error" class="hidden">This content couldn't be loaded.</div>
       </div>
     </main></body></html>`;
-    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(LockedContentError);
+    // Subclass of LockedContentError (no retry can fix it) but its own status on the UI.
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(SubscribersOnlyError);
     expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(/subscribers only/);
   });
 
@@ -120,7 +121,7 @@ describe("parseAsianfanficsChapter", () => {
       <h1>初次合作</h1>
       <div id="bodyText"><div hx-get="/htmx/teaser/5943590/token123">请订阅以阅读更多章节。第一章的内容……</div></div>
     </main></body></html>`;
-    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(LockedContentError);
+    expect(() => parseAsianfanficsChapter(html, CHAPTER_URL)).toThrow(SubscribersOnlyError);
   });
 
   it("foreword đọc từ /htmx/story/<id>/<token>", () => {

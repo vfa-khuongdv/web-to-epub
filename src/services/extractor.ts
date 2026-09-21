@@ -22,6 +22,15 @@ const LOCKED_CONTENT_RE = /nội dung (chương|chapter).{0,20}(đang bị khóa
 // spend their retry budget on it.
 export class LockedContentError extends Error {}
 
+// A lock the reader can lift without changing their session: the text is withheld until
+// they subscribe to the author. Still a lock (retrying changes nothing), but worth its own
+// status so the UI tells them what to do instead of just "Locked".
+export class SubscribersOnlyError extends LockedContentError {}
+
+// Withheld behind an 18+/mature opt-in. Same reasoning as SubscribersOnlyError: the fix is
+// account-side (log in with mature content enabled), not a retry.
+export class MatureContentError extends LockedContentError {}
+
 function stripChrome(document: Document): void {
   document.querySelectorAll("script, style, noscript, iframe, nav, header, footer, aside").forEach((el) => el.remove());
 

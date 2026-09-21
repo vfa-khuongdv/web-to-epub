@@ -1,6 +1,6 @@
 import { ChapterErrorKind, ExtractedChapter } from "../types";
 import { getChapterFetcher } from "./chapters";
-import { extractChapter, LockedContentError } from "./extractor";
+import { extractChapter, LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
 // Some sites' anti-tool scripts blank the page at random (see renderer.ts),
@@ -63,6 +63,16 @@ export async function extractWithRetry(
       lastError = err instanceof Error ? err.message : lastError;
       // Locked chapter can't be unlocked by re-rendering — fail fast instead
       // of wasting the whole retry budget. (The UI still offers a per-chapter retry.)
+      // Subscribers-only is checked first: it is a subclass, and keeps its own kind so the
+      // UI can point at subscribing rather than the generic lock guidance.
+      if (err instanceof SubscribersOnlyError) {
+        errorKind = "subscribers";
+        break;
+      }
+      if (err instanceof MatureContentError) {
+        errorKind = "mature";
+        break;
+      }
       if (err instanceof LockedContentError) {
         errorKind = "locked";
         break;

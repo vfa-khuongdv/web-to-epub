@@ -155,6 +155,14 @@ export const vi: Record<string, string> = {
   "Could not extract this chapter": "Không trích xuất được chương này",
   "Locked": "Bị khoá",
   "This chapter is locked": "Chương này bị khoá",
+  "Subscribers only": "Chỉ dành cho người đăng ký",
+  "Rated M (18+)": "18+ (rated M)",
+  "This chapter is for subscribers only": "Chương này chỉ dành cho người đăng ký",
+  "This chapter is rated M (18+)": "Chương này được đánh dấu M (18+)",
+  "Subscribe to the author on asianfanfics.com, then retry.":
+    "Hãy đăng ký (subscribe) tác giả trên asianfanfics.com rồi thử lại.",
+  "Enable mature content on your asianfanfics.com account, then retry.":
+    "Hãy bật nội dung người lớn (mature content) cho tài khoản asianfanfics.com rồi thử lại.",
   "Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.":
     "Hãy mở khoá trên trang trước — đăng ký theo dõi tác giả, bật nội dung người lớn, hoặc nhập lại phiên đăng nhập — rồi bấm Thử lại.",
   "Enter content manually": "Nhập nội dung thủ công",
