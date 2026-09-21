@@ -114,6 +114,22 @@ const vi: Record<string, string> = {
   "xtruyen's chapter list API did not return JSON": "API danh sách chương của xtruyen trả về không phải JSON",
   "xtruyen's chapter list API returned the wrong format":
     "API danh sách chương của xtruyen trả về sai định dạng",
+  "Story not found on Asianfanfics — check the story URL again ({url})":
+    "Không tìm thấy truyện trên Asianfanfics — kiểm tra lại URL truyện ({url})",
+  "This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}":
+    "Nội dung Asianfanfics này chỉ dành cho người đăng ký — cần tài khoản đã đăng ký theo dõi tác giả: {url}",
+  "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled: {url}":
+    "Nội dung Asianfanfics này được đánh dấu M (người lớn) — cần tài khoản đã đăng nhập và bật nội dung người lớn: {url}",
+
+  // Saved site sessions
+  "Saved login session is unreadable — delete {file} and log in again":
+    "Không đọc được phiên đăng nhập đã lưu — hãy xoá {file} rồi đăng nhập lại",
+  "Paste the cURL copy from your browser first": "Hãy dán nội dung cURL đã copy từ trình duyệt trước",
+  "Could not find a URL in the pasted cURL": "Không tìm thấy URL trong nội dung cURL đã dán",
+  "That cURL is not for {domain} — copy a request from the site while logged in":
+    "cURL này không phải của {domain} — hãy copy một request từ chính trang đó khi đã đăng nhập",
+  "No cookies found in that cURL — copy a request from the site while logged in":
+    "Không thấy cookie trong cURL này — hãy copy một request từ chính trang đó khi đã đăng nhập",
 };
 
 let current: Lang = DEFAULT_LANG;

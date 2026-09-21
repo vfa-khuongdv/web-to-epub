@@ -1,9 +1,16 @@
 import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
-import { changeVaultCode, fetchSettings, saveSettings } from "../lib/api";
+import {
+  changeVaultCode,
+  fetchSettings,
+  fetchSiteSession,
+  removeSiteSession,
+  saveSettings,
+} from "../lib/api";
 import { LANGUAGES, useLang } from "../i18n";
 import { Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "../lib/theme";
 import { AppInfo, AppSettings } from "../types";
 import { Icon } from "./Icon";
+import SiteSessionDialog from "./SiteSessionDialog";
 import { SkeletonBar } from "./Skeleton";
 import { CODE_LENGTH, PinInput } from "./VaultPrompt";
 
@@ -106,7 +113,7 @@ export default function SettingsOverlay({
                 onSaved(settings);
                 flashSaved();
               }}
-              onCodeChanged={flashSaved}
+              onFlashSaved={flashSaved}
             />
           ) : loadError ? (
             <p className="flex flex-wrap items-center gap-2.5 text-[12.5px] text-error" role="alert">
@@ -133,7 +140,7 @@ function SettingsBody({
   codeOpen,
   setCodeOpen,
   onSaved,
-  onCodeChanged,
+  onFlashSaved,
 }: {
   settings: AppSettings;
   app: AppInfo;
@@ -142,11 +149,36 @@ function SettingsBody({
   codeOpen: boolean;
   setCodeOpen: (open: boolean) => void;
   onSaved: (settings: AppSettings) => void;
-  onCodeChanged: () => void;
+  onFlashSaved: () => void;
 }) {
   const { lang, setLang, t } = useLang();
   const [author, setAuthor] = useState(settings.defaultAuthor);
   const [error, setError] = useState<string | null>(null);
+  const [sessionConfigured, setSessionConfigured] = useState<boolean | null>(null);
+  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+
+  const loadSession = useCallback(async () => {
+    try {
+      setSessionConfigured((await fetchSiteSession()).configured);
+    } catch {
+      setSessionConfigured(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSession();
+  }, [loadSession]);
+
+  async function handleRemoveSession() {
+    setError(null);
+    try {
+      await removeSiteSession();
+      setSessionConfigured(false);
+      onFlashSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
 
   async function save(patch: Partial<AppSettings>) {
     setError(null);
@@ -282,7 +314,7 @@ function SettingsBody({
               <ChangeCodeForm
                 onDone={() => {
                   setCodeOpen(false);
-                  onCodeChanged();
+                  onFlashSaved();
                 }}
                 onCancel={() => setCodeOpen(false)}
               />
@@ -293,6 +325,40 @@ function SettingsBody({
             label={t("No code has been set")}
             hint={t("Press Cmd/Ctrl+Shift+N to open private mode and pick a code.")}
             control={null}
+          />
+        )}
+      </Section>
+
+      <Section title={t("Site sessions")}>
+        <Row
+          label="Asianfanfics"
+          hint={
+            sessionConfigured
+              ? t("A saved login is in use for rated-M and subscribers-only stories.")
+              : t("Rated-M and subscribers-only stories need a login saved from your own browser.")
+          }
+          control={
+            <>
+              <button type="button" className="btn btn-tiny" onClick={() => setSessionDialogOpen(true)}>
+                <Icon name="lock" size={12} />
+                {sessionConfigured ? t("Replace session") : t("Import session")}
+              </button>
+              {sessionConfigured && (
+                <button type="button" className="btn btn-tiny" onClick={() => void handleRemoveSession()}>
+                  {t("Remove")}
+                </button>
+              )}
+            </>
+          }
+        />
+        {sessionDialogOpen && (
+          <SiteSessionDialog
+            onSaved={() => {
+              setSessionDialogOpen(false);
+              setSessionConfigured(true);
+              onFlashSaved();
+            }}
+            onSkip={() => setSessionDialogOpen(false)}
           />
         )}
       </Section>

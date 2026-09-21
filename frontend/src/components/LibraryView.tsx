@@ -1,13 +1,33 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, checkStoryUpdates, createStory, deleteStory, fetchStories, fetchStory, setStoryWatch } from "../lib/api";
+import {
+  ApiError,
+  checkStoryUpdates,
+  createStory,
+  deleteStory,
+  fetchSiteSession,
+  fetchStories,
+  fetchStory,
+  setStoryWatch,
+} from "../lib/api";
 import { Translate, useLang } from "../i18n";
 import { isSupportedUrl } from "../lib/isSupportedUrl";
 import { timeAgo } from "../lib/timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
 import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../hooks/useCrawlJob";
 import { Icon } from "./Icon";
+import SiteSessionDialog from "./SiteSessionDialog";
 import { ChipState, StatusChip } from "./StatusChip";
 import StoryDetail, { StoryDetailSkeleton } from "./StoryDetail";
+
+// Asianfanfics is the one site whose add flow asks for a saved login first (rated-M and
+// subscribers-only stories are hidden from guests).
+function isAsianfanficsUrl(url: string): boolean {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "") === "asianfanfics.com";
+  } catch {
+    return false;
+  }
+}
 
 // Crawl status for the entire story, combining saved count with running crawl: if
 // chapters are waiting, report how many remain; if all waiting chapters are done,
@@ -163,6 +183,11 @@ export default function LibraryView({
   const [page, setPage] = useState(1);
   const [checking, setChecking] = useState(false);
   const checkedOnOpen = useRef(false);
+  // The URL waiting behind the Asianfanfics session dialog, and a one-shot check of
+  // whether that site has no saved login. The add flow awaits the check, so the very
+  // first add after opening the app cannot race its answer.
+  const [sessionPromptUrl, setSessionPromptUrl] = useState<string | null>(null);
+  const sessionMissingCheck = useRef<Promise<boolean> | null>(null);
 
   async function loadStories() {
     try {
@@ -205,6 +230,14 @@ export default function LibraryView({
 
   useEffect(() => {
     loadStories().finally(() => setLoading(false));
+  }, []);
+
+  // Whether an Asianfanfics login is already saved, so the add form knows whether to ask
+  // for one. A failure reads as "nothing missing": never block an add on this check.
+  useEffect(() => {
+    sessionMissingCheck.current = fetchSiteSession()
+      .then((status) => !status.configured)
+      .catch(() => false);
   }, []);
 
   // On app open: check watched stories once (no background, no schedule), unless the
@@ -264,6 +297,16 @@ export default function LibraryView({
       );
       return;
     }
+    // Asianfanfics hides rated-M / subscribers-only stories from guests. Ask for a saved
+    // login first (skippable — public stories load without one).
+    if (isAsianfanficsUrl(url) && (await (sessionMissingCheck.current ?? Promise.resolve(false)))) {
+      setSessionPromptUrl(url);
+      return;
+    }
+    await createStoryFrom(url);
+  }
+
+  async function createStoryFrom(url: string) {
     setBusy(true);
     setError(null);
     try {
@@ -732,6 +775,22 @@ export default function LibraryView({
             </p>
           </div>
         </section>
+      )}
+
+      {sessionPromptUrl && (
+        <SiteSessionDialog
+          onSaved={() => {
+            sessionMissingCheck.current = Promise.resolve(false);
+            const url = sessionPromptUrl;
+            setSessionPromptUrl(null);
+            void createStoryFrom(url);
+          }}
+          onSkip={() => {
+            const url = sessionPromptUrl;
+            setSessionPromptUrl(null);
+            void createStoryFrom(url);
+          }}
+        />
       )}
     </>
   );

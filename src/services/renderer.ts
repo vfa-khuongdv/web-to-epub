@@ -1,5 +1,7 @@
 import { Browser, chromium } from "playwright";
+import browserConfig from "../config/browser.json";
 import { t } from "./lang";
+import { loadSiteSession } from "./siteSession";
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -67,8 +69,10 @@ async function releasePage(): Promise<void> {
   else armIdleClose();
 }
 
-const BROWSER_USER_AGENT =
-  "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
+// Shared with scripts/site-login.mjs (src/config/browser.json): the session captured at
+// login is bound by the site's bot protection to this user agent and the machine's IP,
+// so rendering has to use the same one or the site treats it as a different client.
+const BROWSER_USER_AGENT = browserConfig.userAgent;
 
 // Some sites ship anti-tool scripts that blank the document (then navigate to
 // about:blank) at random — misfires on headless. Measured on xtruyen: content
@@ -111,7 +115,15 @@ export async function renderPageHtml(url: string): Promise<string> {
   try {
     const browser = await getBrowser();
     rendersOnBrowser++;
-    const context = await browser.newContext({ userAgent: BROWSER_USER_AGENT });
+    // Sites the user has logged into by hand (scripts/aff-session.mjs) render with the
+    // saved session, so content behind that account is read the way the reader sees it.
+    // The session carries the user agent it was captured with, because the site's bot
+    // protection binds its cookies to it.
+    const session = loadSiteSession(url);
+    const context = await browser.newContext({
+      userAgent: session?.userAgent ?? BROWSER_USER_AGENT,
+      storageState: session ? { cookies: session.cookies, origins: session.origins } : undefined,
+    });
     try {
       const page = await context.newPage();
       // "networkidle" is unreliable in practice: sites with continuous

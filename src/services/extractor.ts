@@ -35,7 +35,7 @@ function stripChrome(document: Document): void {
   });
 }
 
-function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
+export function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
   for (const node of Array.from(root.children)) {
     const tag = node.tagName.toLowerCase();
 

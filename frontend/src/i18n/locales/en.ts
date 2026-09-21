@@ -295,4 +295,26 @@ export const en: Record<string, string> = {
   "{stories} stories, {chapters} chapters": "{stories} stories, {chapters} chapters",
   "Could not load settings": "Could not load settings",
   "Could not save settings": "Could not save settings",
+  "Site sessions": "Site sessions",
+  "Import session": "Import session",
+  "Replace session": "Replace session",
+  "Remove": "Remove",
+  "A saved login is in use for rated-M and subscribers-only stories.":
+    "A saved login is in use for rated-M and subscribers-only stories.",
+  "Rated-M and subscribers-only stories need a login saved from your own browser.":
+    "Rated-M and subscribers-only stories need a login saved from your own browser.",
+  "Asianfanfics session": "Asianfanfics session",
+  "Rated-M and subscribers-only stories need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.":
+    "Rated-M and subscribers-only stories need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.",
+  "Log in at asianfanfics.com in your browser.": "Log in at asianfanfics.com in your browser.",
+  "Open DevTools → Network and reload the page.": "Open DevTools → Network and reload the page.",
+  "Right-click the first request → Copy → Copy as cURL.": "Right-click the first request → Copy → Copy as cURL.",
+  "Paste the result below.": "Paste the result below.",
+  "cURL from your browser": "cURL from your browser",
+  "You can skip this — public stories still load.": "You can skip this — public stories still load.",
+  "Skip": "Skip",
+  "Save session": "Save session",
+  "Could not check the saved session": "Could not check the saved session",
+  "Could not save the session": "Could not save the session",
+  "Could not remove the session": "Could not remove the session",
 };

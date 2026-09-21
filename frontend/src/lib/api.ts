@@ -375,3 +375,35 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSett
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save settings")));
   return ((await res.json()) as { settings: AppSettings }).settings;
 }
+
+// ---- Saved site sessions (see src/services/siteSession.ts) ------------------
+
+export interface SiteSessionStatus {
+  configured: boolean;
+}
+
+export async function fetchSiteSession(): Promise<SiteSessionStatus> {
+  const res = await apiFetch("/api/site-sessions/asianfanfics", { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not check the saved session")));
+  return (await res.json()) as SiteSessionStatus;
+}
+
+// The body is a cURL copy of a request from the user's own logged-in browser; the server
+// keeps the cookies and answers only how many it saved.
+export async function importSiteSession(curl: string): Promise<{ cookieCount: number }> {
+  const res = await apiFetch("/api/site-sessions/asianfanfics", {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ curl }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save the session")));
+  return (await res.json()) as { cookieCount: number };
+}
+
+export async function removeSiteSession(): Promise<void> {
+  const res = await apiFetch("/api/site-sessions/asianfanfics", {
+    method: "DELETE",
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not remove the session")));
+}
