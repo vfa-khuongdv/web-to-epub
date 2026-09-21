@@ -5,7 +5,7 @@
  * (`<privateDir>/lock.json`). Unlocking hands back a token that lives in this
  * process's memory and has to accompany every request that wants the private
  * library — the same "one process, one reader" assumption as `runningCrawls` in
- * routes/api.ts.
+ * routes/library.ts.
  *
  * What this does NOT do: encrypt the library. `data/private/stories.db` is a plain
  * SQLite file and anyone with the machine can open it. The code keeps the private

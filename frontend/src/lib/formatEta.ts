@@ -1,4 +1,4 @@
-import { Lang, translate } from "./i18n";
+import { Lang, translate } from "../i18n";
 
 // Backend ETA is an average estimate so we only need minute-level rounding; under one
 // minute shows text instead of "~0 min".

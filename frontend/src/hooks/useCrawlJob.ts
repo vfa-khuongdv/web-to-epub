@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
-import { ProgressEvent } from "./types";
-import { currentVaultToken } from "./vaultToken";
+import { ProgressEvent } from "../types";
+import { currentVaultToken } from "../vault/token";
 
 export interface CrawlLogLine {
   at: string;

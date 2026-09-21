@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { ExtractedChapter } from "../types";
-import { blocksToHtml } from "../blocksToHtml";
+import { blocksToHtml } from "../lib/blocksToHtml";
 import { useLang } from "../i18n";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";

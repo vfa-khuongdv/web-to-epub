@@ -7,9 +7,9 @@ import {
   HIGHLIGHT_COLORS,
   HighlightColor,
   recolorHighlight,
-} from "../api";
-import * as hl from "../highlightDom";
-import { CONTENT_ID } from "../highlightDom";
+} from "../lib/api";
+import * as hl from "../lib/highlightDom";
+import { CONTENT_ID } from "../lib/highlightDom";
 import { useLang } from "../i18n";
 import {
   FONT_SIZE_RANGE,
@@ -22,7 +22,7 @@ import {
   readerDocument,
   savePosition,
   savePrefs,
-} from "../readerPreview";
+} from "../lib/readerPreview";
 import { Icon } from "./Icon";
 
 export interface ReaderChapter {

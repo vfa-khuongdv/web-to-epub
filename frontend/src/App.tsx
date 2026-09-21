@@ -3,10 +3,10 @@ import LibraryView from "./components/LibraryView";
 import { JobStrip } from "./components/JobStrip";
 import { NoticeStack } from "./components/NoticeStack";
 import { Icon, IconName } from "./components/Icon";
-import { fetchSupportedSites } from "./api";
+import { fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
 import { SupportedSite } from "./types";
-import { useCrawlJob } from "./useCrawlJob";
+import { useCrawlJob } from "./hooks/useCrawlJob";
 import { useVault } from "./vault";
 
 type Theme = "system" | "light" | "dark";

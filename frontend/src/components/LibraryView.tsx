@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from "react";
-import { ApiError, checkStoryUpdates, createStory, deleteStory, fetchStories, fetchStory, setStoryWatch } from "../api";
+import { ApiError, checkStoryUpdates, createStory, deleteStory, fetchStories, fetchStory, setStoryWatch } from "../lib/api";
 import { Translate, useLang } from "../i18n";
-import { isSupportedUrl } from "../isSupportedUrl";
-import { timeAgo } from "../timeAgo";
+import { isSupportedUrl } from "../lib/isSupportedUrl";
+import { timeAgo } from "../lib/timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
-import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../useCrawlJob";
+import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../hooks/useCrawlJob";
 import { Icon } from "./Icon";
 import { ChipState, StatusChip } from "./StatusChip";
 import StoryDetail from "./StoryDetail";

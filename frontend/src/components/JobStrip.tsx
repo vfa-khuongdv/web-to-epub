@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Icon } from "./Icon";
 import { ProgressBar } from "./ProgressBar";
-import { CrawlJobState } from "../useCrawlJob";
-import { formatEta } from "../formatEta";
+import { CrawlJobState } from "../hooks/useCrawlJob";
+import { formatEta } from "../lib/formatEta";
 import { useLang } from "../i18n";
 
 export function JobStrip({ job }: { job: CrawlJobState }) {
