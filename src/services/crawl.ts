@@ -1,4 +1,4 @@
-import { ExtractedChapter } from "../types";
+import { ChapterErrorKind, ExtractedChapter } from "../types";
 import { getChapterFetcher } from "./chapters";
 import { extractChapter, LockedContentError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
@@ -49,6 +49,7 @@ export async function extractWithRetry(
   onAttempt?: (attempt: number) => void
 ): Promise<ExtractedChapter> {
   let lastError = "Unknown error";
+  let errorKind: ChapterErrorKind = "other";
   const siteFetcher = getChapterFetcher(url);
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     onAttempt?.(attempt);
@@ -62,9 +63,12 @@ export async function extractWithRetry(
       lastError = err instanceof Error ? err.message : lastError;
       // Locked chapter can't be unlocked by re-rendering — fail fast instead
       // of wasting the whole retry budget. (The UI still offers a per-chapter retry.)
-      if (err instanceof LockedContentError) break;
+      if (err instanceof LockedContentError) {
+        errorKind = "locked";
+        break;
+      }
       if (attempt < MAX_ATTEMPTS) await sleep(retryDelayMs(err, attempt));
     }
   }
-  return { sourceUrl: url, title: url, blocks: [], error: lastError };
+  return { sourceUrl: url, title: url, blocks: [], error: lastError, errorKind };
 }

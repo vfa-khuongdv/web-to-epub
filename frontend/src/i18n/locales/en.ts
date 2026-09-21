@@ -152,6 +152,10 @@ export const en: Record<string, string> = {
   "Retry": "Retry",
   "Source:": "Source:",
   "Could not extract this chapter": "Could not extract this chapter",
+  "Locked": "Locked",
+  "This chapter is locked": "This chapter is locked",
+  "Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.":
+    "Unlock it on the site first — subscribe, enable mature content, or import a fresh session — then retry.",
   "Enter content manually": "Enter content manually",
   "Many errors are temporary — try again first.": "Many errors are temporary — try again first.",
   "Title for chapter {order}": "Title for chapter {order}",

@@ -13,6 +13,7 @@ export interface ExtractedChapter {
   title: string;
   blocks: ContentBlock[];
   error?: string;
+  errorKind?: ChapterErrorKind;
 }
 
 export interface SupportedSite {
@@ -45,12 +46,16 @@ export interface BookMetadata {
 
 export type ChapterStatus = "pending" | "done" | "error";
 
+// Why a crawl failed; the UI shows "locked" chapters differently from plain errors.
+export type ChapterErrorKind = "locked" | "other";
+
 export interface StoredChapter {
   order: number;
   url: string;
   title: string;
   status: ChapterStatus;
   error?: string;
+  errorKind?: ChapterErrorKind;
   blocks?: ContentBlock[];
 }
 

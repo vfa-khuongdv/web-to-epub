@@ -27,6 +27,7 @@ export interface SeedChapter {
   url: string;
   status?: StoredChapter["status"];
   error?: string;
+  errorKind?: StoredChapter["errorKind"];
   blocks?: ContentBlock[];
 }
 
@@ -96,6 +97,7 @@ async function seedInto(target: StoryStore, input: SeedStoryInput): Promise<Stor
       title: chapter.title,
       status: chapter.status ?? "pending",
       error: chapter.error,
+      errorKind: chapter.errorKind,
       blocks: chapter.blocks,
     })),
     createdAt: now,

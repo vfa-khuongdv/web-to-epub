@@ -360,6 +360,29 @@ describe("createStoryStore", () => {
     await expect(store.saveChapter(storyId("https://example.com/khong-co/"), chapter)).rejects.toThrow("Story not found");
   });
 
+  it("keeps the error kind so a locked chapter reads differently from a plain error", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    const locked = {
+      order: 1,
+      url: story.chapters[0].url,
+      title: story.chapters[0].title,
+      status: "error" as const,
+      error: "for subscribers only",
+      errorKind: "locked" as const,
+    };
+    await store.saveChapter(story.id, locked);
+
+    expect((await store.getChapter(story.id, 1))?.errorKind).toBe("locked");
+    // The outline the story detail loads must carry it too, or the chip cannot tell.
+    expect((await store.getOutline(story.id))?.chapters[0].errorKind).toBe("locked");
+
+    // A successful re-crawl (or manual save) clears it again.
+    await store.saveChapter(story.id, { ...locked, status: "done", error: undefined, errorKind: undefined, blocks: [] });
+    expect((await store.getChapter(story.id, 1))?.errorKind).toBeUndefined();
+  });
+
   it("saveChapter rejects id path traversal", async () => {
     const chapter = { order: 1, url: "https://example.com/x/1/", title: "Chương 1", status: "pending" as const };
     await expect(store.saveChapter("../../evil", chapter)).rejects.toThrow("Invalid story ID");

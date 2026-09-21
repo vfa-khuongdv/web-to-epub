@@ -1,5 +1,11 @@
 export type BlockType = "heading" | "paragraph" | "image" | "audio" | "video";
 
+// Why a crawl failed. "locked" means a retry cannot change the outcome until the site
+// grants access (missing/expired login, mature opt-in, subscribers-only content); "other"
+// is everything else, where retrying may well work. The UI reacts to this instead of
+// matching message text, which is translated.
+export type ChapterErrorKind = "locked" | "other";
+
 export interface ContentBlock {
   type: BlockType;
   level?: number; // for headings: 1-6
@@ -13,6 +19,7 @@ export interface ExtractedChapter {
   title: string;
   blocks: ContentBlock[];
   error?: string; // set when extraction failed after retries; blocks will be empty
+  errorKind?: ChapterErrorKind;
 }
 
 export interface ExportChapter {
@@ -52,6 +59,7 @@ export interface StoredChapter {
   title: string;
   status: ChapterStatus;
   error?: string;
+  errorKind?: ChapterErrorKind;
   blocks?: ContentBlock[];
 }
 
