@@ -30,7 +30,7 @@ test("exports a validated EPUB with edits, images and media", async ({ page }) =
         error: "boom",
         blocks: blocksFor("E2E-export-error"),
       },
-      { title: "Chương chờ", url: fixtureChapterUrl("export", 4) },
+      { title: "Chương chờ", url: fixtureChapterUrl("export", 4), blocks: blocksFor("E2E-export-4") },
     ],
   });
   await store.updateMeta(story.id, {
@@ -76,14 +76,15 @@ test("exports a validated EPUB with edits, images and media", async ({ page }) =
   expect(epub.allXhtml).not.toContain("E2E-export-error");
   expect(epub.allXhtml).not.toContain("E2E-export-4");
 
-  // epubBuilder's own image download ran, so the inline image is embedded.
-  expect(Object.keys(epub.files).some((key) => key.endsWith(".png"))).toBe(true);
+  // epubBuilder's own image download ran, so the inline image is embedded. The cover
+  // is always present, so require a PNG that is not the cover (discriminating).
+  expect(Object.keys(epub.files).some((key) => key.endsWith(".png") && !key.endsWith("cover.png"))).toBe(true);
   expect(epub.opf).toContain('media-type="image/png"');
 
   // packMedia patched the media file, manifest and the controls attribute back in.
   expect(Object.keys(epub.files).some((key) => key.endsWith(".mp3"))).toBe(true);
   expect(epub.opf).toContain("audio/mpeg");
-  expect(epub.allXhtml).toContain("controls");
+  expect(epub.allXhtml).toMatch(/<audio controls/);
 });
 
 test("disables export when no chapter is done", async ({ page }) => {
