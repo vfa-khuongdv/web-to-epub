@@ -32,6 +32,10 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
       />
       <p>
         {notice.kind === "toc-loaded" && t("Loaded {count} chapters", { count: notice.count })}
+        {notice.kind === "session-saved" &&
+          (notice.username
+            ? t("Saved login for {username}", { username: notice.username })
+            : t("Saved login session"))}
         {notice.kind === "crawl-done" &&
           (complete
             ? t("Downloaded {count} chapters", { count: notice.total })

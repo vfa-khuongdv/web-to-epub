@@ -306,6 +306,9 @@ export const en: Record<string, string> = {
   "A saved login is in use for rated-M and subscribers-only stories.":
     "A saved login is in use for rated-M and subscribers-only stories.",
   "Saved {ago}.": "Saved {ago}.",
+  "Account:": "Account:",
+  "Saved login for {username}": "Saved login for {username}",
+  "Saved login session": "Saved login session",
   "Expires in about {minutes} min.": "Expires in about {minutes} min.",
   "Session has expired — import a fresh one.": "Session has expired — import a fresh one.",
   "The saved login lasts about an hour; import a fresh one when it expires.":
@@ -315,10 +318,20 @@ export const en: Record<string, string> = {
   "Asianfanfics session": "Asianfanfics session",
   "Rated-M and subscribers-only stories need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.":
     "Rated-M and subscribers-only stories need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.",
-  "Log in at asianfanfics.com in your browser.": "Log in at asianfanfics.com in your browser.",
-  "Open DevTools → Network and reload the page.": "Open DevTools → Network and reload the page.",
-  "Right-click the first request → Copy → Copy as cURL.": "Right-click the first request → Copy → Copy as cURL.",
-  "Paste the result below.": "Paste the result below.",
+  "Log in to asianfanfics.com in your browser — the copy has to come from a page where you are already logged in.":
+    "Log in to asianfanfics.com in your browser — the copy has to come from a page where you are already logged in.",
+  "Open DevTools: press F12, or ⌥⌘I on a Mac (Safari: turn the Develop menu on first).":
+    "Open DevTools: press F12, or ⌥⌘I on a Mac (Safari: turn the Develop menu on first).",
+  "Switch to the Network tab and reload the page (⌘R / Ctrl+R) so the request list fills up.":
+    "Switch to the Network tab and reload the page (⌘R / Ctrl+R) so the request list fills up.",
+  'Right-click the first request (the asianfanfics.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Right-click the first request (the asianfanfics.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.',
+  "Paste it into the box below and save.": "Paste it into the box below and save.",
+  "A wrong request (an image, an ad) carries no login cookies — the app says so instead of saving it.":
+    "A wrong request (an image, an ad) carries no login cookies — the app says so instead of saving it.",
+  "Click Import session for step-by-step instructions.": "Click Import session for step-by-step instructions.",
+  "For rated-M stories, turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com.":
+    "For rated-M stories, turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com.",
   "cURL from your browser": "cURL from your browser",
   "You can skip this — public stories still load.": "You can skip this — public stories still load.",
   "Skip": "Skip",

@@ -61,14 +61,14 @@ export function loadSiteSession(url: string): SiteSession | undefined {
   return loadSessionByHostname(hostname);
 }
 
-// A JWT cookie's `exp` claim, seconds since epoch. undefined for anything that is not a
-// readable JWT — the session also holds cookies like csrf_token and _ga.
-function jwtExpiry(value: string): number | undefined {
+// The payload of a JWT cookie, or undefined for anything that is not one — the session
+// also holds cookies like csrf_token and _ga.
+function jwtPayload(value: string): Record<string, unknown> | undefined {
   const parts = value.split(".");
   if (parts.length !== 3) return undefined;
   try {
-    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as { exp?: unknown };
-    return typeof payload.exp === "number" ? payload.exp : undefined;
+    const payload = JSON.parse(Buffer.from(parts[1], "base64url").toString("utf8")) as unknown;
+    return payload && typeof payload === "object" ? (payload as Record<string, unknown>) : undefined;
   } catch {
     return undefined;
   }
@@ -81,10 +81,30 @@ function jwtExpiry(value: string): number | undefined {
  */
 export function sessionExpiresAt(session: SiteSession): string | undefined {
   const expiries = (session.cookies ?? [])
-    .map((cookie) => jwtExpiry(cookie.value))
+    .map((cookie) => {
+      const exp = jwtPayload(cookie.value)?.exp;
+      return typeof exp === "number" ? exp : undefined;
+    })
     .filter((exp): exp is number => exp !== undefined);
   if (expiries.length === 0) return undefined;
   return new Date(Math.min(...expiries) * 1000).toISOString();
+}
+
+/**
+ * The account the saved login belongs to, taken from the usual claims of its JWT cookies.
+ * Display only — it is what the token itself says, which also makes it a check that the
+ * pasted cURL came from the browser profile the reader meant to use.
+ */
+export function sessionAccountName(session: SiteSession): string | undefined {
+  for (const cookie of session.cookies ?? []) {
+    const payload = jwtPayload(cookie.value);
+    if (!payload) continue;
+    for (const claim of ["name", "preferred_username", "username", "nickname"]) {
+      const value = payload[claim];
+      if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+  return undefined;
 }
 
 // A corrupt file counts as "no session": the settings page offers Import again, which
@@ -93,11 +113,17 @@ export function siteSessionStatus(hostname: string): {
   configured: boolean;
   savedAt?: string;
   expiresAt?: string;
+  username?: string;
 } {
   try {
     const session = loadSessionByHostname(hostname);
     if (!session) return { configured: false };
-    return { configured: true, savedAt: session.savedAt, expiresAt: sessionExpiresAt(session) };
+    return {
+      configured: true,
+      savedAt: session.savedAt,
+      expiresAt: sessionExpiresAt(session),
+      username: sessionAccountName(session),
+    };
   } catch {
     return { configured: false };
   }

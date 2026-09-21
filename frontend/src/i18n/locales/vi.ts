@@ -307,6 +307,9 @@ export const vi: Record<string, string> = {
   "A saved login is in use for rated-M and subscribers-only stories.":
     "Đang dùng phiên đăng nhập đã lưu cho truyện rated M và truyện của tác giả bạn đăng ký.",
   "Saved {ago}.": "Đã lưu {ago}.",
+  "Account:": "Tài khoản:",
+  "Saved login for {username}": "Đã lưu phiên đăng nhập của {username}",
+  "Saved login session": "Đã lưu phiên đăng nhập",
   "Expires in about {minutes} min.": "Còn hiệu lực khoảng {minutes} phút.",
   "Session has expired — import a fresh one.": "Phiên đã hết hạn — nhập lại phiên mới.",
   "The saved login lasts about an hour; import a fresh one when it expires.":
@@ -316,10 +319,21 @@ export const vi: Record<string, string> = {
   "Asianfanfics session": "Phiên đăng nhập Asianfanfics",
   "Rated-M and subscribers-only stories need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.":
     "Truyện rated M và truyện chỉ dành cho người đăng ký cần phiên đăng nhập lấy từ chính trình duyệt của bạn. Công cụ không bao giờ thấy mật khẩu — bạn đăng nhập ở đó rồi dán bản copy của request.",
-  "Log in at asianfanfics.com in your browser.": "Đăng nhập asianfanfics.com trong trình duyệt của bạn.",
-  "Open DevTools → Network and reload the page.": "Mở DevTools → Network rồi tải lại trang.",
-  "Right-click the first request → Copy → Copy as cURL.": "Chuột phải vào request đầu tiên → Copy → Copy as cURL.",
-  "Paste the result below.": "Dán kết quả vào ô dưới đây.",
+  "Log in to asianfanfics.com in your browser — the copy has to come from a page where you are already logged in.":
+    "Đăng nhập asianfanfics.com trên trình duyệt của bạn — bản copy phải lấy từ trang mà bạn đã đăng nhập.",
+  "Open DevTools: press F12, or ⌥⌘I on a Mac (Safari: turn the Develop menu on first).":
+    "Mở DevTools: bấm F12, hoặc ⌥⌘I trên Mac (Safari: bật menu Develop trước).",
+  "Switch to the Network tab and reload the page (⌘R / Ctrl+R) so the request list fills up.":
+    "Chuyển sang tab Network và tải lại trang (⌘R / Ctrl+R) để danh sách request hiện ra.",
+  'Right-click the first request (the asianfanfics.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Chuột phải vào request đầu tiên (trang asianfanfics.com) → Copy → Copy as cURL. Nếu chỉ có "Copy as cURL (bash)" thì bản đó cũng dùng được.',
+  "Paste it into the box below and save.": "Dán vào ô bên dưới rồi lưu.",
+  "A wrong request (an image, an ad) carries no login cookies — the app says so instead of saving it.":
+    "Chọn nhầm request (ảnh, quảng cáo) sẽ không có cookie đăng nhập — app báo lỗi thay vì lưu bừa.",
+  "Click Import session for step-by-step instructions.":
+    "Bấm Nhập phiên đăng nhập để xem hướng dẫn từng bước.",
+  "For rated-M stories, turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com.":
+    "Với truyện rated M, hãy tắt Settings → Content filter → \"Filter mature content\" trên asianfanfics.com.",
   "cURL from your browser": "cURL từ trình duyệt",
   "You can skip this — public stories still load.": "Có thể bỏ qua — truyện công khai vẫn tải được.",
   "Skip": "Bỏ qua",

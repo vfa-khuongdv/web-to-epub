@@ -782,10 +782,11 @@ export default function LibraryView({
 
       {sessionPromptUrl && (
         <SiteSessionDialog
-          onSaved={() => {
+          onSaved={(result) => {
             sessionNeedsImport.current = Promise.resolve(false);
             const url = sessionPromptUrl;
             setSessionPromptUrl(null);
+            pushNotice({ kind: "session-saved", username: result.username });
             void createStoryFrom(url);
           }}
           onSkip={() => {
