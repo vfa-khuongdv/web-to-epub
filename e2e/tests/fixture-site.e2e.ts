@@ -24,6 +24,9 @@ test("locked mode carries the Vietnamese anti-adblock notice", async ({ request 
   ).text();
   // Must match LOCKED_CONTENT_RE in src/services/extractor.ts.
   expect(html).toMatch(/nội dung chương.{0,20}bị khóa/i);
+  // renderer.ts rejects HTML shorter than 1500 chars before extraction runs,
+  // which would bypass the locked-content check and burn the retry budget.
+  expect(html.length).toBeGreaterThan(1500);
 });
 
 test("serves PNG and MP3 assets with the right magic bytes", async ({ request }) => {
