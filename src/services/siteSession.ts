@@ -17,6 +17,9 @@ export interface SiteSession extends StorageState {
   // The bot protection that issued the cookies bound them to the browser's user agent,
   // so renders for that site use the same one (see renderer.ts).
   userAgent?: string;
+  // When the session was imported. The site's access tokens are short-lived (about an
+  // hour), so the settings page shows this to explain why crawling stopped working.
+  savedAt?: string;
 }
 
 export interface ParsedSiteSession {
@@ -60,9 +63,10 @@ export function loadSiteSession(url: string): SiteSession | undefined {
 
 // A corrupt file counts as "no session": the settings page offers Import again, which
 // overwrites it, instead of showing a saved state the crawler cannot use.
-export function siteSessionStatus(hostname: string): { configured: boolean } {
+export function siteSessionStatus(hostname: string): { configured: boolean; savedAt?: string } {
   try {
-    return { configured: loadSessionByHostname(hostname) !== undefined };
+    const session = loadSessionByHostname(hostname);
+    return session ? { configured: true, savedAt: session.savedAt } : { configured: false };
   } catch {
     return { configured: false };
   }
@@ -71,7 +75,7 @@ export function siteSessionStatus(hostname: string): { configured: boolean } {
 export function saveSiteSession(hostname: string, session: SiteSession): void {
   mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
   const file = sessionFilePath(hostname);
-  writeFileSync(file, JSON.stringify(session, null, 2));
+  writeFileSync(file, JSON.stringify({ ...session, savedAt: new Date().toISOString() }, null, 2));
   try {
     chmodSync(file, 0o600);
   } catch {

@@ -65,7 +65,7 @@ test("asks for a session before loading an Asianfanfics URL, then continues with
   expect(fs.existsSync(SESSION_FILE)).toBe(true);
 
   const status = await (await request.get("/api/site-sessions/asianfanfics")).json();
-  expect(status).toEqual({ configured: true });
+  expect(status).toMatchObject({ configured: true });
 });
 
 test("settings shows the saved session and removes it", async ({ page, request }) => {

@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderPageHtml } from "../renderer";
+import { loadSiteSession } from "../siteSession";
 import {
   fetchToc,
   normalizeAsianfanficsStoryUrl,
@@ -8,11 +9,14 @@ import {
 } from "./asianfanfics";
 
 vi.mock("../renderer", () => ({ renderPageHtml: vi.fn() }));
+vi.mock("../siteSession", () => ({ loadSiteSession: vi.fn() }));
 
 const mockedRender = vi.mocked(renderPageHtml);
+const mockedSession = vi.mocked(loadSiteSession);
 
 beforeEach(() => {
   mockedRender.mockReset();
+  mockedSession.mockReset();
 });
 
 const TOC_LINKS = `
@@ -34,10 +38,12 @@ const TOC_LINKS = `
   </div>`;
 
 // The mobile TOC sheet repeats the same links; parseStoryPage must dedupe them.
-const storyPage = (options: { title?: string; badges?: string; toc?: string; extra?: string } = {}) => `<!doctype html>
+const storyPage = (options: { title?: string; badges?: string; toc?: string; extra?: string; userbar?: string } = {}) => `<!doctype html>
 <html><head><title>${options.title ?? "Attraction"} - Asianfanfics</title></head>
 <body>
-<header data-aff-userbar-shell><a href="/login">Log In</a> <a href="/register">Register</a></header>
+<header data-aff-userbar-shell>${
+  options.userbar ?? `<a href="/login">Log In</a> <a href="/register">Register</a>`
+}</header>
 <div id="main-container">
   <div class="relative isolate"><div class="relative z-10">
     <main class="min-w-0">
@@ -175,6 +181,28 @@ describe("fetchToc (asianfanfics)", () => {
   it("báo lỗi khi không có mục lục và không rõ nguyên nhân", async () => {
     mockedRender.mockResolvedValue(storyPage({ toc: "" }));
     await expect(fetchToc(storyUrl)).rejects.toThrow(/No chapter list found/);
-    expect(mockedRender).toHaveBeenCalledTimes(3);
+    expect(mockedRender).toHaveBeenCalledTimes(4);
+  });
+
+  it("Cloudflare không xác minh xong → lỗi nói rõ là thử lại được", async () => {
+    mockedRender.mockResolvedValue(
+      '<html><head><title>Just a moment...</title></head><body>Performing security verification</body></html>'
+    );
+    await expect(fetchToc(storyUrl)).rejects.toThrow(/Cloudflare verification did not finish/);
+    expect(mockedRender).toHaveBeenCalledTimes(4);
+  });
+
+  it("phiên đã lưu nhưng trang trả về khách → báo phiên hết hạn, không trả mục lục", async () => {
+    mockedSession.mockReturnValue({ cookies: [], origins: [] });
+    mockedRender.mockResolvedValue(storyPage());
+    await expect(fetchToc(storyUrl)).rejects.toThrow(/session has expired/);
+    expect(mockedRender).toHaveBeenCalledTimes(4);
+  });
+
+  it("phiên đã lưu + trang đã đăng nhập → trả mục lục bình thường", async () => {
+    mockedSession.mockReturnValue({ cookies: [], origins: [] });
+    mockedRender.mockResolvedValue(storyPage({ userbar: `<a href="/profile/u/x">x</a> <a href="/logout">Logout</a>` }));
+    const toc = await fetchToc(storyUrl);
+    expect(toc.chapters).toHaveLength(3);
   });
 });

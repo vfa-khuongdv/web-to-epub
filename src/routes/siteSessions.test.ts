@@ -92,7 +92,9 @@ describe("site session routes", () => {
 
   it("báo đã cấu hình sau khi nhập", async () => {
     const res = await fetch(`${base}/api/site-sessions/asianfanfics`);
-    expect(await res.json()).toEqual({ configured: true });
+    const status = (await res.json()) as { configured: boolean; savedAt?: string };
+    expect(status.configured).toBe(true);
+    expect(typeof status.savedAt).toBe("string");
   });
 
   it("xoá phiên đã lưu", async () => {

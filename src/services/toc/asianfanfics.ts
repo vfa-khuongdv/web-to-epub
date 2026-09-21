@@ -1,6 +1,7 @@
 import { JSDOM } from "jsdom";
 import { sleep } from "./http";
 import { renderPageHtml } from "../renderer";
+import { loadSiteSession } from "../siteSession";
 import { TocAdapter, TocChapter, TocResult } from "./types";
 import { t } from "../lang";
 
@@ -13,8 +14,10 @@ const STORY_ID_RE = /^\/story\/view\/(\d+)(?:\/|$)/;
 
 // Cloudflare sometimes serves its bot-check page instead of the story (see renderer.ts);
 // a fresh render usually gets the real page, so a few attempts are worth it.
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 300;
+const MAX_ATTEMPTS = 4;
+const RETRY_DELAY_MS = 1000;
+// Cloudflare's interstitial, whatever it renders instead of the page.
+const CLOUDFLARE_RE = /just a moment|performing security verification|enable javascript and cookies to continue/i;
 
 export function parseAsianfanficsStoryId(url: string): string | undefined {
   let pathname: string;
@@ -74,6 +77,13 @@ function headerText(doc: Document): string {
   return doc.querySelector("main header")?.textContent ?? "";
 }
 
+// The site renders this bar on every page; a Log In link in it means the request was
+// served as a guest, whatever cookies we sent.
+function isLoggedOut(doc: Document): boolean {
+  const bar = doc.querySelector("header[data-aff-userbar-shell]");
+  return !!bar && !!bar.querySelector('a[href="/login"]');
+}
+
 export async function fetchToc(storyUrl: string): Promise<TocResult> {
   let lastError: Error | undefined;
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
@@ -87,18 +97,26 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
       continue;
     }
 
+    const doc = new JSDOM(html).window.document;
+    // A saved session the site no longer honours: the account's access token lasts about an
+    // hour, after which every chapter would come back as a guest-level teaser. Stop at the
+    // add with that reason. Retried first — one mis-served guest page must not fail the add.
+    if (loadSiteSession(storyUrl) && isLoggedOut(doc)) {
+      lastError = new Error(
+        t(
+          "Saved Asianfanfics session has expired — log in again in your browser, then re-import it in Settings → Site sessions: {url}",
+          { url: storyUrl }
+        )
+      );
+      continue;
+    }
+
     const toc = parseStoryPage(html, storyUrl);
     if (toc.chapters.length > 0) return toc;
 
-    const doc = new JSDOM(html).window.document;
     // These are final states, not transient load failures — a retry cannot unlock them.
-    if (/subscribers only/i.test(headerText(doc))) {
-      throw new Error(
-        t("This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}", {
-          url: storyUrl,
-        })
-      );
-    }
+    // The age gate is checked first: on a story that is both rated M and subscribers-only,
+    // a guest sees the gate, and "log in" is the actionable part of that.
     if (/are you over 18\?/i.test(doc.body?.textContent ?? "")) {
       throw new Error(
         t(
@@ -107,8 +125,21 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
         )
       );
     }
+    if (/subscribers only/i.test(headerText(doc))) {
+      throw new Error(
+        t("This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}", {
+          url: storyUrl,
+        })
+      );
+    }
     if (/page not found/i.test(doc.querySelector("h1")?.textContent ?? "")) {
       throw new Error(t("Story not found on Asianfanfics — check the story URL again ({url})", { url: storyUrl }));
+    }
+    // Cloudflare's interstitial instead of the story: worth retrying, and worth telling the
+    // reader that — "no chapter list found" would send them looking at the URL instead.
+    if (CLOUDFLARE_RE.test(doc.title) || CLOUDFLARE_RE.test(doc.body?.textContent ?? "")) {
+      lastError = new Error(t("Cloudflare verification did not finish — try again in a moment ({url})", { url: storyUrl }));
+      continue;
     }
     lastError = new Error(t("No chapter list found at {url} — check the story URL again", { url: storyUrl }));
   }

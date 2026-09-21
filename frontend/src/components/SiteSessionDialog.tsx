@@ -74,6 +74,9 @@ export default function SiteSessionDialog({
           <li>{t("Right-click the first request → Copy → Copy as cURL.")}</li>
           <li>{t("Paste the result below.")}</li>
         </ol>
+        <p className="mt-2 text-[11.5px] text-ink-3">
+          {t("The saved login lasts about an hour; import a fresh one when it expires.")}
+        </p>
 
         <label className="mt-4 block text-[12.5px] font-medium" htmlFor="site-session-curl">
           {t("cURL from your browser")}
