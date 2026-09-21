@@ -7,7 +7,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 .DEFAULT_GOAL := help
 .PHONY: help install build dev test start clean \
         dev-frontend dev-all docker-build docker-run docker-stop docker-push \
-        app release-mac
+        app release-mac e2e
 
 help: ## In danh sách lệnh
 	@grep -hE '^[a-z0-9-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -37,6 +37,9 @@ dev-all: ## Chạy cùng lúc backend (watch) + Vite dev server; Ctrl-C tắt c�
 
 test: ## Chạy toàn bộ test
 	npm test
+
+e2e: ## Chạy E2E (Playwright) — tự build trước
+	npm run test:e2e
 
 start: build ## Build rồi chạy server ở PORT (mặc định 3100)
 	PORT=$(PORT) npm start

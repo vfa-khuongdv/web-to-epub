@@ -11,3 +11,6 @@ release/
 build/ms-playwright/
 build/icon.iconset/
 build/icon-1024.png
+/e2e/.data/
+/test-results/
+/playwright-report/
