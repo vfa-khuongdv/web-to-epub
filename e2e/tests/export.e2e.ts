@@ -47,10 +47,16 @@ test("exports a validated EPUB with edits, images and media", async ({ page }) =
   await page.locator('button[aria-controls="chapter-panel-1"]').click();
   const editor = page.getByRole("textbox", { name: "Content for chapter 1" });
   await editor.waitFor();
+  // The editor first mounts from the outline (no content), then loadBody remounts it
+  // with the chapter's HTML. Wait for that remount, otherwise the edit below can land
+  // on a detached div and the export payload falls back to stored blocks.
+  await expect(page.getByText("Loading chapter content…")).toHaveCount(0);
   await editor.evaluate((el) => {
     el.innerHTML = "<p>Unsaved edit EDITED-MARKER</p>";
     el.dispatchEvent(new Event("input", { bubbles: true }));
   });
+  // The chip proves the edit reached the app's live body state before exporting.
+  await expect(page.getByText("Unsaved", { exact: true })).toBeVisible();
 
   const downloadPromise = page.waitForEvent("download", { timeout: 90_000 });
   await page.getByRole("button", { name: "Export EPUB" }).click();
