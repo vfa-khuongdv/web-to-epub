@@ -97,11 +97,11 @@ browser, then hand the session over as a cURL copy:
    sessions**.
 
 The session is saved to `DATA_DIR/sessions/asianfanfics.com.json` (owner-only) and reused for
-that site from then on. The site's login tokens are short-lived — about an hour — after which
-chapters report "session has expired"; re-import the same way (Settings shows how old the saved
-login is). For M-rated stories the account must also have **Settings → Content filter → "Filter
-mature content"** unchecked — the site's own setting for adults; the tool does not toggle it for
-you.
+that site from then on. The site's login tokens are short-lived — about an hour: Settings →
+Site sessions shows the time left from the token itself, warns in red once it has expired, and
+adding an Asianfanfics story asks for a fresh import then too. Re-import the same way. For
+M-rated stories the account must also have **Settings → Content filter → "Filter mature
+content"** unchecked — the site's own setting for adults; the tool does not toggle it for you.
 
 ## Installation
 

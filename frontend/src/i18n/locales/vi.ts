@@ -307,6 +307,8 @@ export const vi: Record<string, string> = {
   "A saved login is in use for rated-M and subscribers-only stories.":
     "Đang dùng phiên đăng nhập đã lưu cho truyện rated M và truyện của tác giả bạn đăng ký.",
   "Saved {ago}.": "Đã lưu {ago}.",
+  "Expires in about {minutes} min.": "Còn hiệu lực khoảng {minutes} phút.",
+  "Session has expired — import a fresh one.": "Phiên đã hết hạn — nhập lại phiên mới.",
   "The saved login lasts about an hour; import a fresh one when it expires.":
     "Phiên đăng nhập dùng được khoảng một giờ; hết hạn thì nhập phiên mới.",
   "Rated-M and subscribers-only stories need a login saved from your own browser.":

@@ -380,9 +380,10 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSett
 
 export interface SiteSessionStatus {
   configured: boolean;
-  // When the session was imported. The site's access tokens are short-lived, so the
-  // settings page shows how old the saved login is.
+  // When the session was imported, and when its login token stops working (from the
+  // token itself) — the settings page warns before a crawl starts failing.
   savedAt?: string;
+  expiresAt?: string;
 }
 
 export async function fetchSiteSession(): Promise<SiteSessionStatus> {

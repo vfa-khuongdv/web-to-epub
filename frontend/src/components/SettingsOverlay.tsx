@@ -157,13 +157,21 @@ function SettingsBody({
   const [error, setError] = useState<string | null>(null);
   const [sessionConfigured, setSessionConfigured] = useState<boolean | null>(null);
   const [sessionSavedAt, setSessionSavedAt] = useState<string | undefined>(undefined);
+  const [sessionExpiresAt, setSessionExpiresAt] = useState<string | undefined>(undefined);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
+  // Computed when the page renders: it is opened for a moment, and a stale session is
+  // exactly what the reader came here to see.
+  const sessionExpired = !!sessionExpiresAt && Date.parse(sessionExpiresAt) <= Date.now();
+  const sessionMinutesLeft = sessionExpiresAt
+    ? Math.max(0, Math.round((Date.parse(sessionExpiresAt) - Date.now()) / 60_000))
+    : 0;
 
   const loadSession = useCallback(async () => {
     try {
       const status = await fetchSiteSession();
       setSessionConfigured(status.configured);
       setSessionSavedAt(status.savedAt);
+      setSessionExpiresAt(status.expiresAt);
     } catch {
       setSessionConfigured(null);
     }
@@ -178,6 +186,7 @@ function SettingsBody({
     try {
       await removeSiteSession();
       setSessionConfigured(false);
+      setSessionExpiresAt(undefined);
       onFlashSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -337,17 +346,25 @@ function SettingsBody({
         <Row
           label="Asianfanfics"
           hint={
-            sessionConfigured
-              ? `${t("A saved login is in use for rated-M and subscribers-only stories.")}${
-                  sessionSavedAt ? ` ${t("Saved {ago}.", { ago: timeAgo(sessionSavedAt, lang) })}` : ""
-                }`
-              : t("Rated-M and subscribers-only stories need a login saved from your own browser.")
+            sessionConfigured ? (
+              <>
+                {t("A saved login is in use for rated-M and subscribers-only stories.")}{" "}
+                {sessionExpired ? (
+                  <span className="font-semibold text-error">{t("Session has expired — import a fresh one.")}</span>
+                ) : sessionExpiresAt ? (
+                  <span>{t("Expires in about {minutes} min.", { minutes: sessionMinutesLeft })}</span>
+                ) : null}
+                {sessionSavedAt ? ` ${t("Saved {ago}.", { ago: timeAgo(sessionSavedAt, lang) })}` : ""}
+              </>
+            ) : (
+              t("Rated-M and subscribers-only stories need a login saved from your own browser.")
+            )
           }
           control={
             <>
               <button type="button" className="btn btn-tiny" onClick={() => setSessionDialogOpen(true)}>
                 <Icon name="lock" size={12} />
-                {sessionConfigured ? t("Replace session") : t("Import session")}
+                {sessionConfigured && !sessionExpired ? t("Replace session") : t("Import session")}
               </button>
               {sessionConfigured && (
                 <button type="button" className="btn btn-tiny" onClick={() => void handleRemoveSession()}>
@@ -394,7 +411,7 @@ function Section({ title, children }: { title: string; children: ReactNode }) {
 }
 
 // One setting: what it is on the left, the control on the right, the reason underneath.
-function Row({ label, hint, control }: { label: string; hint?: string; control: ReactNode }) {
+function Row({ label, hint, control }: { label: string; hint?: ReactNode; control: ReactNode }) {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-1.5">
       <div className="min-w-0 flex-1 basis-56">
