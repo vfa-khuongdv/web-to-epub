@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+# One run per branch: a PR event and its branch push share a group, so a newer
+# commit cancels the older run instead of queueing behind it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: Unit tests & typechecks
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      # vite build does not typecheck the frontend, and Playwright transpiles the
+      # e2e specs without checking them.
+      - run: npx tsc -p frontend --noEmit
+      - run: npx tsc -p e2e --noEmit
+
+  e2e:
+    name: E2E (Playwright, real Chromium)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The app's renderer launches Chromium itself; runners do not grant the
+      # sandbox like a desktop does (same switch the Docker image uses).
+      CHROMIUM_NO_SANDBOX: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      # Builds backend (tsc) + frontend (vite -> public/), then runs the serial suite
+      # against the local fixture site with a throwaway library in e2e/.data.
+      - run: npm run test:e2e
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
