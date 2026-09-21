@@ -22,6 +22,7 @@ import {
   Pencil,
   Play,
   RotateCw,
+  Settings,
   Sun,
   TriangleAlert,
   Trash2,
@@ -56,7 +57,8 @@ export type IconName =
   | "bell"
   | "expand"
   | "collapse"
-  | "lock";
+  | "lock"
+  | "settings";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
 // as intent ("retry", "open") and swapping a glyph is a one-line change here.
@@ -88,6 +90,7 @@ const icons: Record<IconName, LucideIcon> = {
   expand: Maximize,
   collapse: Minimize,
   lock: Lock,
+  settings: Settings,
 };
 
 // The dot is a state light (crawling, live), not an outline: it reads as a dot only

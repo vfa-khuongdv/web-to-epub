@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blocksToHtml, htmlToBlocks } from "./chapterHtml";
+import { blocksToHtml, htmlToBlocks, mediaTag } from "./chapterHtml";
 
 describe("htmlToBlocks", () => {
   it("preserves paragraphs and inline formatting", () => {
@@ -15,10 +15,27 @@ describe("htmlToBlocks", () => {
     ]);
   });
 
+  it("reads heading levels at both ends of the range", () => {
+    expect(htmlToBlocks("<h1>Một</h1><h6>Sáu</h6>")).toEqual([
+      { type: "heading", level: 1, text: "Một" },
+      { type: "heading", level: 6, text: "Sáu" },
+    ]);
+  });
+
+  it("drops empty and whitespace-only headings", () => {
+    expect(htmlToBlocks("<h2></h2><h2>   </h2><h2>&nbsp;</h2><h3>Giữ</h3>")).toEqual([
+      { type: "heading", level: 3, text: "Giữ" },
+    ]);
+  });
+
   it("reads images with their original src, no base URL appended", () => {
     expect(htmlToBlocks('<img src="https://cdn.example.com/a.jpg" alt="Bìa" />')).toEqual([
       { type: "image", src: "https://cdn.example.com/a.jpg", alt: "Bìa" },
     ]);
+  });
+
+  it("drops images without src", () => {
+    expect(htmlToBlocks('<p>Trước</p><img alt="không nguồn">')).toEqual([{ type: "paragraph", text: "Trước" }]);
   });
 
   it("splits <br> into multiple paragraphs", () => {
@@ -29,9 +46,29 @@ describe("htmlToBlocks", () => {
     ]);
   });
 
+  it("splits the <br /> spacing variant too", () => {
+    expect(htmlToBlocks("<p>Dòng một<br />Dòng hai</p>")).toEqual([
+      { type: "paragraph", text: "Dòng một" },
+      { type: "paragraph", text: "Dòng hai" },
+    ]);
+  });
+
+  it("splits root-level bare text around <br>", () => {
+    expect(htmlToBlocks("A<br>B")).toEqual([
+      { type: "paragraph", text: "A" },
+      { type: "paragraph", text: "B" },
+    ]);
+  });
+
   it("drops empty paragraphs and paragraphs with only &nbsp;", () => {
     expect(htmlToBlocks("<p>Có chữ</p><p></p><p>&nbsp;</p><p>   </p>")).toEqual([
       { type: "paragraph", text: "Có chữ" },
+    ]);
+  });
+
+  it("drops paragraphs holding only a numeric NBSP or empty markup", () => {
+    expect(htmlToBlocks("<p>&#160;</p><p><b></b></p><p>Giữ</p>")).toEqual([
+      { type: "paragraph", text: "Giữ" },
     ]);
   });
 
@@ -40,6 +77,16 @@ describe("htmlToBlocks", () => {
       { type: "paragraph", text: "Chữ" },
     ]);
   });
+
+  it.each(["noscript", "iframe", "object", "embed", "link", "meta"])(
+    "removes <%s> that users accidentally paste in",
+    (tag) => {
+      expect(htmlToBlocks(`<p>Chữ</p><${tag}></${tag}><p>Khác</p>`)).toEqual([
+        { type: "paragraph", text: "Chữ" },
+        { type: "paragraph", text: "Khác" },
+      ]);
+    }
+  );
 
   it("recurses into nested divs instead of merging them into one paragraph", () => {
     expect(htmlToBlocks("<div><div><p>Một</p><p>Hai</p></div></div>")).toEqual([
@@ -106,6 +153,27 @@ describe("htmlToBlocks — audio/video", () => {
     ).toEqual([{ type: "video", src: "https://a.example/1.webm" }]);
   });
 
+  it("trims whitespace around a media src", () => {
+    expect(htmlToBlocks('<audio controls src="  https://a.example/1.mp3  ">x</audio>')).toEqual([
+      { type: "audio", src: "https://a.example/1.mp3" },
+    ]);
+  });
+
+  it("takes the first source when several are offered", () => {
+    expect(
+      htmlToBlocks(
+        '<video controls><source src="https://a.example/1.webm" type="video/webm">' +
+          '<source src="https://a.example/1.mp4" type="video/mp4"></video>'
+      )
+    ).toEqual([{ type: "video", src: "https://a.example/1.webm" }]);
+  });
+
+  it("a first source without src shadows later ones (pins chapterHtml.ts:42)", () => {
+    expect(
+      htmlToBlocks('<video controls><source type="video/webm"><source src="https://a.example/1.mp4"></video>')
+    ).toEqual([]);
+  });
+
   it("removes media tags with no source", () => {
     expect(htmlToBlocks("<audio controls></audio>")).toEqual([]);
   });
@@ -122,12 +190,49 @@ describe("blocksToHtml", () => {
     ).toBe('<h3>Chương 1</h3>\n<p>Đoạn <b>đậm</b></p>\n<img src="https://img.example/1.jpg" alt="Ảnh" />');
   });
 
+  it("defaults a heading to level 2 when level is missing", () => {
+    expect(blocksToHtml([{ type: "heading", text: "Chương" }])).toBe("<h2>Chương</h2>");
+  });
+
+  it("returns an empty string when there are no blocks", () => {
+    expect(blocksToHtml([])).toBe("");
+  });
+
+  it("renders media without src as an empty src attribute", () => {
+    expect(blocksToHtml([{ type: "audio" }])).toBe('<audio controls src="">Audio file</audio>');
+  });
+
+  // chapterHtml.ts:141 interpolates block.src directly, so a missing src becomes the
+  // literal "undefined" — unlike media, which falls back to "". Pins current behavior.
+  it('renders an image without src as src="undefined"', () => {
+    expect(blocksToHtml([{ type: "image" }])).toBe('<img src="undefined" alt="" />');
+  });
+
+  // chapterHtml.ts:129 interpolates the src into the attribute unescaped. Pins current behavior.
+  it("does not escape quotes in a media src", () => {
+    expect(mediaTag("audio", 'https://a.example/1.mp3" onplay="alert(1)')).toBe(
+      '<audio controls src="https://a.example/1.mp3" onplay="alert(1)">Audio file</audio>'
+    );
+  });
+
   it("round-trips through htmlToBlocks produce the same blocks", () => {
     const blocks = [
       { type: "paragraph" as const, text: "Một" },
       { type: "paragraph" as const, text: "Hai" },
     ];
     expect(htmlToBlocks(blocksToHtml(blocks))).toEqual(blocks);
+  });
+
+  // blocksToHtml embeds text verbatim, but htmlToBlocks splits on <br> — so a paragraph
+  // whose text contains <br> comes back as two paragraphs (chapterHtml.ts:31,143). Pins current behavior.
+  it("a paragraph whose text contains <br> does not round-trip", () => {
+    const html = blocksToHtml([{ type: "paragraph", text: "A<br>B" }]);
+
+    expect(html).toBe("<p>A<br>B</p>");
+    expect(htmlToBlocks(html)).toEqual([
+      { type: "paragraph", text: "A" },
+      { type: "paragraph", text: "B" },
+    ]);
   });
 
   it("builds media tags with controls so readers show a play button", () => {

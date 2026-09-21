@@ -55,6 +55,22 @@ vaultRouter.post("/vault/unlock", (req, res) => {
   answerUnlock(res, vault.unlock(typeof code === "string" ? code : ""));
 });
 
+// Changing the code proves the current one first, so it is safe to offer from the
+// settings page whether or not private mode is open.
+vaultRouter.post("/vault/change-code", (req, res) => {
+  const { code, newCode } = req.body as { code?: unknown; newCode?: unknown };
+  if (typeof newCode !== "string" || !CODE_RE.test(newCode)) {
+    res.status(400).json({ message: t("The code must be exactly 6 digits") });
+    return;
+  }
+  const result = vault.changeCode(typeof code === "string" ? code : "", newCode);
+  if (result.ok) {
+    res.json({ ok: true });
+    return;
+  }
+  answerUnlock(res, result);
+});
+
 vaultRouter.post("/vault/lock", (req, res) => {
   vault.lock(req.header("X-Vault-Token"));
   res.json({ ok: true });

@@ -243,7 +243,8 @@ export const en: Record<string, string> = {
   "Private": "Private",
   "Private mode — click to leave": "Private mode — click to leave",
   "Set a code for private mode": "Set a code for private mode",
-  "Pick a 6-digit code. There is no way to recover it, and no way to change it later.": "Pick a 6-digit code. There is no way to recover it, and no way to change it later.",
+  "Pick a 6-digit code. There is no way to recover it; you can change it later in Settings.":
+    "Pick a 6-digit code. There is no way to recover it; you can change it later in Settings.",
   "Enter your 6-digit code to open your private library.": "Enter your 6-digit code to open your private library.",
   "New code": "New code",
   "Digit {position}": "Digit {position}",
@@ -260,4 +261,38 @@ export const en: Record<string, string> = {
   "Packaging EPUB…": "Packaging EPUB…",
   "Downloading images {done}/{total}…": "Downloading images {done}/{total}…",
   "Downloading audio/video {done}/{total}…": "Downloading audio/video {done}/{total}…",
+
+  // Settings page
+  "Loading story details": "Loading story details",
+  "Loading settings": "Loading settings",
+  "Settings": "Settings",
+  "Try again": "Try again",
+  "Appearance": "Appearance",
+  "Theme": "Theme",
+  "Kept in this browser only.": "Kept in this browser only.",
+  "Interface language": "Interface language",
+  "Library": "Library",
+  "Check for new chapters when the app opens": "Check for new chapters when the app opens",
+  "Only stories you are watching are checked. With this off, check them yourself from the button above the story list.":
+    "Only stories you are watching are checked. With this off, check them yourself from the button above the story list.",
+  "New book defaults": "New book defaults",
+  "Filled in when a story is added. Editing the story's own info always wins.":
+    "Filled in when a story is added. Editing the story's own info always wins.",
+  "Used when the chapter list does not name one. Leave empty for none.":
+    "Used when the chapter list does not name one. Leave empty for none.",
+  "A code has been set": "A code has been set",
+  "No code has been set": "No code has been set",
+  "Private mode is a lock on this app, not encryption — the private library is a plain file on this machine.":
+    "Private mode is a lock on this app, not encryption — the private library is a plain file on this machine.",
+  "Press Cmd/Ctrl+Shift+N to open private mode and pick a code.":
+    "Press Cmd/Ctrl+Shift+N to open private mode and pick a code.",
+  "Change code": "Change code",
+  "Current code": "Current code",
+  "About": "About",
+  "Version": "Version",
+  "Library folder": "Library folder",
+  "Stored": "Stored",
+  "{stories} stories, {chapters} chapters": "{stories} stories, {chapters} chapters",
+  "Could not load settings": "Could not load settings",
+  "Could not save settings": "Could not save settings",
 };

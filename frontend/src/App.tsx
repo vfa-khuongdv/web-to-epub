@@ -1,42 +1,25 @@
 import { useEffect, useState } from "react";
 import LibraryView from "./components/LibraryView";
+import SettingsOverlay from "./components/SettingsOverlay";
 import { JobStrip } from "./components/JobStrip";
 import { NoticeStack } from "./components/NoticeStack";
-import { Icon, IconName } from "./components/Icon";
-import { fetchSupportedSites } from "./lib/api";
+import { Icon } from "./components/Icon";
+import { fetchSettings, fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
-import { SupportedSite } from "./types";
+import { applyTheme, readTheme, saveTheme, Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "./lib/theme";
+import { AppSettings, SupportedSite } from "./types";
 import { useCrawlJob } from "./hooks/useCrawlJob";
 import { useVault } from "./vault";
-
-type Theme = "system" | "light" | "dark";
-
-const THEME_KEY = "theme";
-// Click button to cycle: auto -> light -> dark -> auto.
-const THEME_CYCLE: Theme[] = ["system", "light", "dark"];
-const THEME_LABEL: Record<Theme, string> = { system: "Auto", light: "Light", dark: "Dark" };
-const THEME_ICON: Record<Theme, IconName> = { system: "display", light: "sun", dark: "moon" };
-
-// localStorage can throw (private window, cookies blocked): theme still switches, just
-// won't be remembered on next open.
-function readTheme(): Theme {
-  try {
-    const saved = localStorage.getItem(THEME_KEY);
-    return saved === "light" || saved === "dark" ? saved : "system";
-  } catch {
-    return "system";
-  }
-}
-
-function applyTheme(theme: Theme): void {
-  const dark = theme === "system" ? matchMedia("(prefers-color-scheme: dark)").matches : theme === "dark";
-  document.documentElement.dataset.theme = dark ? "dark" : "light";
-}
 
 export default function App() {
   const [supportedSites, setSupportedSites] = useState<SupportedSite[]>([]);
   const [sitesOpen, setSitesOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(readTheme);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  // Only autoScanOnOpen is needed out here (the library reads it); the settings page
+  // loads the rest itself. Undefined until the answer arrives, so the library does not
+  // run the launch check against a guess.
+  const [autoScan, setAutoScan] = useState<boolean | undefined>();
   const { lang, setLang, t } = useLang();
   const vault = useVault();
   const { job, live, attach, subscribe, clearChapters, notices, dismissNotice, pushNotice } = useCrawlJob();
@@ -47,6 +30,11 @@ export default function App() {
 
   useEffect(() => {
     fetchSupportedSites().then(setSupportedSites).catch(() => setSupportedSites([]));
+    // A server that cannot answer leaves the library doing what it did before there
+    // was a setting; the settings page reports the failure if it is opened.
+    fetchSettings()
+      .then((data) => setAutoScan(data.settings.autoScanOnOpen))
+      .catch(() => setAutoScan(true));
   }, []);
 
   // Shared live channel: open once for the whole app, close on unmount.
@@ -65,12 +53,7 @@ export default function App() {
 
   useEffect(() => {
     applyTheme(theme);
-    try {
-      if (theme === "system") localStorage.removeItem(THEME_KEY);
-      else localStorage.setItem(THEME_KEY, theme);
-    } catch {
-      /* Storage failed, but theme still changes for this session */
-    }
+    saveTheme(theme);
     if (theme !== "system") return;
     // Auto mode: switch immediately when OS changes light/dark preference.
     const media = matchMedia("(prefers-color-scheme: dark)");
@@ -140,6 +123,16 @@ export default function App() {
             onClick={() => setTheme(nextTheme)}
           >
             <Icon name={THEME_ICON[theme]} size={14} />
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-quiet btn-tiny"
+            title={t("Settings")}
+            aria-label={t("Settings")}
+            onClick={() => setSettingsOpen(true)}
+          >
+            <Icon name="settings" size={14} />
           </button>
 
           {job.running ? (
@@ -214,11 +207,21 @@ export default function App() {
           clearChapters={clearChapters}
           supportedSites={supportedSites}
           pushNotice={pushNotice}
+          autoScan={autoScan}
         />
       </div>
 
       <JobStrip job={job} />
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
+
+      {settingsOpen && (
+        <SettingsOverlay
+          theme={theme}
+          onTheme={setTheme}
+          onSaved={(settings: AppSettings) => setAutoScan(settings.autoScanOnOpen)}
+          onClose={() => setSettingsOpen(false)}
+        />
+      )}
     </div>
   );
 }

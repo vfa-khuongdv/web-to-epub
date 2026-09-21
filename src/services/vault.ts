@@ -43,12 +43,19 @@ export type UnlockFailure =
 
 export type UnlockResult = { ok: true; token: string } | UnlockFailure;
 
+// Changing the code hands back no token: the caller either already holds one (the
+// settings page opened from inside private mode) or has no business getting one.
+export type ChangeCodeResult = { ok: true } | UnlockFailure;
+
 export interface Vault {
   isConfigured(): boolean;
-  // First-time setup. Fails if a code already exists — changing it is a different
-  // operation and the app does not offer one.
+  // First-time setup. Fails if a code already exists; changing it is changeCode().
   setup(code: string): UnlockResult;
   unlock(code: string): UnlockResult;
+  // Replace the code, proving the old one first. Open sessions stay valid — it is the
+  // same reader on the same machine, and kicking them out of a story they are reading
+  // buys nothing the new code does not already give.
+  changeCode(currentCode: string, newCode: string): ChangeCodeResult;
   // Also extends the session: the token expires after inactivity, not after a fixed
   // wall-clock lifetime.
   isValidToken(token: string | undefined): boolean;
@@ -74,6 +81,32 @@ export function createVault(baseDir: string): Vault {
     }
   }
 
+  /**
+   * The wrong-code path both unlock() and changeCode() go through: the lockout, the
+   * shape of the code, and the constant-time comparison. Returns the failure to
+   * answer with, or undefined when the code is right.
+   */
+  function verify(code: string): UnlockFailure | undefined {
+    const now = Date.now();
+    if (now < lockedUntil) return { ok: false, reason: "locked-out", retryAfterMs: lockedUntil - now };
+    if (!CODE_RE.test(code)) return { ok: false, reason: "bad-code" };
+    const lock = readLock();
+    if (!lock) return { ok: false, reason: "not-configured" };
+
+    const expected = Buffer.from(lock.hash, "hex");
+    const actual = Buffer.from(hashCode(code, lock.salt), "hex");
+    if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
+      failures++;
+      if (failures >= MAX_FAILURES) {
+        lockedUntil = now + LOCKOUT_MS;
+        failures = 0;
+        return { ok: false, reason: "locked-out", retryAfterMs: LOCKOUT_MS };
+      }
+      return { ok: false, reason: "wrong-code" };
+    }
+    return undefined;
+  }
+
   function issueToken(): string {
     failures = 0;
     const token = crypto.randomUUID();
@@ -97,24 +130,22 @@ export function createVault(baseDir: string): Vault {
     },
 
     unlock(code: string): UnlockResult {
-      const now = Date.now();
-      if (now < lockedUntil) return { ok: false, reason: "locked-out", retryAfterMs: lockedUntil - now };
-      if (!CODE_RE.test(code)) return { ok: false, reason: "bad-code" };
-      const lock = readLock();
-      if (!lock) return { ok: false, reason: "not-configured" };
+      const failure = verify(code);
+      return failure ?? { ok: true, token: issueToken() };
+    },
 
-      const expected = Buffer.from(lock.hash, "hex");
-      const actual = Buffer.from(hashCode(code, lock.salt), "hex");
-      if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
-        failures++;
-        if (failures >= MAX_FAILURES) {
-          lockedUntil = now + LOCKOUT_MS;
-          failures = 0;
-          return { ok: false, reason: "locked-out", retryAfterMs: LOCKOUT_MS };
-        }
-        return { ok: false, reason: "wrong-code" };
-      }
-      return { ok: true, token: issueToken() };
+    changeCode(currentCode: string, newCode: string): ChangeCodeResult {
+      if (!CODE_RE.test(newCode)) return { ok: false, reason: "bad-code" };
+      const failure = verify(currentCode);
+      if (failure) return failure;
+      const previous = readLock() as LockFile; // verify() only passes when one exists
+      const salt = crypto.randomBytes(16).toString("hex");
+      // createdAt stays: it records when the private library was started, not when its
+      // code was last typed over.
+      const lock: LockFile = { salt, hash: hashCode(newCode, salt), createdAt: previous.createdAt };
+      fs.writeFileSync(lockPath, JSON.stringify(lock), { mode: 0o600 });
+      failures = 0;
+      return { ok: true };
     },
 
     isValidToken(token: string | undefined): boolean {
