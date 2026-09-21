@@ -11,7 +11,9 @@ test("serves chapter pages the renderer will accept", async ({ request }) => {
 });
 
 test("flaky mode blanks the first hits, then serves the page", async ({ request }) => {
-  const url = `${FIXTURE_URL}/truyen/fixture-flaky/chuong-1?mode=flaky&fails=1`;
+  // The counter lives for the fixture process's lifetime; a nonce gives every run a
+  // fresh key so a Playwright retry of this test sees the blanking again.
+  const url = `${FIXTURE_URL}/truyen/fixture-flaky/chuong-1?mode=flaky&fails=1&nonce=${Date.now()}`;
   const first = await (await request.get(url)).text();
   expect(first).not.toContain("E2E-fixture-flaky");
   const second = await (await request.get(url)).text();

@@ -10,7 +10,11 @@ export interface EpubContents {
 
 export function readEpub(file: string): EpubContents {
   const files = unzipSync(new Uint8Array(fs.readFileSync(file)));
-  const text = (path: string) => new TextDecoder().decode(files[path]);
+  const text = (path: string) => {
+    const entry = files[path];
+    if (!entry) throw new Error(`EPUB entry not found: ${path}`);
+    return new TextDecoder().decode(entry);
+  };
   return {
     files,
     text,

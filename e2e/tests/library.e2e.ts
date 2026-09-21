@@ -13,9 +13,11 @@ test("rejects a URL from an unsupported site", async ({ page }) => {
   // Wait for the allowlist to load: the client validates against it, and an empty list
   // rejects every URL for the wrong reason.
   await expect(page.getByRole("button", { name: "6 sites supported" })).toBeVisible();
+  const before = (await store.list()).length;
   await page.getByLabel("Story page URL").fill("https://example.com/story");
   await page.getByRole("button", { name: "Load chapters" }).click();
   await expect(page.getByText("URL is not from a supported site.")).toBeVisible();
+  expect((await store.list()).length).toBe(before);
 });
 
 test("lists a seeded story with its pending count", async ({ page }) => {
