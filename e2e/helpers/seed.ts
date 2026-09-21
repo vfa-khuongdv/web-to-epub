@@ -131,6 +131,12 @@ export function seedHighlight(
   return target.addHighlight(storyId, input);
 }
 
+export async function resetHighlights(storyId: string, target: StoryStore = store): Promise<void> {
+  for (const highlight of await target.listHighlights(storyId)) {
+    await target.removeHighlight(storyId, highlight.id);
+  }
+}
+
 export async function resetLibrary(target: StoryStore = store): Promise<void> {
   for (const summary of await target.list()) await target.remove(summary.id);
 }
