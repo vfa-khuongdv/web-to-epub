@@ -10,9 +10,10 @@ test.describe.configure({ mode: "serial" });
 const SESSION_FILE = path.join(DATA_DIR, "sessions", "asianfanfics.com.json");
 const STORY_URL = "https://www.asianfanfics.com/story/view/1143593";
 // The shape a browser's "Copy as cURL" produces: cookies in a header, UA included.
+const NAMED_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjQxMDI0NDQ4MDAsIm5hbWUiOiJraHVvbmdkdiJ9.sig";
 const CURL =
   "curl 'https://www.asianfanfics.com/story/view/1143593' " +
-  "-H 'cookie: atokun=jwt-value; cf_clearance=clear-value' -H 'user-agent: UA-TEST'";
+  `-H 'cookie: atokun=${NAMED_TOKEN}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
 
 test.beforeEach(async ({ request }) => {
   await request.delete("/api/site-sessions/asianfanfics");
@@ -61,6 +62,8 @@ test("asks for a session before loading an Asianfanfics URL, then continues with
   await dialog.getByLabel("cURL from your browser").fill(CURL);
   await dialog.getByRole("button", { name: "Save session" }).click();
   await expect(dialog).toHaveCount(0);
+  // The toast names the account that was imported.
+  await expect(page.getByRole("status").filter({ hasText: "Saved login for khuongdv" })).toBeVisible();
   await expect.poll(() => created).toBe(1);
   expect(fs.existsSync(SESSION_FILE)).toBe(true);
 
@@ -75,6 +78,11 @@ test("settings shows the saved session and removes it", async ({ page, request }
   await page.getByRole("button", { name: "Settings" }).click();
   const panel = page.getByRole("dialog", { name: "Settings" });
   await expect(panel.getByText("A saved login is in use for rated-M and subscribers-only stories.")).toBeVisible();
+
+  await expect(panel.getByRole("link", { name: "khuongdv" })).toHaveAttribute(
+    "href",
+    "https://www.asianfanfics.com/profile/u/khuongdv"
+  );
 
   await panel.getByRole("button", { name: "Remove" }).click();
   await expect(

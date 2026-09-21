@@ -77,7 +77,7 @@ export function parseAsianfanficsChapter(
     if (/are you over 18\?/i.test(body)) {
       throw new LockedContentError(
         t(
-          "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled: {url}",
+          "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled. Turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com, then retry: {url}",
           { url }
         )
       );

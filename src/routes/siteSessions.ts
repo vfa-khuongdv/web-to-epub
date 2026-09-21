@@ -1,6 +1,12 @@
 import { Router } from "express";
 import { t } from "../services/lang";
-import { parseSessionCurl, removeSiteSession, saveSiteSession, siteSessionStatus } from "../services/siteSession";
+import {
+  parseSessionCurl,
+  removeSiteSession,
+  saveSiteSession,
+  sessionAccountName,
+  siteSessionStatus,
+} from "../services/siteSession";
 
 export const siteSessionsRouter = Router();
 
@@ -32,12 +38,15 @@ siteSessionsRouter.post("/site-sessions/asianfanfics", (req, res) => {
   }
 
   try {
-    saveSiteSession(SITE_DOMAIN, { userAgent: parsed.userAgent, cookies: parsed.cookies, origins: [] });
+    const session = { userAgent: parsed.userAgent, cookies: parsed.cookies, origins: [] };
+    saveSiteSession(SITE_DOMAIN, session);
+    // Report the account the token belongs to, so the UI can show whose login this is.
+    res.json({ cookieCount: parsed.cookies.length, username: sessionAccountName(session) });
+    return;
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : String(err) });
     return;
   }
-  res.json({ cookieCount: parsed.cookies.length });
 });
 
 siteSessionsRouter.delete("/site-sessions/asianfanfics", (_req, res) => {

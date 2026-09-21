@@ -120,8 +120,8 @@ const vi: Record<string, string> = {
     "Không tìm thấy truyện trên Asianfanfics — kiểm tra lại URL truyện ({url})",
   "This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}":
     "Nội dung Asianfanfics này chỉ dành cho người đăng ký — cần tài khoản đã đăng ký theo dõi tác giả: {url}",
-  "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled: {url}":
-    "Nội dung Asianfanfics này được đánh dấu M (người lớn) — cần tài khoản đã đăng nhập và bật nội dung người lớn: {url}",
+  "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled. Turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com, then retry: {url}":
+    "Nội dung Asianfanfics này được đánh dấu M (người lớn) — cần tài khoản đã đăng nhập và bật nội dung người lớn. Hãy tắt Cài đặt → Content filter → \"Filter mature content\" trên asianfanfics.com rồi thử lại: {url}",
 
   // Saved site sessions
   "Saved login session is unreadable — delete {file} and log in again":

@@ -98,7 +98,8 @@ export interface LiveCrawl {
 // in whichever language is on screen.
 export type NoticeInput =
   | { kind: "crawl-done"; done: number; total: number; errors: number }
-  | { kind: "toc-loaded"; count: number };
+  | { kind: "toc-loaded"; count: number }
+  | { kind: "session-saved"; username?: string };
 
 export type Notice = NoticeInput & { id: number };
 

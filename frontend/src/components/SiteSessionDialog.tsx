@@ -16,7 +16,8 @@ export default function SiteSessionDialog({
   onSaved,
   onSkip,
 }: {
-  onSaved: () => void;
+  // The account the saved token belongs to, when the token names one.
+  onSaved: (result: { username?: string }) => void;
   onSkip: () => void;
 }) {
   const { t } = useLang();
@@ -38,8 +39,8 @@ export default function SiteSessionDialog({
     setBusy(true);
     setError(null);
     try {
-      await importSiteSession(curl);
-      onSaved();
+      const result = await importSiteSession(curl);
+      onSaved(result);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -69,13 +70,24 @@ export default function SiteSessionDialog({
           )}
         </p>
         <ol className="mt-3 list-decimal space-y-1 pl-5 text-[12.5px] leading-snug text-ink-2">
-          <li>{t("Log in at asianfanfics.com in your browser.")}</li>
-          <li>{t("Open DevTools → Network and reload the page.")}</li>
-          <li>{t("Right-click the first request → Copy → Copy as cURL.")}</li>
-          <li>{t("Paste the result below.")}</li>
+          <li>
+            {t(
+              "Log in to asianfanfics.com in your browser — the copy has to come from a page where you are already logged in."
+            )}
+          </li>
+          <li>{t("Open DevTools: press F12, or ⌥⌘I on a Mac (Safari: turn the Develop menu on first).")}</li>
+          <li>{t("Switch to the Network tab and reload the page (⌘R / Ctrl+R) so the request list fills up.")}</li>
+          <li>
+            {t(
+              'Right-click the first request (the asianfanfics.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.'
+            )}
+          </li>
+          <li>{t("Paste it into the box below and save.")}</li>
         </ol>
-        <p className="mt-2 text-[11.5px] text-ink-3">
-          {t("The saved login lasts about an hour; import a fresh one when it expires.")}
+        <p className="mt-2 text-[11.5px] leading-snug text-ink-3">
+          {t("A wrong request (an image, an ad) carries no login cookies — the app says so instead of saving it.")}{" "}
+          {t("The saved login lasts about an hour; import a fresh one when it expires.")}{" "}
+          {t('For rated-M stories, turn off Settings → Content filter → "Filter mature content" on asianfanfics.com.')}
         </p>
 
         <label className="mt-4 block text-[12.5px] font-medium" htmlFor="site-session-curl">

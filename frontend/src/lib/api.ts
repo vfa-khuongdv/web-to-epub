@@ -380,10 +380,12 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSett
 
 export interface SiteSessionStatus {
   configured: boolean;
-  // When the session was imported, and when its login token stops working (from the
-  // token itself) — the settings page warns before a crawl starts failing.
+  // When the session was imported, when its login token stops working (from the token
+  // itself), and the account it belongs to — the settings page shows all three so a
+  // stale or wrong-account session is noticed before a crawl starts failing.
   savedAt?: string;
   expiresAt?: string;
+  username?: string;
 }
 
 export async function fetchSiteSession(): Promise<SiteSessionStatus> {
@@ -394,14 +396,14 @@ export async function fetchSiteSession(): Promise<SiteSessionStatus> {
 
 // The body is a cURL copy of a request from the user's own logged-in browser; the server
 // keeps the cookies and answers only how many it saved.
-export async function importSiteSession(curl: string): Promise<{ cookieCount: number }> {
+export async function importSiteSession(curl: string): Promise<{ cookieCount: number; username?: string }> {
   const res = await apiFetch("/api/site-sessions/asianfanfics", {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ curl }),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save the session")));
-  return (await res.json()) as { cookieCount: number };
+  return (await res.json()) as { cookieCount: number; username?: string };
 }
 
 export async function removeSiteSession(): Promise<void> {

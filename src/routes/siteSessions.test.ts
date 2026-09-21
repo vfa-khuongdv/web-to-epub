@@ -15,7 +15,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DATA_DIR = mkdtempSync(path.join(os.tmpdir(), "site-sessions-route-test-"));
 process.env.DATA_DIR = DATA_DIR;
 
-const JWT_FUTURE = "eyJhbGciOiJIUzI1NiJ9.eyJleHAiOjQxMDI0NDQ4MDB9.sig";
+const JWT_FUTURE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjQxMDI0NDQ4MDAsIm5hbWUiOiJraHVvbmdkdiJ9.sig";
 const VALID_CURL =
   `curl 'https://www.asianfanfics.com/story/view/1191193' -H 'cookie: atokun=${JWT_FUTURE}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
 
@@ -84,8 +84,9 @@ describe("site session routes", () => {
       body: JSON.stringify({ curl: VALID_CURL }),
     });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { cookieCount: number };
+    const body = (await res.json()) as { cookieCount: number; username?: string };
     expect(body.cookieCount).toBe(2);
+    expect(body.username).toBe("khuongdv");
     expect(JSON.stringify(body)).not.toContain(JWT_FUTURE);
     expect(JSON.stringify(body)).not.toContain("clear-value");
     expect(existsSync(path.join(DATA_DIR, "sessions", "asianfanfics.com.json"))).toBe(true);
@@ -93,8 +94,9 @@ describe("site session routes", () => {
 
   it("báo đã cấu hình sau khi nhập", async () => {
     const res = await fetch(`${base}/api/site-sessions/asianfanfics`);
-    const status = (await res.json()) as { configured: boolean; savedAt?: string };
+    const status = (await res.json()) as { configured: boolean; savedAt?: string; username?: string };
     expect(status.configured).toBe(true);
+    expect(status.username).toBe("khuongdv");
     expect(typeof status.savedAt).toBe("string");
     expect(status.expiresAt).toBe(new Date(4_102_444_800 * 1000).toISOString());
   });

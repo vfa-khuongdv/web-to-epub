@@ -158,6 +158,7 @@ function SettingsBody({
   const [sessionConfigured, setSessionConfigured] = useState<boolean | null>(null);
   const [sessionSavedAt, setSessionSavedAt] = useState<string | undefined>(undefined);
   const [sessionExpiresAt, setSessionExpiresAt] = useState<string | undefined>(undefined);
+  const [sessionUsername, setSessionUsername] = useState<string | undefined>(undefined);
   const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
   // Computed when the page renders: it is opened for a moment, and a stale session is
   // exactly what the reader came here to see.
@@ -172,6 +173,7 @@ function SettingsBody({
       setSessionConfigured(status.configured);
       setSessionSavedAt(status.savedAt);
       setSessionExpiresAt(status.expiresAt);
+      setSessionUsername(status.username);
     } catch {
       setSessionConfigured(null);
     }
@@ -187,6 +189,7 @@ function SettingsBody({
       await removeSiteSession();
       setSessionConfigured(false);
       setSessionExpiresAt(undefined);
+      setSessionUsername(undefined);
       onFlashSaved();
     } catch (err) {
       setError((err as Error).message);
@@ -349,6 +352,20 @@ function SettingsBody({
             sessionConfigured ? (
               <>
                 {t("A saved login is in use for rated-M and subscribers-only stories.")}{" "}
+                {sessionUsername && (
+                  <>
+                    {t("Account:")}{" "}
+                    <a
+                      className="font-semibold text-select hover:underline"
+                      href={`https://www.asianfanfics.com/profile/u/${encodeURIComponent(sessionUsername)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      {sessionUsername}
+                    </a>
+                    .{" "}
+                  </>
+                )}
                 {sessionExpired ? (
                   <span className="font-semibold text-error">{t("Session has expired — import a fresh one.")}</span>
                 ) : sessionExpiresAt ? (
@@ -357,7 +374,7 @@ function SettingsBody({
                 {sessionSavedAt ? ` ${t("Saved {ago}.", { ago: timeAgo(sessionSavedAt, lang) })}` : ""}
               </>
             ) : (
-              t("Rated-M and subscribers-only stories need a login saved from your own browser.")
+              `${t("Rated-M and subscribers-only stories need a login saved from your own browser.")} ${t("Click Import session for step-by-step instructions.")}`
             )
           }
           control={
@@ -379,6 +396,8 @@ function SettingsBody({
             onSaved={() => {
               setSessionDialogOpen(false);
               setSessionConfigured(true);
+              // Refetch to pick up the account name and the new expiry.
+              void loadSession();
               onFlashSaved();
             }}
             onSkip={() => setSessionDialogOpen(false)}
