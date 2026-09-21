@@ -133,6 +133,22 @@ export async function renderPageHtml(url: string): Promise<string> {
       // bounded settle loop below is faster and more robust across sites.
       await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
 
+      // Asianfanfics gates every page behind an "Are you over 18?" click-through that is
+      // independent of login: it sets a cookie only when a real click happens (a plain
+      // request to the same href does not), so a session captured from a pasted cURL never
+      // carries it. Click it once per render so rendering behaves like an already-verified
+      // browser, same as the user's own.
+      if (/(^|\.)asianfanfics\.com$/.test(new URL(url).hostname)) {
+        const ageGate = page.locator('a[href="/htmx/story/verify_age"]');
+        if (await ageGate.count().catch(() => 0)) {
+          await ageGate.first().click().catch(() => {});
+          // The click reloads the page; without this the settle loop below starts
+          // polling mid-navigation and reads a transient blank document as a real
+          // BlankedPageError instead of waiting for the unlocked content.
+          await page.waitForLoadState("domcontentloaded").catch(() => {});
+        }
+      }
+
       // Scrolls to the bottom repeatedly so lazy-loaded / infinite-scroll
       // content mounts into the DOM, stopping once the page height settles.
       // Runs for at most SETTLE_MAX_MS so a stalled page can't hang the crawl.
