@@ -6,7 +6,7 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 
 - `npm install` — installs backend + `frontend/` (npm workspaces). Add `npx playwright install chromium` to actually crawl/render.
 - `npm test` — vitest, all tests in ~2s; tests are hermetic (network and Chromium mocked), no setup needed.
-- `npm run test:e2e` — Playwright E2E against the built app (`npm run build` runs first; needs `npx playwright install chromium`). Serial, uses a throwaway library in `e2e/.data/` and a local fixture site. Specs are `e2e/tests/*.e2e.ts` (not `*.test.ts`, so vitest keeps ignoring them); typecheck with `npx tsc -p e2e --noEmit`. Add-by-URL/TOC and watch-check happy paths need a real allowlisted site, so they stay unit-tested.
+- `npm run test:e2e` — Playwright E2E against the built app (`npm run build` runs first; needs `npx playwright install chromium`). Serial, uses a throwaway library in `e2e/.data/` and a local fixture site. Specs are `e2e/tests/*.e2e.ts` (not `*.test.ts`, so vitest keeps ignoring them); typecheck with `npx tsc -p e2e --noEmit`. Add-by-URL/TOC and watch-check happy paths need a real allowlisted site, so they stay unit-tested. CI (`.github/workflows/ci.yml`) runs `npm test`, both typechecks and this suite on pushes and PRs.
 - `npx vitest run src/services/crawl.test.ts -t "test name"` — single file / single test.
 - `npm run build` — `tsc` → `dist/` then `vite build` → `public/`. Required before `npm start` (it only runs `dist/server.js`); `make start` builds first.
 - `npm run dev` (backend watch: `tsc --watch` + nodemon) and `npm run dev:frontend` (Vite dev server proxies `/api` → `localhost:3100`).

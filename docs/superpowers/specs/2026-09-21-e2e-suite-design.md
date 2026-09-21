@@ -21,7 +21,9 @@ Out of scope (non-goals):
 - Add-by-URL happy path and watch/check happy path (both require a real
   allowlisted site + TOC adapter; already unit-tested, see §7).
 - Electron packaging, Docker image, real-site smoke tests, visual regression.
-- CI wiring (no CI in the repo; suite is run locally via `npm run test:e2e`).
+- CI wiring was out of scope when this design was written and was added afterwards:
+  `.github/workflows/ci.yml` runs `npm test`, both typechecks and
+  `npm run test:e2e` on pushes and PRs.
 - Changes to `npm test`: the vitest suite stays hermetic and untouched.
 
 ## 2. Current Context
