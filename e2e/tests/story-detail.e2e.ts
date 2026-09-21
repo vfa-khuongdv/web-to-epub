@@ -36,6 +36,10 @@ test("uploads a cover image and shows a placeholder without one", async ({ page,
   await expect(page.getByRole("img", { name: "Cover image for No cover story" })).toHaveCount(0);
 
   await page.getByRole("button", { name: "Cover story", exact: true }).click();
+  // openStory fetches the full story before StoryDetail remounts (key={selected.id}).
+  // exact: true is required: without it "Cover story" also matches the "No cover story"
+  // heading (substring, case-insensitive) and setInputFiles races the pane swap.
+  await expect(page.getByRole("heading", { name: "Cover story", exact: true, level: 3 })).toBeVisible();
   await page.getByLabel("Cover image").setInputFiles(file);
   await page.getByRole("button", { name: "Save metadata" }).click();
   await expect(page.getByRole("button", { name: "Saved" })).toBeVisible();
@@ -61,6 +65,10 @@ test("edits and saves chapter content through the PATCH route", async ({ page, r
   await page.locator('button[aria-controls="chapter-panel-1"]').click();
   const editor = page.getByRole("textbox", { name: "Content for chapter 1" });
   await editor.waitFor();
+  // The editor first mounts from the outline (no content), then loadBody remounts it
+  // with the chapter's HTML: wait for that remount so evaluate() can't run on the
+  // detached div (its input event would never reach React and Save stays disabled).
+  await expect(page.getByText("Loading chapter content…")).toHaveCount(0);
   await editor.evaluate((el) => {
     el.innerHTML = "<p>Nội dung đã sửa EDITED-MARKER</p>";
     el.dispatchEvent(new Event("input", { bubbles: true }));
