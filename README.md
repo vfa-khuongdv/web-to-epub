@@ -322,7 +322,9 @@ links, host-blocked) become a text block with a link to the source, rather than 
   chapter body arrives via the site's own htmx fragment, which the adapter reads from the
   rendered DOM. Rated M / subscribers-only stories need an imported session (see
   [Asianfanfics sessions](#asianfanfics-sessions)) and the account's mature filter off; without
-  them they report a clear error instead of returning empty chapters.
+  them they report a clear error instead of returning empty chapters. A subscribers-only chapter
+  the account cannot read arrives as a teaser (the first paragraphs plus a notice) — the
+  fetcher reports it as locked rather than saving a truncated chapter.
 - **"Load more" buttons** aren't clicked automatically yet; currently only auto-scroll to trigger
   lazy-load via scroll events.
 - **Watch for new chapters only runs while the app is open** — each watched story costs one TOC
