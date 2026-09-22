@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveStoryMeta, setStoryWatch, startStoryCrawl } from "../lib/api";
+import { fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
@@ -88,6 +88,10 @@ export default function StoryDetail({
   const coverInput = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
   const [chapterPage, setChapterPage] = useState(1);
+  const [stopping, setStopping] = useState(false);
+  // Titles saved for chapters not yet crawled: overlaid on `story.chapters` so the edit
+  // shows immediately instead of waiting for the next refetch to catch up.
+  const [pendingTitles, setPendingTitles] = useState<Record<number, string>>({});
   const [loadingNew, setLoadingNew] = useState(false);
   const [reading, setReading] = useState(false);
   const { isExporting, progress, exportStoryBook } = useEpubExport();
@@ -162,6 +166,7 @@ export default function StoryDetail({
     }
     if (!watchingRun.current) return;
     watchingRun.current = false;
+    setStopping(false);
     void refreshStory(runOrders.current);
     runOrders.current = undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -213,6 +218,20 @@ export default function StoryDetail({
       runOrders.current = orders;
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+
+  // The crawl stops between chapters, not mid-render — the chapter already in flight
+  // still finishes. `stopping` just disables the button until that happens; `job.running`
+  // going false (watched above) is what actually clears it.
+  async function handleStop() {
+    setError(null);
+    setStopping(true);
+    try {
+      await stopStoryCrawl(story.id);
+    } catch (err) {
+      setError((err as Error).message);
+      setStopping(false);
     }
   }
 
@@ -387,6 +406,12 @@ export default function StoryDetail({
               <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
               {job.running ? t("Crawling…") : t("Continue crawl ({count} chapters)", { count: remaining })}
             </button>
+            {job.running && (
+              <button type="button" className="btn" disabled={stopping} onClick={handleStop}>
+                <Icon name="x" size={13} />
+                {stopping ? t("Stopping…") : t("Stop crawl")}
+              </button>
+            )}
             <button
               type="button"
               className="btn"
@@ -496,9 +521,14 @@ export default function StoryDetail({
                   <PendingChapterRow
                     key={`pending-${sc.order}`}
                     order={sc.order}
-                    title={sc.title}
+                    title={pendingTitles[sc.order] ?? sc.title}
                     url={sc.url}
                     state={job.chapters[sc.url] ?? "pending"}
+                    onSaveTitle={async (newTitle) => {
+                      await saveChapterTitle(story.id, sc.order, newTitle);
+                      setPendingTitles((m) => ({ ...m, [sc.order]: newTitle }));
+                      onStoryChanged();
+                    }}
                   />
                 );
               }
@@ -534,6 +564,12 @@ export default function StoryDetail({
                       )
                     );
                     onStoryChanged();
+                  }}
+                  onSaveUrl={async (url) => {
+                    const updated = await saveChapterUrl(story.id, c.order, url);
+                    setChapters((cs) =>
+                      cs.map((x) => (x.id === c.id ? { ...x, data: { ...x.data, sourceUrl: updated.url } } : x))
+                    );
                   }}
                 />
               );

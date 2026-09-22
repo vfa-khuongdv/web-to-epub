@@ -130,6 +130,16 @@ export async function startStoryCrawl(id: string, orders?: number[]): Promise<{ 
   return (await res.json()) as { total: number };
 }
 
+// Ends a running crawl: checked between chapters, so the chapter already in flight
+// still finishes and saves before the crawl stops.
+export async function stopStoryCrawl(id: string): Promise<void> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/crawl/stop`, {
+    method: "POST",
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not stop crawl")));
+}
+
 export async function fetchStories(): Promise<StorySummary[]> {
   const res = await apiFetch("/api/stories", { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load story list")));
@@ -180,6 +190,33 @@ export async function saveChapterEdit(
     body: JSON.stringify(edit),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save chapter")));
+  const data = await res.json();
+  return data.chapter as StoredChapter;
+}
+
+// Correct a chapter's source URL (e.g. a stale TOC entry) without touching its
+// content or status — use Retry afterwards to re-crawl it from the new URL.
+export async function saveChapterUrl(storyId: string, order: number, url: string): Promise<StoredChapter> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/url`, {
+    method: "PATCH",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save chapter URL")));
+  const data = await res.json();
+  return data.chapter as StoredChapter;
+}
+
+// Correct a chapter's title without requiring content — works before the chapter has
+// even been crawled (the source site's own name can be wrong), same route also works
+// on an already-crawled chapter.
+export async function saveChapterTitle(storyId: string, order: number, title: string): Promise<StoredChapter> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/title`, {
+    method: "PATCH",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ title }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save chapter title")));
   const data = await res.json();
   return data.chapter as StoredChapter;
 }

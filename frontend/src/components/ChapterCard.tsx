@@ -13,22 +13,91 @@ export function PendingChapterRow({
   title,
   url,
   state = "pending",
+  onSaveTitle,
 }: {
   order: number;
   title: string;
   url: string;
   state?: ChipState;
+  // Missing when the row isn't editable in this context. The site's own TOC-derived
+  // name can be wrong; fixing it here — before the chapter is even crawled — means the
+  // corrected title is what ends up in the book, not something patched up afterwards.
+  onSaveTitle?: (title: string) => Promise<void>;
 }) {
   const { t } = useLang();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(title);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  function startEdit() {
+    setDraft(title);
+    setError(null);
+    setEditing(true);
+  }
+
+  async function handleSave() {
+    if (!onSaveTitle) return;
+    const trimmed = draft.trim();
+    if (!trimmed) return;
+    setError(null);
+    setSaving(true);
+    try {
+      await onSaveTitle(trimmed);
+      setEditing(false);
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <tr>
       <td className="num w-11">
         <b>{order}</b>
       </td>
       <td>
-        <span className="cell-title">
-          <span className="t">{title || url}</span>
-        </span>
+        {editing ? (
+          <form
+            className="flex flex-wrap items-center gap-1.5"
+            onSubmit={(e) => {
+              e.preventDefault();
+              void handleSave();
+            }}
+          >
+            <label className="visually-hidden" htmlFor={`pending-title-${order}`}>
+              {t("Title for chapter {order}", { order })}
+            </label>
+            <input
+              id={`pending-title-${order}`}
+              type="text"
+              className="input min-w-[10rem] flex-1 text-xs"
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              disabled={saving}
+              autoFocus
+            />
+            <button type="submit" className="btn btn-tiny" disabled={saving || !draft.trim()}>
+              <Icon name="check" size={13} />
+              {saving ? t("Saving…") : t("Save title")}
+            </button>
+            <button type="button" className="btn btn-quiet btn-tiny" disabled={saving} onClick={() => setEditing(false)}>
+              {t("Cancel")}
+            </button>
+            {error && <span className="w-full text-xs text-error">{error}</span>}
+          </form>
+        ) : (
+          <span className="cell-title">
+            <span className="t">{title || url}</span>
+            {onSaveTitle && (
+              <button type="button" className="btn btn-quiet btn-tiny shrink-0" onClick={startEdit}>
+                <Icon name="edit" size={12} />
+                <span className="visually-hidden">{t("Edit title for chapter {order}", { order })}</span>
+              </button>
+            )}
+          </span>
+        )}
       </td>
       <td className="w-32">
         <StatusChip state={state} />
@@ -63,6 +132,9 @@ interface ChapterCardProps {
   // Missing when the chapter is not in the library yet: nothing to save, just
   // edit temporarily then export.
   onSave?: (title: string, contentHtml: string) => Promise<void>;
+  // Missing for the same reason as onSave. Only persists the URL — content/status are
+  // untouched, so the user still clicks Retry afterwards to re-crawl from the new URL.
+  onSaveUrl?: (url: string) => Promise<void>;
 }
 
 // Playwright's failure text arrives with time annotations from Call log still
@@ -97,6 +169,7 @@ export default function ChapterCard({
   onBodyChange,
   loadBody,
   onSave,
+  onSaveUrl,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
   const [html, setHtml] = useState(initialHtml);
@@ -117,6 +190,13 @@ export default function ChapterCard({
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  // Editing the source URL is independent of the title/content editor above: a wrong
+  // URL is often exactly why a chapter failed, so it must be fixable without touching
+  // (or requiring) the content editor.
+  const [urlEditing, setUrlEditing] = useState(false);
+  const [urlDraft, setUrlDraft] = useState(chapter.sourceUrl);
+  const [urlSaving, setUrlSaving] = useState(false);
+  const [urlError, setUrlError] = useState<string | null>(null);
   const [loadingBody, setLoadingBody] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadedBody = useRef(false);
@@ -218,6 +298,33 @@ export default function ChapterCard({
     }
   }
 
+  function startEditUrl() {
+    setUrlDraft(chapter.sourceUrl);
+    setUrlError(null);
+    setUrlEditing(true);
+  }
+
+  function cancelEditUrl() {
+    setUrlEditing(false);
+    setUrlError(null);
+  }
+
+  async function handleSaveUrl() {
+    if (!onSaveUrl) return;
+    const trimmed = urlDraft.trim();
+    if (!trimmed) return;
+    setUrlError(null);
+    setUrlSaving(true);
+    try {
+      await onSaveUrl(trimmed);
+      setUrlEditing(false);
+    } catch (err) {
+      setUrlError((err as Error).message);
+    } finally {
+      setUrlSaving(false);
+    }
+  }
+
   function handleRevert() {
     onTitleChange(savedTitle);
     setHtml(savedHtml);
@@ -273,14 +380,56 @@ export default function ChapterCard({
       {open && (
         <tr className="chapter-open" id={panelId}>
           <td colSpan={4}>
-            <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
-              <span className="break-all">
-                {t("Source:")}{" "}
-                <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
-                  {chapter.sourceUrl}
-                </a>
-              </span>
-            </div>
+            {urlEditing ? (
+              <form
+                className="flex flex-wrap items-center gap-1.5"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void handleSaveUrl();
+                }}
+              >
+                <label className="visually-hidden" htmlFor={`chapter-url-${order}`}>
+                  {t("Source URL for chapter {order}", { order })}
+                </label>
+                <input
+                  id={`chapter-url-${order}`}
+                  type="text"
+                  className="input min-w-[16rem] flex-1 text-xs"
+                  value={urlDraft}
+                  onChange={(e) => setUrlDraft(e.target.value)}
+                  disabled={urlSaving}
+                  autoFocus
+                />
+                <button type="submit" className="btn btn-tiny" disabled={urlSaving || !urlDraft.trim()}>
+                  <Icon name="check" size={13} />
+                  {urlSaving ? t("Saving…") : t("Save URL")}
+                </button>
+                <button type="button" className="btn btn-quiet btn-tiny" disabled={urlSaving} onClick={cancelEditUrl}>
+                  {t("Cancel")}
+                </button>
+              </form>
+            ) : (
+              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+                <span className="break-all">
+                  {t("Source:")}{" "}
+                  <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
+                    {chapter.sourceUrl}
+                  </a>
+                </span>
+                {onSaveUrl && (
+                  <button type="button" className="btn btn-quiet btn-tiny" onClick={startEditUrl}>
+                    <Icon name="edit" size={12} />
+                    {t("Edit URL")}
+                  </button>
+                )}
+              </div>
+            )}
+            {urlError && (
+              <div className="banner mt-2">
+                <Icon name="alert" size={14} />
+                <p className="min-w-0">{urlError}</p>
+              </div>
+            )}
 
             {failed ? (
               <>

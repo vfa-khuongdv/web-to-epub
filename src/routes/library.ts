@@ -16,8 +16,10 @@ export interface Library {
   stories: StoryStore;
   covers: CoverStore;
   // Crawl state belongs to the library too: a story id is sha1 of its URL, so the same
-  // story saved in both libraries shares an id and their events would cross.
-  runningCrawls: Map<string, { cursor: number; total: number; startedAt: number; etaMs?: number }>;
+  // story saved in both libraries shares an id and their events would cross. `abort` lets
+  // POST /stories/:id/crawl/stop end a running crawl — checked between chapters, not
+  // threaded into an in-flight render, so a stop takes effect after the current chapter.
+  runningCrawls: Map<string, { cursor: number; total: number; startedAt: number; etaMs?: number; abort: AbortController }>;
   liveSubscribers: Map<string, Set<ExpressResponse>>;
   liveAllSubscribers: Set<ExpressResponse>;
 }

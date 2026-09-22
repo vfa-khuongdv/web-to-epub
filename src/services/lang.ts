@@ -35,6 +35,8 @@ const vi: Record<string, string> = {
   "Chapter title is required": "Tên chương là bắt buộc",
   "Chapter content is required": "Nội dung chương là bắt buộc",
   "Chapter content cannot be empty": "Nội dung chương không được để trống",
+  "Chapter URL is required": "URL chương là bắt buộc",
+  "Chapter URL is not a valid URL": "URL chương không hợp lệ",
   "Invalid chapter order": "Số thứ tự chương không hợp lệ",
   "Cover file is required": "Thiếu file cover",
   "Invalid cover file — only JPG, PNG, WebP, or GIF accepted":
@@ -61,6 +63,8 @@ const vi: Record<string, string> = {
   "Story is currently crawling, cannot edit chapters": "Truyện đang được crawl, không sửa được chương",
   "Story is currently crawling, cannot update chapter list":
     "Truyện đang được crawl, không thể cập nhật danh sách chương",
+  "Story is not currently crawling": "Truyện hiện không đang crawl",
+  "Crawl stopped by user": "Đã dừng crawl theo yêu cầu",
 
   // Private mode
   "The code must be exactly 6 digits": "Mã phải gồm đúng 6 chữ số",
