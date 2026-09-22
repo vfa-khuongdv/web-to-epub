@@ -58,6 +58,11 @@ const server = http.createServer((req, res) => {
     const slug = chapter[1];
     const n = Number(chapter[2]);
     const mode = url.searchParams.get("mode");
+    if (mode === "cookie") {
+      // Mimics a site refreshing its own login cookie while the page runs.
+      res.writeHead(200, { "Content-Type": "text/html; charset=utf-8", "Set-Cookie": "aff_token=refreshed; Path=/" });
+      return res.end(chapterPage(slug, n, false));
+    }
     if (mode === "flaky") {
       const fails = Number(url.searchParams.get("fails") ?? "1");
       const key = `${url.pathname}?${url.searchParams.toString()}`;

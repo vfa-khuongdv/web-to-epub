@@ -172,4 +172,47 @@ describe("save / remove / status", () => {
     expect(siteSession.siteSessionStatus("broken.example")).toEqual({ configured: false });
   });
 });
+
+describe("persistRenderedCookies", () => {
+  // The site's own scripts refresh its short-lived access token while a page renders.
+  // Those cookies must be written back, or the next crawl starts from the stale snapshot
+  // the user pasted and the site serves a guest page again.
+  function cookie(name: string, value: string, domain = ".asianfanfics.com") {
+    return { name, value, domain, path: "/", expires: -1, httpOnly: true, secure: true, sameSite: "Lax" as const };
+  }
+  const saved = [cookie("atokun", "old-token"), cookie("cf_clearance", "cf")];
+
+  it("gộp cookie mới vào phiên: cùng tên+domain+path thì bản mới thắng, cookie khác giữ nguyên", () => {
+    const merged = siteSession.mergeSessionCookies(saved, [cookie("atokun", "fresh-token"), cookie("verify_age", "1")]);
+
+    expect(merged).toHaveLength(3);
+    expect(merged.find((c) => c.name === "atokun")?.value).toBe("fresh-token");
+    expect(merged.find((c) => c.name === "cf_clearance")?.value).toBe("cf");
+    expect(merged.find((c) => c.name === "verify_age")?.value).toBe("1");
+  });
+
+  it("render trả về rỗng không xoá phiên (trang phục vụ như khách)", () => {
+    expect(siteSession.mergeSessionCookies(saved, [])).toEqual(saved);
+  });
+
+  it("ghi cookie mới vào file phiên, giữ userAgent và savedAt lúc nhập", () => {
+    siteSession.saveSiteSession("refresh.example", { userAgent: "UA-A", cookies: saved, origins: [] });
+    const importedAt = siteSession.loadSiteSession("https://refresh.example/x")?.savedAt;
+
+    siteSession.persistRenderedCookies("https://refresh.example/story/view/1", [cookie("atokun", "fresh-token")]);
+
+    const reloaded = siteSession.loadSiteSession("https://refresh.example/x");
+    expect(reloaded?.cookies?.find((c) => c.name === "atokun")?.value).toBe("fresh-token");
+    expect(reloaded?.cookies?.find((c) => c.name === "cf_clearance")?.value).toBe("cf");
+    expect(reloaded?.userAgent).toBe("UA-A");
+    expect(reloaded?.savedAt).toBe(importedAt);
+  });
+
+  it("không có file phiên → không tạo file mới cho khách", () => {
+    siteSession.persistRenderedCookies("https://guest.example/story/view/1", [
+      cookie("session", "x", ".guest.example"),
+    ]);
+    expect(siteSession.siteSessionStatus("guest.example")).toEqual({ configured: false });
+  });
+});
 });

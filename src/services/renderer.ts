@@ -1,7 +1,7 @@
 import { Browser, chromium } from "playwright";
 import browserConfig from "../config/browser.json";
 import { t } from "./lang";
-import { loadSiteSession } from "./siteSession";
+import { loadSiteSession, persistRenderedCookies } from "./siteSession";
 
 let browserPromise: Promise<Browser> | null = null;
 
@@ -218,6 +218,16 @@ export async function renderPageHtml(url: string): Promise<string> {
       }
       return html;
     } finally {
+      // The site's own scripts refresh its short-lived login token while the page runs;
+      // keep those cookies, or the next render starts from the pasted snapshot and the
+      // site serves a guest page again. Never allowed to fail the render.
+      if (session) {
+        try {
+          persistRenderedCookies(url, (await context.storageState()).cookies);
+        } catch {
+          // Best effort: the session file is a cache of the login, not part of the render.
+        }
+      }
       await context.close();
     }
   } finally {
