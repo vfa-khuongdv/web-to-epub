@@ -2,6 +2,7 @@ import fs from "fs";
 import path from "path";
 import { test, expect } from "../helpers/fixtures";
 import { DATA_DIR } from "../helpers/env";
+import { fixtureChapterUrl, seedStory } from "../helpers/seed";
 
 // The saved session is one file, shared by both tests here: each starts from no session
 // and the import test leaves one behind only for itself.
@@ -69,6 +70,53 @@ test("asks for a session before loading an Asianfanfics URL, then continues with
 
   const status = await (await request.get("/api/site-sessions/asianfanfics")).json();
   expect(status).toMatchObject({ configured: true });
+});
+
+test("cookies a site refreshes during a crawl are written back to the session file", async ({
+  page,
+}) => {
+  // The fixture page sets aff_token while it renders, the way asianfanfics.com refreshes
+  // its short-lived access token. Without writing it back, every later render would start
+  // from the stale snapshot the user pasted.
+  const file = path.join(DATA_DIR, "sessions", "127.0.0.1.json");
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(
+    file,
+    JSON.stringify({
+      userAgent: "UA-FIXTURE",
+      savedAt: "2026-01-01T00:00:00.000Z",
+      origins: [],
+      cookies: [{ name: "aff_token", value: "old", domain: "127.0.0.1", path: "/" }],
+    })
+  );
+
+  try {
+    await seedStory({
+      title: "Cookie refresh",
+      chapters: [
+        { title: "Chương 1", url: fixtureChapterUrl("cookie-refresh", 1, { mode: "cookie" }) },
+      ],
+    });
+
+    await page.goto("/");
+    await page.getByRole("button", { name: "Cookie refresh", exact: true }).click();
+    await page.getByRole("button", { name: "Continue crawl (1 chapters)" }).click();
+    await expect(page.getByRole("status").filter({ hasText: "Downloaded 1 chapters" })).toBeVisible({
+      timeout: 90_000,
+    });
+
+    const saved = JSON.parse(fs.readFileSync(file, "utf8")) as {
+      userAgent?: string;
+      savedAt?: string;
+      cookies: { name: string; value: string }[];
+    };
+    expect(saved.cookies.find((c) => c.name === "aff_token")?.value).toBe("refreshed");
+    // The import details are not what changed — only the cookies are.
+    expect(saved.userAgent).toBe("UA-FIXTURE");
+    expect(saved.savedAt).toBe("2026-01-01T00:00:00.000Z");
+  } finally {
+    fs.rmSync(file, { force: true });
+  }
 });
 
 test("settings shows the saved session and removes it", async ({ page, request }) => {

@@ -129,15 +129,58 @@ export function siteSessionStatus(hostname: string): {
   }
 }
 
-export function saveSiteSession(hostname: string, session: SiteSession): void {
+function writeSessionFile(hostname: string, session: SiteSession): void {
   mkdirSync(SESSIONS_DIR, { recursive: true, mode: 0o700 });
   const file = sessionFilePath(hostname);
-  writeFileSync(file, JSON.stringify({ ...session, savedAt: new Date().toISOString() }, null, 2));
+  writeFileSync(file, JSON.stringify(session, null, 2));
   try {
     chmodSync(file, 0o600);
   } catch {
     // Windows has no POSIX permissions; the file is still under the user's profile.
   }
+}
+
+export function saveSiteSession(hostname: string, session: SiteSession): void {
+  writeSessionFile(hostname, { ...session, savedAt: new Date().toISOString() });
+}
+
+/**
+ * Cookies the site set while a page rendered, on top of the saved ones. Same
+ * name+domain+path means the same cookie: the fresh value wins, everything else is kept.
+ * Merged instead of replaced on purpose — a render served as guest (or one that failed
+ * early) must never be able to wipe a working session.
+ */
+export function mergeSessionCookies(
+  saved: NonNullable<SiteSession["cookies"]>,
+  incoming: NonNullable<SiteSession["cookies"]>
+): NonNullable<SiteSession["cookies"]> {
+  const merged = [...saved];
+  for (const cookie of incoming) {
+    const at = merged.findIndex(
+      (c) => c.name === cookie.name && c.domain === cookie.domain && c.path === cookie.path
+    );
+    if (at >= 0) merged[at] = cookie;
+    else merged.push(cookie);
+  }
+  return merged;
+}
+
+/**
+ * Write cookies obtained during a render back into the saved session. Sites hand out a
+ * short-lived access token and refresh it from the page's own scripts (AFF: an hour); a
+ * throwaway browser context would drop the refreshed cookie, leaving the next render with
+ * the snapshot the user pasted and the site serving a guest page. Best effort by design:
+ * a render must not fail because the session file could not be updated.
+ */
+export function persistRenderedCookies(url: string, cookies: SiteSession["cookies"] | undefined): void {
+  if (!cookies?.length) return;
+  const hostname = sessionHostname(url);
+  if (!hostname) return;
+  const session = loadSessionByHostname(hostname);
+  // No saved session: a guest render, and nothing that should create one.
+  if (!session) return;
+  // savedAt stays the import time: it explains the pasted snapshot, not the last render.
+  writeSessionFile(hostname, { ...session, cookies: mergeSessionCookies(session.cookies ?? [], cookies) });
 }
 
 export function removeSiteSession(hostname: string): boolean {

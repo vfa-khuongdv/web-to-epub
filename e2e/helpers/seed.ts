@@ -53,10 +53,11 @@ export function slugify(title: string): string {
 export function fixtureChapterUrl(
   slug: string,
   n: number,
-  opts?: { mode?: "flaky" | "locked"; fails?: number }
+  opts?: { mode?: "flaky" | "locked" | "cookie"; fails?: number }
 ): string {
   if (!opts?.mode) return `${FIXTURE_URL}/truyen/${slug}/chuong-${n}`;
-  const query = opts.mode === "flaky" ? `mode=flaky&fails=${opts.fails ?? 1}` : "mode=locked";
+  const query =
+    opts.mode === "flaky" ? `mode=flaky&fails=${opts.fails ?? 1}` : `mode=${opts.mode}`;
   return `${FIXTURE_URL}/truyen/${slug}/chuong-${n}?${query}`;
 }
 
