@@ -38,7 +38,8 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
   const send = (event: ProgressEvent) => publish(library, id, event);
 
   const startedAt = Date.now();
-  library.runningCrawls.set(id, { cursor: 0, total: plan.length, startedAt });
+  const abort = new AbortController();
+  library.runningCrawls.set(id, { cursor: 0, total: plan.length, startedAt, abort });
   try {
     // Cover is downloaded only once (subsequent crawls skip because file exists): stories
     // created before this feature will get their cover on the next "Continue crawl".
@@ -59,12 +60,19 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
     }
 
     for (let i = 0; i < plan.length; i++) {
+      // Checked between chapters, not mid-render: a stop takes effect once the chapter
+      // already in flight finishes, instead of cutting a Playwright render off mid-way.
+      if (abort.signal.aborted) {
+        send({ type: "progress", index: i, cursor: i, total: plan.length, message: t("Crawl stopped by user") });
+        break;
+      }
       // Before chapter i completes, completed count is i — ETA keeps the previous chapter's
       // estimate until we have new data.
       library.runningCrawls.set(id, {
         cursor: i + 1,
         total: plan.length,
         startedAt,
+        abort,
         etaMs: estimateRemainingMs({ startedAt, completed: i, total: plan.length }),
       });
       const chapter = plan[i];
@@ -104,4 +112,17 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
     library.runningCrawls.delete(id);
     publish(library, id, { type: "idle" });
   }
+});
+
+crawlRouter.post("/stories/:id/crawl/stop", (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { id } = req.params;
+  const running = library.runningCrawls.get(id);
+  if (!running) {
+    res.status(404).json({ message: t("Story is not currently crawling") });
+    return;
+  }
+  running.abort.abort();
+  res.json({ stopping: true });
 });

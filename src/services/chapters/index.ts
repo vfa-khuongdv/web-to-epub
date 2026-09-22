@@ -1,5 +1,6 @@
 import { ChapterFetcher } from "./types";
 import { ASIANFANFICS_DOMAINS, fetchAsianfanficsChapter } from "./asianfanfics";
+import { fetchFanfictionChapter, FANFICTION_DOMAINS } from "./fanfiction";
 import { fetchTruyenfullChapter, TRUYENFULL_DOMAINS } from "./truyenfull";
 import { fetchWattpadChapter, WATTPAD_DOMAINS } from "./wattpad";
 
@@ -7,6 +8,7 @@ const FETCHERS: ChapterFetcher[] = [
   { domains: WATTPAD_DOMAINS, fetchChapter: fetchWattpadChapter },
   { domains: TRUYENFULL_DOMAINS, fetchChapter: fetchTruyenfullChapter },
   { domains: ASIANFANFICS_DOMAINS, fetchChapter: fetchAsianfanficsChapter },
+  { domains: FANFICTION_DOMAINS, fetchChapter: fetchFanfictionChapter },
 ];
 
 export function getChapterFetcher(url: string): ChapterFetcher | undefined {

@@ -50,6 +50,14 @@ describe("findSupportedSite", () => {
     expect(findSupportedSite("https://www.truyenhoan.com/con-duong-ba-chu.66/")?.domain).toBe("truyenhoan.com");
   });
 
+  it("nhận fanfiction.net", () => {
+    expect(findSupportedSite("https://www.fanfiction.net/s/5782108/1/Harry-Potter")).toEqual({
+      domain: "fanfiction.net",
+      name: "FanFiction.net",
+    });
+    expect(findSupportedSite("https://fanfiction.net/s/5782108/1/")?.domain).toBe("fanfiction.net");
+  });
+
   it("nhận subdomain con của supported site", () => {
     expect(findSupportedSite("https://m.wattpad.com/story/123")?.domain).toBe("wattpad.com");
   });
