@@ -50,6 +50,10 @@ Dark theme (click the icon in the header to change, or set to "auto" to follow O
   the table of contents on launch and reports "N new chapters" (with manual check button).
   Click "Load N new chapters" to reload the TOC and crawl only the missing parts — no background
   progress, no automatic crawling.
+- **Auto-update for the macOS app** — the app checks GitHub Releases when it opens and,
+  when a newer version exists, offers a one-click update: it downloads the release zip,
+  replaces itself, and restarts. The web/Docker build shows the same banner with a link
+  to the release page instead.
 - **Remaining time estimate** — during crawl, ETA and chapters/minute show in the progress bar
   and story detail.
 - **Crawl finished notification** — a toast reports "Downloaded N chapters" when a background
@@ -334,6 +338,15 @@ links, host-blocked) become a text block with a link to the source, rather than 
   change URL still count as new, chapters removed from TOC aren't reported.
 - **ETA is an estimate** based on average speed of the current crawl — slow chapters or retries
   change the number; only shows after several chapters and doesn't persist across server restart.
+- **The macOS app updates itself without Apple code signing** — the release zip is downloaded
+  over HTTPS from GitHub Releases (no extra hash check) and the app replaces its own bundle,
+  clearing the quarantine attribute macOS would otherwise attach. A future macOS release could
+  tighten this; if self-install stops working, the banner's download link still works. The app
+  must live in a user-writable folder (`/Applications` is fine; running it from the mounted DMG
+  is not).
+- **Update checks run once per app open** — a release published while the app is open is only
+  noticed after a restart. Docker users update by pulling the new image; the banner is only
+  informational there.
 - **Tables (`<table>`)** are flattened into separate paragraphs.
 - **No automatic login** — the tool never types your password or solves a bot check. For
   Asianfanfics you can import a session from your own browser (Settings → Site sessions); other
