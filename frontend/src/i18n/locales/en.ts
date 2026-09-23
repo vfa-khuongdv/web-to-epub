@@ -43,6 +43,8 @@ export const en: Record<string, string> = {
   "Log ({count})": "Log ({count})",
   "Downloaded {count} chapters": "Downloaded {count} chapters",
   "Downloaded {done}/{total} chapters": "Downloaded {done}/{total} chapters",
+  "Exported EPUB": "Exported EPUB",
+  "Exported {count} EPUB files": "Exported {count} EPUB files",
   "Loaded {count} chapters": "Loaded {count} chapters",
 
   // Relative time and estimates

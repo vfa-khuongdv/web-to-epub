@@ -5,7 +5,7 @@ import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
 import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
-import { CrawlJobState, liveCounts } from "../hooks/useCrawlJob";
+import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
 import { vaultQuery } from "../vault/token";
@@ -63,6 +63,7 @@ export default function StoryDetail({
   clearChapters,
   onStoryChanged,
   onClear,
+  pushNotice,
 }: {
   story: StoredStory;
   job: CrawlJobState;
@@ -70,6 +71,7 @@ export default function StoryDetail({
   clearChapters: () => void;
   onStoryChanged: () => void | Promise<void>;
   onClear: () => void;
+  pushNotice: (notice: NoticeInput) => void;
 }) {
   // Before the state below: the chapter list's lazy initializer already needs `t`.
   const { lang, t } = useLang();
@@ -306,12 +308,14 @@ export default function StoryDetail({
       const payload = chapters
         .filter((c) => !c.data.error)
         .map((c) => ({ order: c.order, title: c.title, contentHtml: bodies.current.get(c.id) }));
-      await exportStoryBook(
+      const fileCount = await exportStoryBook(
         story.id,
         { title: bookTitle || story.title, author: author || "Unknown", language, coverUrl },
         payload,
         null
       );
+      // null means the reader cancelled the folder picker before anything was exported.
+      if (fileCount !== null) pushNotice({ kind: "export-done", fileCount });
     } catch (err) {
       setError((err as Error).message);
     }

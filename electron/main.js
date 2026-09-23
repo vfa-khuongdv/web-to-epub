@@ -1,9 +1,10 @@
 // Bọc server Express sẵn có thành app macOS: main process chạy thẳng
 // dist/server.js rồi mở cửa sổ trỏ vào localhost.
-const { app, BrowserWindow, shell, dialog } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
 const net = require("net");
 const http = require("http");
+const fsp = require("fs/promises");
 
 const isPackaged = app.isPackaged;
 
@@ -46,6 +47,24 @@ function waitForServer(port, timeoutMs = 30000) {
   });
 }
 
+// EPUB export folder picker (see preload.js for why this isn't the web
+// File System Access API): shown attached to whichever window asked, so it doesn't
+// appear detached from the app.
+ipcMain.handle("export:pick-folder", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle("export:write-file", async (_event, folderPath, fileName, data) => {
+  // path.basename strips any directory components a caller might sneak into fileName —
+  // it should already be a plain name (epubFileName() sanitizes it server-side), this is
+  // just the last line of defense before writing to disk.
+  const filePath = path.join(folderPath, path.basename(fileName));
+  await fsp.writeFile(filePath, Buffer.from(data));
+});
+
 async function start() {
   const port = await findFreePort();
   process.env.PORT = String(port);
@@ -57,7 +76,11 @@ async function start() {
     height: 860,
     minWidth: 900,
     title: "Web to EPUB",
-    webPreferences: { nodeIntegration: false, contextIsolation: true },
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true,
+      preload: path.join(__dirname, "preload.js"),
+    },
   });
 
   // Link ra ngoài (trang nguồn của truyện) mở bằng trình duyệt mặc định,

@@ -763,6 +763,7 @@ export default function LibraryView({
           clearChapters={clearChapters}
           onStoryChanged={handleStoryChanged}
           onClear={() => setSelected(null)}
+          pushNotice={pushNotice}
         />
       ) : (
         <section className="pane">

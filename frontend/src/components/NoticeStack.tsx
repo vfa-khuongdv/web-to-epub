@@ -40,6 +40,10 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
           (complete
             ? t("Downloaded {count} chapters", { count: notice.total })
             : t("Downloaded {done}/{total} chapters", { done: notice.done, total: notice.total }))}
+        {notice.kind === "export-done" &&
+          (notice.fileCount > 1
+            ? t("Exported {count} EPUB files", { count: notice.fileCount })
+            : t("Exported EPUB"))}
         {failed && <span className="font-semibold text-error"> · {t("{count} errors", { count: notice.errors })}</span>}
       </p>
       <button
