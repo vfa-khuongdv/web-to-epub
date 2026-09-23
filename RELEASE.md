@@ -67,12 +67,13 @@ It is created published with no assets yet; the DMG is attached next.
 make release-mac
 ```
 
-Builds `release/Web to EPUB-X.Y.Z-arm64.dmg` (`npm run app:mac`: Electron shell,
-bundled Chromium, ad-hoc signing) and uploads it to the release with
-`gh release upload ... --clobber`. Takes several minutes; ~220 MB.
+Builds `release/Web to EPUB-X.Y.Z-arm64.dmg` and `release/Web to EPUB-X.Y.Z-arm64-mac.zip`
+(`npm run app:mac`: Electron shell, bundled Chromium, ad-hoc signing) and uploads both
+to the release with `gh release upload ... --clobber`. The `.zip` is what the in-app
+auto-updater downloads — never skip it. Takes several minutes; ~220 MB each.
 
-GitHub stores the asset as `Web.to.EPUB-X.Y.Z-arm64.dmg` (spaces become dots) —
-that is normal.
+GitHub stores the assets as `Web.to.EPUB-X.Y.Z-arm64.dmg` and
+`Web.to.EPUB-X.Y.Z-arm64-mac.zip` (spaces become dots) — that is normal.
 
 ## 6. Push the Docker image
 
@@ -86,7 +87,7 @@ Builds `linux/amd64` + `linux/arm64` and pushes
 ## 7. Verify
 
 ```sh
-gh release view vX.Y.Z --json assets -q '.assets[].name'   # the .dmg is there
+gh release view vX.Y.Z --json assets -q '.assets[].name'   # .dmg and -arm64-mac.zip are there
 docker buildx imagetools inspect vfakhuongdv/web-to-epub:X.Y.Z
 ```
 

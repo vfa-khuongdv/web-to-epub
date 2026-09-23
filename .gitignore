@@ -15,3 +15,6 @@ build/icon-1024.png
 /e2e/.runs/
 /test-results/
 /playwright-report/
+# Worktree cô lập + scratch của quy trình SDD (superpowers)
+.worktrees/
+.superpowers/

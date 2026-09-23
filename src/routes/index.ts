@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { SUPPORTED_SITES } from "../config/supportedSites";
 import { setLang } from "../services/lang";
+import { appUpdateRouter } from "./appUpdate";
 import { chaptersRouter } from "./chapters";
 import { crawlRouter } from "./crawl";
 import { exportsRouter } from "./exports";
@@ -26,6 +27,7 @@ router.get("/supported-sites", (_req, res) => {
 
 router.use(vaultRouter);
 router.use(settingsRouter);
+router.use(appUpdateRouter);
 router.use(siteSessionsRouter);
 router.use(exportsRouter);
 // Mounted before storiesRouter: GET /stories/live would otherwise match GET /stories/:id

@@ -4,7 +4,16 @@ const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
 const net = require("net");
 const http = require("http");
+const fs = require("fs");
+const os = require("os");
 const fsp = require("fs/promises");
+const { Readable, Transform } = require("stream");
+const { pipeline } = require("stream/promises");
+const {
+  cleanupUpdateLeftovers,
+  installUpdateFromZip,
+  resolveAppBundlePath,
+} = require(path.join(__dirname, "..", "dist", "services", "appInstaller.js"));
 
 const isPackaged = app.isPackaged;
 
@@ -65,6 +74,54 @@ ipcMain.handle("export:write-file", async (_event, folderPath, fileName, data) =
   await fsp.writeFile(filePath, Buffer.from(data));
 });
 
+// ---- App update (see src/services/appInstaller.ts) ---------------------------
+
+// Only assets from our own releases may be downloaded and installed.
+const UPDATE_HOSTS = new Set(["github.com", "objects.githubusercontent.com"]);
+let updateInstalling = false;
+
+async function downloadUpdate(url, onProgress) {
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`);
+  const total = Number(res.headers.get("content-length") ?? 0);
+  const filePath = path.join(os.tmpdir(), `web-to-epub-update-${Date.now()}.zip`);
+  let received = 0;
+  await pipeline(
+    Readable.fromWeb(res.body),
+    new Transform({
+      transform(chunk, _encoding, callback) {
+        received += chunk.length;
+        onProgress({ received, total });
+        callback(null, chunk);
+      },
+    }),
+    fs.createWriteStream(filePath)
+  );
+  return filePath;
+}
+
+ipcMain.handle("update:install", async (event, zipUrl) => {
+  if (!app.isPackaged) throw new Error("Updates only run in the packaged app");
+  if (updateInstalling) throw new Error("An update is already being installed");
+  const host = new URL(zipUrl).hostname;
+  if (!UPDATE_HOSTS.has(host)) throw new Error(`Refusing to download from ${host}`);
+
+  updateInstalling = true;
+  let zipPath = null;
+  try {
+    zipPath = await downloadUpdate(zipUrl, (progress) => event.sender.send("update:progress", progress));
+    event.sender.send("update:progress", { installing: true });
+    await installUpdateFromZip({ zipPath, appBundlePath: resolveAppBundlePath(process.execPath) });
+    // The bundle at process.execPath is the new one now, so the relaunched instance
+    // runs it. The before-quit handler below closes Chromium first.
+    app.relaunch();
+    app.quit();
+  } finally {
+    updateInstalling = false;
+    if (zipPath) await fsp.rm(zipPath, { force: true }).catch(() => {});
+  }
+});
+
 async function start() {
   const port = await findFreePort();
   process.env.PORT = String(port);
@@ -93,12 +150,15 @@ async function start() {
   await win.loadURL(`http://127.0.0.1:${port}/`);
 }
 
-app.whenReady().then(() =>
-  start().catch((err) => {
+app.whenReady().then(() => {
+  // A previous update can leave "<app>.old" or a work dir behind; clear them before
+  // anything else. Best-effort (see services/appInstaller.ts).
+  if (isPackaged) cleanupUpdateLeftovers(resolveAppBundlePath(process.execPath));
+  return start().catch((err) => {
     dialog.showErrorBox("Không khởi động được Web to EPUB", String(err && err.stack ? err.stack : err));
     app.exit(1);
-  })
-);
+  });
+});
 
 app.on("window-all-closed", () => app.quit());
 

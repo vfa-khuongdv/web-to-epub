@@ -11,3 +11,14 @@ contextBridge.exposeInMainWorld("electronExport", {
   // `data` is the file's bytes as an ArrayBuffer (structured-cloned over IPC).
   writeFile: (folderPath, fileName, data) => ipcRenderer.invoke("export:write-file", folderPath, fileName, data),
 });
+
+// Update bridge: the packaged app downloads a release zip and replaces its own
+// bundle (electron/main.js); the renderer only asks and watches progress.
+contextBridge.exposeInMainWorld("electronUpdate", {
+  install: (zipUrl) => ipcRenderer.invoke("update:install", zipUrl),
+  onProgress: (callback) => {
+    const listener = (_event, progress) => callback(progress);
+    ipcRenderer.on("update:progress", listener);
+    return () => ipcRenderer.removeListener("update:progress", listener);
+  },
+});

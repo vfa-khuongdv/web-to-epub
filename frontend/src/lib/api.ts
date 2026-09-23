@@ -1,6 +1,6 @@
 import { currentLang, translate } from "../i18n";
 import { currentVaultToken, noteVaultExpired } from "../vault/token";
-import { AppInfo, AppSettings, BookMetadata, StoredChapter, StoredStory, StorySummary, SupportedSite } from "../types";
+import { AppInfo, AppSettings, AppUpdateInfo, BookMetadata, StoredChapter, StoredStory, StorySummary, SupportedSite } from "../types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
   const res = await fetch("/api/supported-sites", { headers: langHeaders() });
@@ -423,6 +423,14 @@ export async function saveSettings(patch: Partial<AppSettings>): Promise<AppSett
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save settings")));
   return ((await res.json()) as { settings: AppSettings }).settings;
+}
+
+// ---- App update (see src/services/appUpdate.ts) ------------------------------
+
+export async function fetchAppUpdate(): Promise<AppUpdateInfo> {
+  const res = await apiFetch("/api/app-update", { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not check for updates")));
+  return (await res.json()) as AppUpdateInfo;
 }
 
 // ---- Saved site sessions (see src/services/siteSession.ts) ------------------
