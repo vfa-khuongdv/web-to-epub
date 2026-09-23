@@ -3,11 +3,12 @@ import LibraryView from "./components/LibraryView";
 import SettingsOverlay from "./components/SettingsOverlay";
 import { JobStrip } from "./components/JobStrip";
 import { NoticeStack } from "./components/NoticeStack";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { Icon } from "./components/Icon";
-import { fetchSettings, fetchSupportedSites } from "./lib/api";
+import { fetchAppUpdate, fetchSettings, fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
 import { applyTheme, readTheme, saveTheme, Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "./lib/theme";
-import { AppSettings, SupportedSite } from "./types";
+import { AppSettings, AppUpdateInfo, SupportedSite } from "./types";
 import { useCrawlJob } from "./hooks/useCrawlJob";
 import { useVault } from "./vault";
 
@@ -20,6 +21,8 @@ export default function App() {
   // loads the rest itself. Undefined until the answer arrives, so the library does not
   // run the launch check against a guess.
   const [autoScan, setAutoScan] = useState<boolean | undefined>();
+  const [updateInfo, setUpdateInfo] = useState<AppUpdateInfo | null>(null);
+  const [updateDismissed, setUpdateDismissed] = useState(false);
   const { lang, setLang, t } = useLang();
   const vault = useVault();
   const { job, live, attach, subscribe, clearChapters, notices, dismissNotice, pushNotice } = useCrawlJob();
@@ -35,6 +38,14 @@ export default function App() {
     fetchSettings()
       .then((data) => setAutoScan(data.settings.autoScanOnOpen))
       .catch(() => setAutoScan(true));
+  }, []);
+
+  // One update check per app open; failures stay invisible — the server answers
+  // "no update" for offline/GitHub errors (services/appUpdate.ts).
+  useEffect(() => {
+    fetchAppUpdate()
+      .then((info) => setUpdateInfo(info.hasUpdate ? info : null))
+      .catch(() => setUpdateInfo(null));
   }, []);
 
   // Shared live channel: open once for the whole app, close on unmount.
@@ -198,6 +209,10 @@ export default function App() {
           )}
         </div>
       </header>
+
+      {updateInfo && !updateDismissed && (
+        <UpdateDialog update={updateInfo} onDismiss={() => setUpdateDismissed(true)} />
+      )}
 
       <div className="workbench">
         <LibraryView

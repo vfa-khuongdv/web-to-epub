@@ -47,6 +47,18 @@ export const en: Record<string, string> = {
   "Exported {count} EPUB files": "Exported {count} EPUB files",
   "Loaded {count} chapters": "Loaded {count} chapters",
 
+  // Update dialog
+  "Update available": "Update available",
+  "A new version v{version} is available (you have v{current}).": "A new version v{version} is available (you have v{current}).",
+  "Update now": "Update now",
+  "Later": "Later",
+  "Downloading…": "Downloading…",
+  "Downloading… {pct}%": "Downloading… {pct}%",
+  "Installing…": "Installing…",
+  "Update failed: {message}": "Update failed: {message}",
+  "Open the download page": "Open the download page",
+  "Could not check for updates": "Could not check for updates",
+
   // Relative time and estimates
   "just now": "just now",
   "{count} min ago": "{count} min ago",

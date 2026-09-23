@@ -105,3 +105,12 @@ export interface AppInfo {
   chapterCount: number;
   privateConfigured: boolean;
 }
+
+// GET /api/app-update — whether a newer release exists (src/services/appUpdate.ts).
+export interface AppUpdateInfo {
+  current: string;
+  latest: string | null;
+  hasUpdate: boolean;
+  releaseUrl: string | null;
+  zipUrl: string | null;
+}
