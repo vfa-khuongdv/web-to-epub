@@ -67,5 +67,5 @@ docker-push: ## Build multi-arch (amd64 + arm64) và push lên Docker Hub
 app: ## Đóng gói app macOS -> release/*.dmg
 	npm run app:mac
 
-release-mac: app ## Build app rồi thay file .dmg trên GitHub release cùng version
-	gh release upload v$(VERSION) "release/Web to EPUB-$(VERSION)-arm64.dmg" --clobber
+release-mac: app ## Build app rồi thay file .dmg + .zip trên GitHub release cùng version
+	gh release upload v$(VERSION) "release/Web to EPUB-$(VERSION)-arm64.dmg" "release/Web to EPUB-$(VERSION)-arm64-mac.zip" --clobber
