@@ -1,8 +1,10 @@
+import { randomBytes } from "crypto";
 import fs from "fs";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { unzipSync, zipSync } from "fflate";
+import sharp from "sharp";
 import type { ExportChapter } from "../types";
 import {
   buildEpub,
@@ -255,10 +257,10 @@ describe("embedImages", () => {
     expect(chapter.contentHtml).toBe("<p>a</p>");
   });
 
-  it("rejects an image whose declared content-length exceeds the 8MB cap without reading the body", async () => {
-    // MAX_IMAGE_BYTES = 8 * 1024 * 1024 (src/services/epubBuilder.ts:59).
+  it("rejects an image whose declared content-length exceeds the 32MB download cap without reading the body", async () => {
+    // MAX_IMAGE_DOWNLOAD_BYTES = 32 * 1024 * 1024 (src/services/epubBuilder.ts).
     const res = new Response(Buffer.from(PNG_BASE64, "base64"), {
-      headers: { "content-type": "image/png", "content-length": String(8 * 1024 * 1024 + 1) },
+      headers: { "content-type": "image/png", "content-length": String(32 * 1024 * 1024 + 1) },
     });
     const arrayBuffer = vi.spyOn(Response.prototype, "arrayBuffer");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(res));
@@ -293,6 +295,9 @@ describe("embedImages", () => {
       expect(chapter.contentHtml).toBe(`<img src="file://${path.join(dir, "0.png")}">`);
     }
 
+    // One byte over MAX_IMAGE_BYTES now goes through compression instead of an outright
+    // reject — but this fixture is only a magic-byte header padded with zeros, not a real
+    // decodable PNG, so sharp fails to parse it and it's dropped just the same.
     const overDir = fs.mkdtempSync(path.join(os.tmpdir(), "embed-images-over-test-"));
     try {
       const over = Buffer.alloc(max + 1);
@@ -312,6 +317,35 @@ describe("embedImages", () => {
     } finally {
       fs.rmSync(overDir, { recursive: true, force: true });
     }
+  });
+
+  it("resizes and re-encodes a real oversized image instead of dropping it", async () => {
+    // Random noise barely compresses, so a PNG this size reliably lands over
+    // MAX_IMAGE_BYTES (8MB) — a stand-in for the full-resolution photos Wattpad
+    // "aesthetic" stories embed.
+    const width = 2000;
+    const height = 1600;
+    const raw = randomBytes(width * height * 3);
+    const oversized = await sharp(raw, { raw: { width, height, channels: 3 } }).png().toBuffer();
+    expect(oversized.length).toBeGreaterThan(8 * 1024 * 1024);
+
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        new Response(oversized, {
+          headers: { "content-type": "image/png", "content-length": String(oversized.length) },
+        })
+      )
+    );
+
+    const [chapter] = await embedImages(
+      [{ title: "C1", includeInBook: true, contentHtml: '<img src="https://cdn.example/huge.png">' }],
+      dir
+    );
+
+    expect(fs.readdirSync(dir)).toEqual(["0.jpg"]);
+    expect(fs.statSync(path.join(dir, "0.jpg")).size).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(chapter.contentHtml).toBe(`<img src="file://${path.join(dir, "0.jpg")}">`);
   });
 
   it("rewrites single-quoted and uppercase src attributes", async () => {
@@ -872,7 +906,7 @@ describe("buildEpub", () => {
 
   it("includes only chapters marked includeInBook and reports packaging progress", async () => {
     const progress: BuildProgress[] = [];
-    const bytes = await buildEpub(
+    const parts = await buildEpub(
       metadata,
       [
         { title: "Kept", includeInBook: true, contentHtml: "<p>a</p>" },
@@ -881,7 +915,8 @@ describe("buildEpub", () => {
       (p) => progress.push(p)
     );
 
-    expect(bytes.equals(sourceEpub)).toBe(true);
+    expect(parts).toEqual([{ buffer: expect.any(Buffer), index: 0, total: 1 }]);
+    expect(parts[0].buffer.equals(sourceEpub)).toBe(true);
     const { options } = epubGen.instances[0];
     expect(options.title).toBe("Truyện Thử");
     expect((options.content as Array<{ title: string }>).map((c) => c.title)).toEqual(["Kept"]);
@@ -895,13 +930,57 @@ describe("buildEpub", () => {
     const mp3 = `data:audio/mpeg;base64,${Buffer.from("mp3-bytes").toString("base64")}`;
     const mkdtemp = vi.spyOn(fs.promises, "mkdtemp");
 
-    const out = await buildEpub(metadata, [
+    const parts = await buildEpub(metadata, [
       { title: "C1", includeInBook: true, contentHtml: `<audio src="${mp3}"></audio>` },
     ]);
 
     const imageDir = await (mkdtemp.mock.results[0].value as Promise<string>);
     expect(fs.existsSync(imageDir)).toBe(false);
     expect(fs.existsSync(epubGen.instances[0].outputPath)).toBe(false);
-    expect(Buffer.from(unzipSync(out)["OEBPS/media/0.mp3"]).toString()).toBe("mp3-bytes");
+    expect(parts).toHaveLength(1);
+    expect(Buffer.from(unzipSync(parts[0].buffer)["OEBPS/media/0.mp3"]).toString()).toBe("mp3-bytes");
+  });
+
+  it("splits chapters into multiple parts once combined size passes maxBytes", async () => {
+    const chapters = [
+      { title: "C1", includeInBook: true, contentHtml: `<p>${"a".repeat(50)}</p>` },
+      { title: "C2", includeInBook: true, contentHtml: `<p>${"a".repeat(50)}</p>` },
+      { title: "C3", includeInBook: true, contentHtml: `<p>${"a".repeat(50)}</p>` },
+    ];
+
+    // Each chapter alone is ~60 bytes; any two together exceed a 60-byte cap, so this
+    // forces one chapter per part.
+    const parts = await buildEpub(metadata, chapters, undefined, 60);
+
+    expect(parts.map((p) => [p.index, p.total])).toEqual([
+      [0, 3],
+      [1, 3],
+      [2, 3],
+    ]);
+    expect(epubGen.instances).toHaveLength(3);
+    expect(epubGen.instances.map((inst) => (inst.options.content as Array<{ title: string }>).map((c) => c.title))).toEqual([
+      ["C1"],
+      ["C2"],
+      ["C3"],
+    ]);
+  });
+
+  it("only bundles media referenced within each split part", async () => {
+    const audio1 = `data:audio/mpeg;base64,${Buffer.from("one").toString("base64")}`;
+    const audio2 = `data:audio/mpeg;base64,${Buffer.from("two").toString("base64")}`;
+    const chapters = [
+      { title: "C1", includeInBook: true, contentHtml: `<p>${"a".repeat(50)}</p><audio src="${audio1}"></audio>` },
+      { title: "C2", includeInBook: true, contentHtml: `<p>${"a".repeat(50)}</p><audio src="${audio2}"></audio>` },
+    ];
+
+    const parts = await buildEpub(metadata, chapters, undefined, 60);
+    expect(parts).toHaveLength(2);
+
+    const part1 = unzipSync(parts[0].buffer);
+    const part2 = unzipSync(parts[1].buffer);
+    expect(Object.keys(part1)).toContain("OEBPS/media/0.mp3");
+    expect(Object.keys(part1)).not.toContain("OEBPS/media/1.mp3");
+    expect(Object.keys(part2)).toContain("OEBPS/media/1.mp3");
+    expect(Object.keys(part2)).not.toContain("OEBPS/media/0.mp3");
   });
 });
