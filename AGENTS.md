@@ -48,4 +48,5 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 - Tests are colocated as `**/*.test.ts` — backend under `src/` (excluded from the tsc build), frontend under `frontend/src/`; fixtures in `__fixtures__/`.
 - Style UI with **Tailwind utilities at the call site** — the `@theme` tokens in `frontend/src/styles.css` are utilities too (`bg-raised`, `text-ink-2`, `border-rule-2`, `rounded-tool`, …), so dark mode follows automatically. Do not add new component classes to `styles.css`; the ones already there are legacy and get removed only when the element using them is reworked.
 - Conventional commit prefixes; messages in Vietnamese or English (`feat(chapter): ...`).
+- Release process: `RELEASE.md` (version bump → tag → GitHub release → DMG → Docker Hub).
 - Product intent: `PRODUCT.md`. Design tokens/typography: `frontend/DESIGN.md`. Feature specs/plans: `docs/superpowers/`.
