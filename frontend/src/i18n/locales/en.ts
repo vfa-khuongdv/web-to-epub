@@ -47,9 +47,11 @@ export const en: Record<string, string> = {
   "Exported {count} EPUB files": "Exported {count} EPUB files",
   "Loaded {count} chapters": "Loaded {count} chapters",
 
-  // Update banner
+  // Update dialog
+  "Update available": "Update available",
   "A new version v{version} is available (you have v{current}).": "A new version v{version} is available (you have v{current}).",
   "Update now": "Update now",
+  "Later": "Later",
   "Downloading…": "Downloading…",
   "Downloading… {pct}%": "Downloading… {pct}%",
   "Installing…": "Installing…",
