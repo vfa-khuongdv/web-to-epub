@@ -68,4 +68,11 @@ app: ## Đóng gói app macOS -> release/*.dmg
 	npm run app:mac
 
 release-mac: app ## Build app rồi thay file .dmg + .zip trên GitHub release cùng version
-	gh release upload v$(VERSION) "release/Web to EPUB-$(VERSION)-arm64.dmg" "release/Web to EPUB-$(VERSION)-arm64-mac.zip" --clobber
+	@# gh 2.96.0 trả rỗng `gh release view --json assets` nên --clobber không xoá được
+	@# asset cũ, upload sẽ fail 422 khi release lại cùng version — xoá bằng REST trước.
+	@release_id=$$(gh api repos/vfa-khuongdv/web-to-epub/releases/tags/v$(VERSION) -q .id); \
+	for name in "Web.to.EPUB-$(VERSION)-arm64.dmg" "Web.to.EPUB-$(VERSION)-arm64-mac.zip"; do \
+		asset_id=$$(gh api "repos/vfa-khuongdv/web-to-epub/releases/$$release_id/assets" -q ".[] | select(.name == \"$$name\") | .id"); \
+		if [ -n "$$asset_id" ]; then gh api -X DELETE "repos/vfa-khuongdv/web-to-epub/releases/assets/$$asset_id"; fi; \
+	done
+	gh release upload v$(VERSION) "release/Web to EPUB-$(VERSION)-arm64.dmg" "release/Web to EPUB-$(VERSION)-arm64-mac.zip"
