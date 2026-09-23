@@ -3,7 +3,7 @@ import LibraryView from "./components/LibraryView";
 import SettingsOverlay from "./components/SettingsOverlay";
 import { JobStrip } from "./components/JobStrip";
 import { NoticeStack } from "./components/NoticeStack";
-import { UpdateBanner } from "./components/UpdateBanner";
+import { UpdateDialog } from "./components/UpdateDialog";
 import { Icon } from "./components/Icon";
 import { fetchAppUpdate, fetchSettings, fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
@@ -211,7 +211,7 @@ export default function App() {
       </header>
 
       {updateInfo && !updateDismissed && (
-        <UpdateBanner update={updateInfo} onDismiss={() => setUpdateDismissed(true)} />
+        <UpdateDialog update={updateInfo} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
       <div className="workbench">

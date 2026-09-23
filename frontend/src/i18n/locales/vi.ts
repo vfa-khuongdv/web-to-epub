@@ -48,9 +48,11 @@ export const vi: Record<string, string> = {
   "Exported {count} EPUB files": "Đã xuất xong {count} file EPUB",
   "Loaded {count} chapters": "Đã tải xong danh sách {count} chương",
 
-  // Update banner
+  // Update dialog
+  "Update available": "Có bản cập nhật",
   "A new version v{version} is available (you have v{current}).": "Đã có bản mới v{version} (bạn đang dùng v{current}).",
   "Update now": "Cập nhật ngay",
+  "Later": "Để sau",
   "Downloading…": "Đang tải…",
   "Downloading… {pct}%": "Đang tải… {pct}%",
   "Installing…": "Đang cài đặt…",
