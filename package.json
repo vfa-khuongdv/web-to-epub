@@ -2,6 +2,10 @@
   "name": "web-to-epub",
   "version": "1.5.2",
   "description": "Extract rendered web page text (bypassing copy-protection) and export to Kindle-ready EPUB",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vfa-khuongdv/web-to-epub.git"
+  },
   "private": true,
   "main": "electron/main.js",
   "workspaces": [
