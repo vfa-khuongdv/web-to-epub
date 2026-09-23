@@ -67,6 +67,26 @@ function runCommand(cmd: string, args: string[]): Promise<void> {
   });
 }
 
+const REPLACE_FAILED_MESSAGE =
+  "The app cannot replace itself here — move it to Applications and try again, or download the new version from the release page.";
+
+function errorWithCause(message: string, cause: unknown): Error {
+  const error = new Error(message) as Error & { cause?: unknown };
+  error.cause = cause;
+  return error;
+}
+
+// EACCES/EPERM/EROFS mean the app's parent directory is not writable: running from the
+// mounted DMG via App Translocation, a root-owned /Applications, a read-only volume.
+// Rethrown raw, the banner would show an errno dump instead of something actionable.
+function mapReplaceError(error: unknown): unknown {
+  const code = (error as NodeJS.ErrnoException | null)?.code;
+  if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+    return errorWithCause(REPLACE_FAILED_MESSAGE, error);
+  }
+  return error;
+}
+
 export interface InstallUpdateOptions {
   zipPath: string;
   appBundlePath: string;
@@ -86,15 +106,28 @@ export async function installUpdateFromZip(options: InstallUpdateOptions): Promi
 
   // The work dir sits next to the app: same volume, so moving the new bundle into
   // place is a rename (a /tmp extract would make it a cross-device copy).
-  const workDir = fs.mkdtempSync(path.join(path.dirname(appBundlePath), ".web-to-epub-update-"));
+  let workDir: string;
   try {
-    await run("ditto", ["-x", "-k", options.zipPath, workDir]);
+    workDir = fs.mkdtempSync(path.join(path.dirname(appBundlePath), ".web-to-epub-update-"));
+  } catch (error) {
+    throw mapReplaceError(error);
+  }
+  try {
+    try {
+      await run("ditto", ["-x", "-k", options.zipPath, workDir]);
+    } catch (error) {
+      throw errorWithCause("Could not unpack the update archive", error);
+    }
     const newApp = findAppBundleInDir(workDir, path.basename(appBundlePath, ".app"));
     if (!newApp) throw new Error("Update archive does not contain an app bundle");
 
     // A leftover from an interrupted run would make the rename below fail.
     fs.rmSync(backupPath, { recursive: true, force: true });
-    rename(appBundlePath, backupPath);
+    try {
+      rename(appBundlePath, backupPath);
+    } catch (error) {
+      throw mapReplaceError(error);
+    }
     try {
       rename(newApp, appBundlePath);
     } catch (error) {
@@ -104,7 +137,7 @@ export async function installUpdateFromZip(options: InstallUpdateOptions): Promi
         // The rename error below is the useful one; .old stays for the next launch's
         // cleanup.
       }
-      throw error;
+      throw mapReplaceError(error);
     }
 
     // Downloaded by this app, not a browser, so normally there is no quarantine
