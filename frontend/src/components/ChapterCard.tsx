@@ -334,6 +334,13 @@ export default function ChapterCard({
     setSaveError(null);
   }
 
+  // Re-crawling a chapter that already has content overwrites it (including any
+  // manual edits saved earlier), so confirm first — unlike Retry on a failed
+  // chapter, there's nothing worth losing there.
+  function handleRecrawl() {
+    if (window.confirm(t("Re-crawling will overwrite this chapter's saved content. Continue?"))) onRetry();
+  }
+
   return (
     <>
       <tr className={open ? "row-open" : undefined}>
@@ -372,6 +379,12 @@ export default function ChapterCard({
             <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
               <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
               {retrying ? t("Retrying…") : t("Retry")}
+            </button>
+          )}
+          {chip === "done" && (
+            <button type="button" className="btn btn-quiet btn-tiny" disabled={retrying} onClick={handleRecrawl}>
+              <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+              {retrying ? t("Retrying…") : t("Re-crawl")}
             </button>
           )}
         </td>
@@ -535,6 +548,10 @@ export default function ChapterCard({
                     <button type="button" className="btn btn-quiet btn-tiny" disabled={saving || !dirty} onClick={handleRevert}>
                       <Icon name="retry" size={13} />
                       {t("Undo")}
+                    </button>
+                    <button type="button" className="btn btn-quiet btn-tiny" disabled={retrying} onClick={handleRecrawl}>
+                      <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+                      {retrying ? t("Retrying…") : t("Re-crawl")}
                     </button>
                     <span className="text-xs text-ink-3">
                       {dirty

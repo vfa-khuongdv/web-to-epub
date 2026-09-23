@@ -152,6 +152,9 @@ export const en: Record<string, string> = {
   "Manual input": "Manual input",
   "Retrying…": "Retrying…",
   "Retry": "Retry",
+  "Re-crawl": "Re-crawl",
+  "Re-crawling will overwrite this chapter's saved content. Continue?":
+    "Re-crawling will overwrite this chapter's saved content. Continue?",
   "Source:": "Source:",
   "Edit URL": "Edit URL",
   "Save URL": "Save URL",
