@@ -13,7 +13,7 @@
  */
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { closeVault, fetchVaultStatus, openVault } from "../lib/api";
-import { forgetPrivatePositions, setPrivateScope } from "../lib/readerPreview";
+import { setPrivateScope } from "../lib/readerPreview";
 import { onVaultExpired, setVaultToken } from "./token";
 import VaultPrompt from "../components/VaultPrompt";
 
@@ -50,13 +50,9 @@ export function VaultProvider({ children }: { children: ReactNode }) {
   const [active, setActive] = useState(false);
   const [prompt, setPrompt] = useState<VaultPromptMode | null>(null);
 
-  // Everything the browser remembers about the private library, dropped together:
-  // reading positions are per-browser (see readerPreview.ts) and would otherwise
-  // outlive the session that made them.
   const forget = useCallback(() => {
     setVaultToken(null);
     setPrivateScope(false);
-    forgetPrivatePositions();
     setActive(false);
     setPrompt(null);
   }, []);

@@ -123,23 +123,14 @@ ${contentHtml}
 const PREFS_KEY = "reader-prefs";
 const PRIVATE_POSITION_PREFIX = "reader-position:private:";
 
-// Reading positions are per-browser, so a private story would otherwise leave its id
-// sitting in localStorage long after the library was locked. In private mode they go
-// under their own prefix and are wiped the moment the session ends; the reader's font
-// and theme stay shared, as those say nothing about what is being read.
+// Reading positions are per-browser, same as public ones, and persist the same way —
+// closing or locking private mode does not forget them. Kept under their own prefix so
+// a story shared between both libraries (same URL, same id) can't mix up a public and
+// a private reading position.
 let privateScope = false;
 
 export function setPrivateScope(on: boolean): void {
   privateScope = on;
-}
-
-export function forgetPrivatePositions(): void {
-  try {
-    const keys = Object.keys(localStorage).filter((key) => key.startsWith(PRIVATE_POSITION_PREFIX));
-    for (const key of keys) localStorage.removeItem(key);
-  } catch {
-    /* Nothing was stored in the first place */
-  }
 }
 
 const positionKey = (storyId: string) =>
