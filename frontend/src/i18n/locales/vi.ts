@@ -153,6 +153,9 @@ export const vi: Record<string, string> = {
   "Manual input": "Nhập thủ công",
   "Retrying…": "Đang thử lại…",
   "Retry": "Thử lại",
+  "Re-crawl": "Crawl lại",
+  "Re-crawling will overwrite this chapter's saved content. Continue?":
+    "Crawl lại sẽ ghi đè nội dung đã lưu của chương này. Tiếp tục?",
   "Source:": "Nguồn:",
   "Edit URL": "Sửa URL",
   "Save URL": "Lưu URL",
