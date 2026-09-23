@@ -99,7 +99,8 @@ export interface LiveCrawl {
 export type NoticeInput =
   | { kind: "crawl-done"; done: number; total: number; errors: number }
   | { kind: "toc-loaded"; count: number }
-  | { kind: "session-saved"; username?: string };
+  | { kind: "session-saved"; username?: string }
+  | { kind: "export-done"; fileCount: number };
 
 export type Notice = NoticeInput & { id: number };
 
