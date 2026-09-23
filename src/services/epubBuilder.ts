@@ -4,6 +4,7 @@ import { unzipSync, zipSync } from "fflate";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
+import sharp from "sharp";
 import { BookMetadata, ExportChapter } from "../types";
 import { EXTENSION_BY_TYPE, sniffImageExtension } from "./coverStore";
 import { fetchWithRetry } from "./toc/http";
@@ -57,6 +58,17 @@ export function contentDisposition(fileName: string): string {
 // via magic bytes like coverStore does, then give epub-gen a file:// path guaranteed to exist;
 // failed images are removed from the <img> tag entirely instead of leaving a broken link.
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+// Ceiling on what's even worth downloading before trying to compress it — a generous
+// margin over MAX_IMAGE_BYTES so an oversized-but-real photo (Wattpad "aesthetic" stories
+// routinely embed full-resolution phone photos) still gets a chance, while a wildly
+// mislinked file (a video, a multi-hundred-MB scan) still bails without reading the body.
+const MAX_IMAGE_DOWNLOAD_BYTES = 32 * 1024 * 1024;
+// Long-edge cap for a compressed image: comfortably more than any e-ink Kindle's native
+// resolution, so shrinking to this loses no visible detail on the device it's read on.
+const MAX_IMAGE_DIMENSION = 1600;
+// Only step down in quality if the previous pass didn't fit the budget — most oversized
+// photos fit well within MAX_IMAGE_BYTES after a single resize + re-encode at quality 82.
+const JPEG_QUALITY_STEPS = [82, 65, 50, 35];
 const IMAGE_USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
 const IMG_TAG_RE = /<img\b[^>]*>/gi;
@@ -96,6 +108,24 @@ function srcOf(tag: string): string | undefined {
   return m ? (m[2] ?? m[3]) : undefined;
 }
 
+// Resize to the e-reader-friendly dimension cap and re-encode as JPEG, stepping down
+// quality until it fits MAX_IMAGE_BYTES. Returns undefined if the source isn't decodable
+// or (extremely rare, after the resize) still doesn't fit at the lowest quality step.
+async function compressImage(bytes: Buffer): Promise<Buffer | undefined> {
+  try {
+    const resized = sharp(bytes)
+      .rotate() // bake in EXIF orientation before re-encoding drops the EXIF data
+      .resize({ width: MAX_IMAGE_DIMENSION, height: MAX_IMAGE_DIMENSION, fit: "inside", withoutEnlargement: true });
+    for (const quality of JPEG_QUALITY_STEPS) {
+      const out = await resized.clone().jpeg({ quality }).toBuffer();
+      if (out.length <= MAX_IMAGE_BYTES) return out;
+    }
+    return undefined;
+  } catch {
+    return undefined;
+  }
+}
+
 async function saveImage(src: string, dir: string, index: number): Promise<string | undefined> {
   let bytes: Buffer;
   let contentType = "";
@@ -111,7 +141,7 @@ async function saveImage(src: string, dir: string, index: number): Promise<strin
       );
       if (!res.ok) return undefined;
       const declaredLength = Number(res.headers.get("content-length"));
-      if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_BYTES) return undefined;
+      if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
       bytes = Buffer.from(await res.arrayBuffer());
       contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
     } catch {
@@ -121,8 +151,16 @@ async function saveImage(src: string, dir: string, index: number): Promise<strin
     return undefined;
   }
 
-  if (bytes.length === 0 || bytes.length > MAX_IMAGE_BYTES) return undefined;
-  const extension = sniffImageExtension(bytes) ?? EXTENSION_BY_TYPE.get(contentType);
+  if (bytes.length === 0 || bytes.length > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
+  let extension = sniffImageExtension(bytes) ?? EXTENSION_BY_TYPE.get(contentType);
+
+  if (bytes.length > MAX_IMAGE_BYTES) {
+    const compressed = await compressImage(bytes);
+    if (!compressed) return undefined;
+    bytes = compressed;
+    extension = "jpg";
+  }
+
   if (!extension) return undefined;
   const filePath = path.join(dir, `${index}.${extension}`);
   await fs.writeFile(filePath, bytes);
@@ -393,23 +431,68 @@ export async function packMedia(epubBytes: Buffer, media: EpubMedia[]): Promise<
   return Buffer.from(zipSync(zippable));
 }
 
-export async function buildEpub(
-  metadata: BookMetadata,
+// Practical point to split an oversized export into multiple .epub files instead of one
+// huge one — chosen by the user for image-heavy stories, independent of the per-image cap.
+export const MAX_EPUB_BYTES = 180 * 1024 * 1024;
+
+export interface EpubPart {
+  buffer: Buffer;
+  index: number;
+  total: number;
+}
+
+function mediaForChapters(chapters: ExportChapter[], media: EpubMedia[]): EpubMedia[] {
+  return media.filter((item) => chapters.some((chapter) => chapter.contentHtml.includes(item.href)));
+}
+
+// Chapters never reorder or get cut mid-way — only grouped, in their original order —
+// so each part reads as a contiguous continuation of the last. A single chapter heavier
+// than maxBytes still becomes its own (oversized) part rather than being split apart.
+async function groupChaptersBySize(
   chapters: ExportChapter[],
-  onProgress?: OnBuildProgress
-): Promise<Buffer> {
-  const included = chapters.filter((c) => c.includeInBook);
-  if (included.length === 0) {
-    throw new Error(t("No chapters selected for export"));
-  }
+  media: EpubMedia[],
+  maxBytes: number
+): Promise<ExportChapter[][]> {
+  const sizes = await Promise.all(
+    chapters.map(async (chapter) => {
+      let size = Buffer.byteLength(chapter.contentHtml, "utf8");
+      for (const match of chapter.contentHtml.matchAll(/file:\/\/([^"']+)/g)) {
+        try {
+          size += (await fs.stat(match[1])).size;
+        } catch {
+          /* image missing on disk — negligible either way */
+        }
+      }
+      for (const item of media) {
+        if (!chapter.contentHtml.includes(item.href)) continue;
+        try {
+          size += (await fs.stat(item.filePath)).size;
+        } catch {
+          /* media missing on disk — negligible either way */
+        }
+      }
+      return size;
+    })
+  );
 
+  const groups: ExportChapter[][] = [];
+  let current: ExportChapter[] = [];
+  let currentSize = 0;
+  chapters.forEach((chapter, i) => {
+    if (current.length > 0 && currentSize + sizes[i] > maxBytes) {
+      groups.push(current);
+      current = [];
+      currentSize = 0;
+    }
+    current.push(chapter);
+    currentSize += sizes[i];
+  });
+  if (current.length > 0) groups.push(current);
+  return groups;
+}
+
+async function packageEpub(metadata: BookMetadata, chapters: ExportChapter[], media: EpubMedia[]): Promise<Buffer> {
   const outputPath = path.join(os.tmpdir(), `epub-${randomUUID()}.epub`);
-  const imageDir = await fs.mkdtemp(path.join(os.tmpdir(), "epub-img-"));
-  const withImages = await embedImages(included, imageDir, onProgress);
-  const { chapters: withMedia, media } = await embedMedia(withImages, imageDir, onProgress);
-  // Packaging cannot be split (epub-gen runs in one pass), so only report start/end.
-  onProgress?.({ phase: "packaging", done: 0, total: 1 });
-
   const epub = new Epub(
     {
       title: metadata.title || "Untitled Book",
@@ -421,7 +504,7 @@ export async function buildEpub(
       // only root can write there (app runs as the `node` user).
       tempDir: os.tmpdir(),
       css: KINDLE_CSS,
-      content: withMedia.map((c) => ({ title: c.title, data: c.contentHtml })),
+      content: chapters.map((c) => ({ title: c.title, data: c.contentHtml })),
     },
     outputPath
   );
@@ -430,11 +513,39 @@ export async function buildEpub(
 
   try {
     const bytes = await fs.readFile(outputPath);
-    const result = media.length > 0 ? await packMedia(bytes, media) : bytes;
-    onProgress?.({ phase: "packaging", done: 1, total: 1 });
-    return result;
+    const partMedia = mediaForChapters(chapters, media);
+    return partMedia.length > 0 ? await packMedia(bytes, partMedia) : bytes;
   } finally {
     await fs.unlink(outputPath).catch(() => {});
+  }
+}
+
+export async function buildEpub(
+  metadata: BookMetadata,
+  chapters: ExportChapter[],
+  onProgress?: OnBuildProgress,
+  maxBytes: number = MAX_EPUB_BYTES
+): Promise<EpubPart[]> {
+  const included = chapters.filter((c) => c.includeInBook);
+  if (included.length === 0) {
+    throw new Error(t("No chapters selected for export"));
+  }
+
+  const imageDir = await fs.mkdtemp(path.join(os.tmpdir(), "epub-img-"));
+  try {
+    const withImages = await embedImages(included, imageDir, onProgress);
+    const { chapters: withMedia, media } = await embedMedia(withImages, imageDir, onProgress);
+
+    const groups = await groupChaptersBySize(withMedia, media, maxBytes);
+    const buffers: Buffer[] = [];
+    for (let i = 0; i < groups.length; i++) {
+      onProgress?.({ phase: "packaging", done: i, total: groups.length });
+      buffers.push(await packageEpub(metadata, groups[i], media));
+    }
+    onProgress?.({ phase: "packaging", done: groups.length, total: groups.length });
+
+    return buffers.map((buffer, index) => ({ buffer, index, total: buffers.length }));
+  } finally {
     await fs.rm(imageDir, { recursive: true, force: true }).catch(() => {});
   }
 }

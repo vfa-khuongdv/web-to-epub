@@ -34,7 +34,7 @@ async function streamExport(
   res: ExpressResponse,
   metadata: BookMetadata,
   chapters: ExportChapter[],
-  fileName: string,
+  baseTitle: string,
   dataDir: string
 ): Promise<void> {
   res.writeHead(200, {
@@ -58,12 +58,21 @@ async function streamExport(
   };
 
   try {
-    const buffer = await buildEpub(
+    const parts = await buildEpub(
       { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl, dataDir) : undefined },
       chapters,
       onProgress
     );
-    send({ type: "done", exportId: stashExport(buffer, fileName), fileName });
+    // Only a story too big for one file gets numbered — a normal export keeps its plain name.
+    const exports = parts.map((part) => {
+      const fileName = epubFileName(
+        part.total > 1
+          ? t("{title} - Part {index}/{total}", { title: baseTitle, index: part.index + 1, total: part.total })
+          : baseTitle
+      );
+      return { exportId: stashExport(part.buffer, fileName), fileName };
+    });
+    send({ type: "done", exports });
   } catch (err) {
     send({ type: "error", message: err instanceof Error ? err.message : "EPUB export error" });
   }
@@ -122,7 +131,7 @@ exportsRouter.post("/stories/:id/export", async (req, res) => {
       included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
     }
 
-    await streamExport(res, metadata, included, epubFileName(metadata.title || story.title || "book"), library.dataDir);
+    await streamExport(res, metadata, included, metadata.title || story.title || "book", library.dataDir);
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "EPUB export error" });
   }

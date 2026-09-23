@@ -297,38 +297,50 @@ export interface ExportProgress {
   total: number;
 }
 
+// A story too big for one EPUB comes back as several files instead — see MAX_EPUB_BYTES
+// in src/services/epubBuilder.ts. `fileName` already carries the "Part N/total" suffix
+// server-side (translated), so the client just uses it as-is.
+export interface ExportedFile {
+  blob: Blob;
+  fileName: string;
+}
+
 interface ExportEvent extends Partial<ExportProgress> {
   type: "progress" | "done" | "error";
-  exportId?: string;
+  exports?: { exportId: string; fileName: string }[];
   message?: string;
 }
 
-// Server streams progress then returns download code; file fetched in second request because
-// one response cannot be both progress stream and binary file.
+// Server streams progress then returns download codes; files fetched in a second request
+// each because one response cannot be both progress stream and binary file.
 async function runExport(
   path: string,
   body: unknown,
   onProgress?: (progress: ExportProgress) => void
-): Promise<Blob> {
-  let exportId: string | undefined;
+): Promise<ExportedFile[]> {
+  let exports: { exportId: string; fileName: string }[] | undefined;
   let failure: string | undefined;
 
   await streamNdjson<ExportEvent>(path, body, (event) => {
     if (event.type === "progress" && event.phase) {
       onProgress?.({ phase: event.phase, done: event.done ?? 0, total: event.total ?? 0 });
     } else if (event.type === "done") {
-      exportId = event.exportId;
+      exports = event.exports;
     } else if (event.type === "error") {
       failure = event.message;
     }
   });
 
   if (failure) throw new Error(failure);
-  if (!exportId) throw new Error("Export failed — stream ended without file");
+  if (!exports || exports.length === 0) throw new Error("Export failed — stream ended without file");
 
-  const res = await apiFetch(`/api/exports/${encodeURIComponent(exportId)}`, { headers: langHeaders() });
-  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not download the exported EPUB file")));
-  return res.blob();
+  const files: ExportedFile[] = [];
+  for (const { exportId, fileName } of exports) {
+    const res = await apiFetch(`/api/exports/${encodeURIComponent(exportId)}`, { headers: langHeaders() });
+    if (!res.ok) throw new Error(await readJsonError(res, tr("Could not download the exported EPUB file")));
+    files.push({ blob: await res.blob(), fileName });
+  }
+  return files;
 }
 
 export async function exportStoryEpub(
@@ -336,7 +348,7 @@ export async function exportStoryEpub(
   metadata: BookMetadata,
   chapters: StoryExportChapter[],
   onProgress?: (progress: ExportProgress) => void
-): Promise<Blob> {
+): Promise<ExportedFile[]> {
   return runExport(`/api/stories/${encodeURIComponent(storyId)}/export`, { metadata, chapters }, onProgress);
 }
 

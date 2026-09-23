@@ -1,26 +1,22 @@
 import { useState } from "react";
 import {
+  ExportedFile,
   ExportProgress,
   exportStoryEpub,
   StoryExportChapter,
   uploadCover,
 } from "../lib/api";
-
-// Keep in sync with epubFileName in src/services/epubBuilder.ts: keep diacritics,
-// only replace invalid filename characters.
-const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|\u0000-\u001f\u007f]/g;
-
-function epubFileName(title: string): string {
-  const base = title
-    .replace(ILLEGAL_FILENAME_CHARS, " ")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 120)
-    .trim();
-  return `${base || "book"}.epub`;
-}
 import { Translate } from "../i18n";
 import { BookMetadata } from "../types";
+
+// A stagger between each triggered download, not a wait for the previous one to finish:
+// firing several `a.click()` downloads in the same tick makes some browsers show a
+// "this site is trying to download multiple files" block on everything after the first.
+const DOWNLOAD_STAGGER_MS = 400;
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
 // Description for progress bar. Image download is longest phase so show count;
 // packaging runs in one batch, cannot be subdivided.
@@ -36,11 +32,11 @@ export function useEpubExport() {
   const [isExporting, setIsExporting] = useState(false);
   const [progress, setProgress] = useState<ExportProgress | null>(null);
 
-  function download(blob: Blob, title: string) {
+  function download({ blob, fileName }: ExportedFile) {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = epubFileName(title || "book");
+    a.download = fileName;
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -59,7 +55,11 @@ export function useEpubExport() {
     setProgress(null);
     try {
       const coverUrl = coverFile ? await uploadCover(coverFile) : metadata.coverUrl;
-      download(await exportStoryEpub(storyId, { ...metadata, coverUrl }, chapters, setProgress), metadata.title);
+      const files = await exportStoryEpub(storyId, { ...metadata, coverUrl }, chapters, setProgress);
+      for (let i = 0; i < files.length; i++) {
+        if (i > 0) await sleep(DOWNLOAD_STAGGER_MS);
+        download(files[i]);
+      }
     } finally {
       setIsExporting(false);
       setProgress(null);

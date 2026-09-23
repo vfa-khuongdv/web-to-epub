@@ -79,6 +79,7 @@ const vi: Record<string, string> = {
   "No chapters selected for export": "Không có chapter nào được chọn để export",
   "Export has expired or already been downloaded — click Export EPUB again":
     "Bản xuất đã hết hạn hoặc đã tải rồi — bấm Xuất EPUB lại",
+  "{title} - Part {index}/{total}": "{title} - Phần {index}/{total}",
 
   // Crawling and extraction
   "Loading & extracting…{attempt}": "Đang tải & trích xuất…{attempt}",
