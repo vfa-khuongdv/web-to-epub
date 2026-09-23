@@ -110,6 +110,38 @@ describe("appInstaller", () => {
     expect(oldBinary()).toBe("old binary");
   });
 
+  it("asks the user to move the app when the rename is denied", async () => {
+    const zipPath = path.join(dir, "update.zip");
+    writeFileSync(zipPath, "zip");
+    const rename = vi.fn(() => {
+      throw Object.assign(new Error("EACCES: permission denied, rename '/Applications/Web to EPUB.app'"), {
+        code: "EACCES",
+      });
+    });
+
+    await expect(installUpdateFromZip({ zipPath, appBundlePath, run: runCreatingApp(), rename })).rejects.toThrow(
+      "The app cannot replace itself here — move it to Applications and try again, or download the new version from the release page."
+    );
+    expect(rename).toHaveBeenCalledOnce();
+    expect(oldBinary()).toBe("old binary");
+  });
+
+  it("reports a clear error when the update archive cannot be unpacked", async () => {
+    const zipPath = path.join(dir, "update.zip");
+    writeFileSync(zipPath, "zip");
+    const cause = new Error("ditto exited with code 1");
+    const run = vi.fn(async (cmd: string) => {
+      if (cmd === "ditto") throw cause;
+    });
+
+    const error = await installUpdateFromZip({ zipPath, appBundlePath, run }).catch((e: unknown) => e);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toBe("Could not unpack the update archive");
+    expect((error as Error & { cause?: unknown }).cause).toBe(cause);
+    expect(oldBinary()).toBe("old binary");
+  });
+
   it("rolls the old bundle back when the new one cannot be moved in", async () => {
     const zipPath = path.join(dir, "update.zip");
     writeFileSync(zipPath, "zip");
