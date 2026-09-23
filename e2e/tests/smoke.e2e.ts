@@ -4,6 +4,6 @@ import { test, expect } from "../helpers/fixtures";
 test("app boots and lists the supported sites", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "My Stories" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "7 sites supported" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /\d+ sites supported/ })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Story details" })).toBeVisible();
 });

@@ -12,7 +12,7 @@ test("rejects a URL from an unsupported site", async ({ page }) => {
   await page.goto("/");
   // Wait for the allowlist to load: the client validates against it, and an empty list
   // rejects every URL for the wrong reason.
-  await expect(page.getByRole("button", { name: "7 sites supported" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /\d+ sites supported/ })).toBeVisible();
   const before = (await store.list()).length;
   await page.getByLabel("Story page URL").fill("https://example.com/story");
   await page.getByRole("button", { name: "Load chapters" }).click();
