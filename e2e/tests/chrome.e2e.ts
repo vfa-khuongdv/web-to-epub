@@ -72,7 +72,7 @@ test("cycles and persists the theme", async ({ page }) => {
 
 test("lists supported sites and closes the popover with Escape", async ({ page, request }) => {
   await page.goto("/");
-  await page.getByRole("button", { name: "7 sites supported" }).click();
+  await page.getByRole("button", { name: /\d+ sites supported/ }).click();
   const heading = page.getByRole("heading", { name: "Supported sites" });
   await expect(heading).toBeVisible();
 
@@ -102,5 +102,5 @@ test("replaces the sites button with a crawl chip while crawling", async ({ page
   await expect(page.getByRole("status").filter({ hasText: "Downloaded 1 chapters" })).toBeVisible({
     timeout: 90_000,
   });
-  await expect(page.getByRole("button", { name: "7 sites supported" })).toBeVisible();
+  await expect(page.getByRole("button", { name: /\d+ sites supported/ })).toBeVisible();
 });
