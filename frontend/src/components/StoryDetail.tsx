@@ -7,6 +7,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts } from "../hooks/useCrawlJob";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
+import { useVault } from "../vault";
 import { vaultQuery } from "../vault/token";
 import ChapterCard, { PendingChapterRow } from "./ChapterCard";
 import { Icon } from "./Icon";
@@ -72,6 +73,7 @@ export default function StoryDetail({
 }) {
   // Before the state below: the chapter list's lazy initializer already needs `t`.
   const { lang, t } = useLang();
+  const vault = useVault();
   const [chapters, setChapters] = useState<ChapterState[]>(() =>
     story.chapters.filter((c) => c.status !== "pending").map((c) => toChapterState(c, 0, t))
   );
@@ -617,6 +619,7 @@ export default function StoryDetail({
           language={language}
           coverSrc={coverSrc}
           chapters={readableChapters}
+          isPrivate={vault.active}
           // Chapters open in the editor export their unsaved HTML, so the preview must
           // show that too; the rest come from the DB like the export builds them.
           loadChapterHtml={async (order) =>

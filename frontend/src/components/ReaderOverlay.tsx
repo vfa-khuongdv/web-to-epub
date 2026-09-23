@@ -79,6 +79,7 @@ export default function ReaderOverlay({
   chapters,
   loadChapterHtml,
   onClose,
+  isPrivate,
 }: {
   storyId: string;
   storyTitle: string;
@@ -88,10 +89,14 @@ export default function ReaderOverlay({
   chapters: ReaderChapter[];
   loadChapterHtml: (order: number) => Promise<string>;
   onClose: () => void;
+  // Which reading-position bucket to use (see readerPreview.ts) — sourced from
+  // useVault().active, not module state, so it can't go stale relative to which
+  // library is actually open.
+  isPrivate: boolean;
 }) {
   const { t } = useLang();
   const [resume] = useState(() => {
-    const position = readPosition(storyId);
+    const position = readPosition(storyId, isPrivate);
     const found = position ? chapters.findIndex((c) => c.order === position.order) : -1;
     return found >= 0 ? { index: found, scroll: position!.scroll } : { index: 0, scroll: 0 };
   });
@@ -232,7 +237,7 @@ export default function ReaderOverlay({
       window.clearTimeout(scrollTimer.current);
       const win = frame.current?.contentWindow;
       const order = chapters[index]?.order;
-      if (win && order !== undefined) savePosition(storyId, { order, scroll: win.scrollY });
+      if (win && order !== undefined) savePosition(storyId, isPrivate, { order, scroll: win.scrollY });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -265,7 +270,7 @@ export default function ReaderOverlay({
     setPalette(null);
     pendingScroll.current = 0;
     setIndex(next);
-    savePosition(storyId, { order: chapters[next].order, scroll: 0 });
+    savePosition(storyId, isPrivate, { order: chapters[next].order, scroll: 0 });
   }
 
   function toggleFull() {
@@ -300,7 +305,7 @@ export default function ReaderOverlay({
       const order = chapter.order;
       const scroll = win.scrollY;
       scrollTimer.current = window.setTimeout(
-        () => savePosition(storyId, { order, scroll }),
+        () => savePosition(storyId, isPrivate, { order, scroll }),
         SCROLL_SAVE_DELAY
       );
     },

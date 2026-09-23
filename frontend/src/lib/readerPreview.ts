@@ -126,15 +126,11 @@ const PRIVATE_POSITION_PREFIX = "reader-position:private:";
 // Reading positions are per-browser, same as public ones, and persist the same way —
 // closing or locking private mode does not forget them. Kept under their own prefix so
 // a story shared between both libraries (same URL, same id) can't mix up a public and
-// a private reading position.
-let privateScope = false;
-
-export function setPrivateScope(on: boolean): void {
-  privateScope = on;
-}
-
-const positionKey = (storyId: string) =>
-  privateScope ? `${PRIVATE_POSITION_PREFIX}${storyId}` : `reader-position:${storyId}`;
+// a private reading position. `isPrivate` is threaded down from useVault().active
+// (a plain function parameter, not module state) so it can never go stale relative to
+// which library is actually on screen.
+const positionKey = (storyId: string, isPrivate: boolean) =>
+  isPrivate ? `${PRIVATE_POSITION_PREFIX}${storyId}` : `reader-position:${storyId}`;
 
 // localStorage can throw (private window, cookies blocked): reading still works, the
 // preference or position just is not remembered — same handling as the theme switch.
@@ -166,9 +162,9 @@ export interface ReadingPosition {
   scroll: number;
 }
 
-export function readPosition(storyId: string): ReadingPosition | null {
+export function readPosition(storyId: string, isPrivate: boolean): ReadingPosition | null {
   try {
-    const saved = JSON.parse(localStorage.getItem(positionKey(storyId)) || "");
+    const saved = JSON.parse(localStorage.getItem(positionKey(storyId, isPrivate)) || "");
     if (typeof saved.order !== "number") return null;
     return { order: saved.order, scroll: typeof saved.scroll === "number" ? saved.scroll : 0 };
   } catch {
@@ -176,9 +172,9 @@ export function readPosition(storyId: string): ReadingPosition | null {
   }
 }
 
-export function savePosition(storyId: string, position: ReadingPosition): void {
+export function savePosition(storyId: string, isPrivate: boolean, position: ReadingPosition): void {
   try {
-    localStorage.setItem(positionKey(storyId), JSON.stringify(position));
+    localStorage.setItem(positionKey(storyId, isPrivate), JSON.stringify(position));
   } catch {
     /* Not remembered next time, reading is unaffected */
   }

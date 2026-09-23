@@ -13,7 +13,6 @@
  */
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { closeVault, fetchVaultStatus, openVault } from "../lib/api";
-import { setPrivateScope } from "../lib/readerPreview";
 import { onVaultExpired, setVaultToken } from "./token";
 import VaultPrompt from "../components/VaultPrompt";
 
@@ -52,7 +51,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
 
   const forget = useCallback(() => {
     setVaultToken(null);
-    setPrivateScope(false);
     setActive(false);
     setPrompt(null);
   }, []);
@@ -96,7 +94,6 @@ export function VaultProvider({ children }: { children: ReactNode }) {
       const mode = prompt ?? "unlock";
       const token = await openVault(code, mode);
       setVaultToken(token);
-      setPrivateScope(true);
       setActive(true);
       setPrompt(null);
     },
