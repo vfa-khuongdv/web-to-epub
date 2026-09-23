@@ -1,6 +1,6 @@
 {
   "name": "web-to-epub",
-  "version": "1.4.1",
+  "version": "1.5.0",
   "description": "Extract rendered web page text (bypassing copy-protection) and export to Kindle-ready EPUB",
   "private": true,
   "main": "electron/main.js",
