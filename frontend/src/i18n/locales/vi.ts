@@ -162,6 +162,8 @@ export const vi: Record<string, string> = {
   // Chapter card
   "Open source page": "Mở trang nguồn",
   "Open source page for chapter {order}": "Mở trang nguồn của chương {order}",
+  "Delete chapter": "Xoá chương",
+  "Delete chapter {order}": "Xoá chương {order}",
   "Unsaved": "Chưa lưu",
   "Retrying": "Đang thử lại",
   "Manual input": "Nhập thủ công",
@@ -212,6 +214,7 @@ export const vi: Record<string, string> = {
   "Could not save story metadata": "Không lưu được thông tin truyện",
   "Could not save chapter": "Không lưu được chương",
   "Could not delete story": "Không xoá được truyện",
+  "Could not delete chapter": "Không xoá được chương",
   "Could not change watch status": "Không đổi được trạng thái theo dõi",
   "Could not check for new chapters": "Không kiểm tra được chương mới",
   "Could not load new chapter list": "Không tải được danh sách chương mới",

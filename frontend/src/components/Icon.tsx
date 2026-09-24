@@ -105,17 +105,19 @@ export function Icon({
   name,
   size = 16,
   className,
+  filled,
 }: {
   name: IconName;
   size?: number;
   className?: string;
+  filled?: boolean;
 }) {
   const Glyph = icons[name];
   return (
     <Glyph
       size={size}
       strokeWidth={STROKE_WIDTH}
-      fill={FILLED[name] ? "currentColor" : "none"}
+      fill={(filled ?? FILLED[name]) ? "currentColor" : "none"}
       className={className}
       aria-hidden="true"
       focusable="false"

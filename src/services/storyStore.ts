@@ -26,6 +26,9 @@ export interface StoryStore {
   getChapter(storyId: string, order: number): Promise<StoredChapter | undefined>;
   save(story: StoredStory): Promise<void>;
   saveChapter(storyId: string, chapter: StoredChapter): Promise<void>;
+  // Drop one chapter (and its highlights) from the library. Order is the TOC position,
+  // so the rest keeps theirs — the list shows a gap, not a renumbering.
+  removeChapter(storyId: string, order: number): Promise<boolean>;
   // Update book metadata (title/author/language/cover) without touching chapters —
   // used for the "Save info" button. An empty field means delete the old value.
   updateMeta(id: string, meta: StoryMeta): Promise<boolean>;
@@ -195,6 +198,8 @@ export function createStoryStore(baseDir: string): StoryStore {
       blocks = excluded.blocks
   `);
   const deleteChapters = db.prepare(`DELETE FROM chapters WHERE story_id = ?`);
+  const deleteChapter = db.prepare(`DELETE FROM chapters WHERE story_id = ? AND "order" = ?`);
+  const deleteChapterHighlights = db.prepare(`DELETE FROM highlights WHERE story_id = ? AND chapter_order = ?`);
   const selectHighlights = db.prepare(
     `SELECT id, chapter_order, start, "end", color, text, created_at FROM highlights
      WHERE story_id = ? ORDER BY chapter_order, start`
@@ -435,6 +440,17 @@ export function createStoryStore(baseDir: string): StoryStore {
           throw new Error(t("Story not found: {id}", { id }));
         }
         upsertChapter.run(...chapterParams(id, chapter));
+      });
+    },
+
+    async removeChapter(id: string, order: number): Promise<boolean> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return false;
+      return inTransaction(() => {
+        const result = deleteChapter.run(id, order);
+        if (Number(result.changes) === 0) return false;
+        deleteChapterHighlights.run(id, order);
+        touchStory.run(new Date().toISOString(), id);
+        return true;
       });
     },
 

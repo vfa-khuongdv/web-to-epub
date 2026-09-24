@@ -395,6 +395,48 @@ describe("createStoryStore", () => {
     await expect(store.saveChapter("../../evil", chapter)).rejects.toThrow("Invalid story ID");
   });
 
+  it("removeChapter drops only that chapter and leaves a gap in the order", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    expect(await store.removeChapter(story.id, 2)).toBe(true);
+
+    const loaded = await store.get(story.id);
+    // Order is the TOC position: removing one must not renumber the rest.
+    expect(loaded?.chapters.map((c) => c.order)).toEqual([1, 3]);
+    expect(loaded?.chapters[0]).toEqual(story.chapters[0]);
+    expect(loaded?.chapters[1]).toEqual(story.chapters[2]);
+  });
+
+  it("removeChapter deletes that chapter's highlights and keeps the others", async () => {
+    const story = makeStory();
+    await store.save(story);
+    await store.addHighlight(story.id, { chapterOrder: 1, start: 0, end: 1, color: "yellow", text: "a" });
+    await store.addHighlight(story.id, { chapterOrder: 2, start: 0, end: 1, color: "blue", text: "b" });
+
+    await store.removeChapter(story.id, 2);
+
+    expect((await store.listHighlights(story.id)).map((h) => h.chapterOrder)).toEqual([1]);
+  });
+
+  it("removeChapter bumps updatedAt", async () => {
+    const story = makeStory({ updatedAt: "2020-01-01T00:00:00.000Z" });
+    await store.save(story);
+
+    await store.removeChapter(story.id, 1);
+
+    const loaded = await store.get(story.id);
+    expect((loaded?.updatedAt ?? "").localeCompare("2020-01-01T00:00:00.000Z")).toBeGreaterThan(0);
+  });
+
+  it("removeChapter is false for a chapter that does not exist", async () => {
+    const story = makeStory();
+    await store.save(story);
+
+    expect(await store.removeChapter(story.id, 99)).toBe(false);
+    expect((await store.get(story.id))?.chapters).toHaveLength(3);
+  });
+
   it("updateMeta updates title/author/language/cover and keeps chapters unchanged", async () => {
     const story = makeStory();
     await store.save(story);
