@@ -699,13 +699,13 @@ export default function LibraryView({
                         <span className="flex items-center justify-end gap-1">
                           <button
                             type="button"
-                            className="btn btn-quiet btn-tiny"
+                            className={`btn btn-quiet btn-tiny${s.watching ? " text-select-deep" : ""}`}
                             title={s.watching ? t("Stop watching for new chapters") : t("Watch for new chapters")}
                             aria-label={s.watching ? t("Stop watching {title}", { title: s.title }) : t("Watch {title}", { title: s.title })}
                             aria-pressed={s.watching}
                             onClick={() => handleWatchToggle(s)}
                           >
-                            <Icon name="bell" size={13} className={s.watching ? "text-select" : undefined} />
+                            <Icon name="bell" size={13} filled={s.watching} />
                           </button>
                           <button
                             type="button"

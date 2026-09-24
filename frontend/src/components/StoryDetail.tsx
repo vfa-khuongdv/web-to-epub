@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
+import { deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
@@ -266,6 +266,27 @@ export default function StoryDetail({
     }
   }
 
+  // Delete one chapter: drop it from the library, then let the parent refetch so the
+  // table, counts and library row all move together. Local caches keyed by that order
+  // (loaded bodies, edited titles) must go too, or a later chapter reusing the order
+  // would inherit them.
+  async function handleDeleteChapter(order: number) {
+    setError(null);
+    try {
+      await deleteChapter(story.id, order);
+      bodies.current.delete(`stored-${order}`);
+      setChapters((cs) => cs.filter((c) => c.order !== order));
+      setPendingTitles((titles) => {
+        if (!(order in titles)) return titles;
+        const { [order]: _removed, ...rest } = titles;
+        return rest;
+      });
+      await onStoryChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
   // Flash "Saved" on button after successful save.
   useEffect(() => {
     if (!saved) return;
@@ -439,12 +460,12 @@ export default function StoryDetail({
             )}
             <button
               type="button"
-              className="btn"
+              className={`btn${story.watching ? " text-select-deep" : ""}`}
               aria-pressed={story.watching}
               title={story.watching ? t("Stop watching for new chapters") : t("Check for new chapters when opening app")}
               onClick={handleWatchToggle}
             >
-              <Icon name="bell" size={13} className={story.watching ? "text-select" : undefined} />
+              <Icon name="bell" size={13} filled={story.watching} />
               {story.watching ? t("Watching") : t("Watch for new chapters")}
             </button>
             <button type="button" className="btn" disabled={saving} onClick={handleSave}>
@@ -516,7 +537,7 @@ export default function StoryDetail({
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
-              <th className="w-28" />
+              <th className="w-36" />
             </tr>
           </thead>
           <tbody>
@@ -535,6 +556,8 @@ export default function StoryDetail({
                       setPendingTitles((m) => ({ ...m, [sc.order]: newTitle }));
                       onStoryChanged();
                     }}
+                    onDelete={() => handleDeleteChapter(sc.order)}
+                    deleteDisabled={job.running}
                   />
                 );
               }
@@ -577,6 +600,8 @@ export default function StoryDetail({
                       cs.map((x) => (x.id === c.id ? { ...x, data: { ...x.data, sourceUrl: updated.url } } : x))
                     );
                   }}
+                  onDelete={() => handleDeleteChapter(c.order)}
+                  deleteDisabled={job.running}
                 />
               );
             })}
@@ -717,7 +742,7 @@ export function StoryDetailSkeleton() {
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
-              <th className="w-28" />
+              <th className="w-36" />
             </tr>
           </thead>
           <tbody>

@@ -226,6 +226,16 @@ export async function deleteStory(id: string): Promise<void> {
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete story")));
 }
 
+// Remove one chapter (and its highlights) from the library. Order is the TOC position, so
+// the rest keeps theirs — the list shows a gap, not a renumbering.
+export async function deleteChapter(storyId: string, order: number): Promise<void> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}`, {
+    method: "DELETE",
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete chapter")));
+}
+
 // Enable/disable watching for new chapters on a story.
 export async function setStoryWatch(id: string, watching: boolean): Promise<StoredStory> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/watch`, {

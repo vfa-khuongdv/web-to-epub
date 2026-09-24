@@ -161,6 +161,8 @@ export const en: Record<string, string> = {
   // Chapter card
   "Open source page": "Open source page",
   "Open source page for chapter {order}": "Open source page for chapter {order}",
+  "Delete chapter": "Delete chapter",
+  "Delete chapter {order}": "Delete chapter {order}",
   "Unsaved": "Unsaved",
   "Retrying": "Retrying",
   "Manual input": "Manual input",
@@ -211,6 +213,7 @@ export const en: Record<string, string> = {
   "Could not save story metadata": "Could not save story metadata",
   "Could not save chapter": "Could not save chapter",
   "Could not delete story": "Could not delete story",
+  "Could not delete chapter": "Could not delete chapter",
   "Could not change watch status": "Could not change watch status",
   "Could not check for new chapters": "Could not check for new chapters",
   "Could not load new chapter list": "Could not load new chapter list",

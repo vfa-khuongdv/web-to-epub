@@ -7,7 +7,7 @@ PLATFORMS ?= linux/amd64,linux/arm64
 .DEFAULT_GOAL := help
 .PHONY: help install build dev test start clean \
         dev-frontend dev-all docker-build docker-run docker-stop docker-push \
-        app release-mac e2e
+        app install-mac release-mac e2e
 
 help: ## In danh sách lệnh
 	@grep -hE '^[a-z0-9-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -66,6 +66,19 @@ docker-push: ## Build multi-arch (amd64 + arm64) và push lên Docker Hub
 
 app: ## Đóng gói app macOS -> release/*.dmg
 	npm run app:mac
+
+install-mac: ## Cài bản đã build vào /Applications, thay app hiện tại (build trước bằng: make app)
+	@test -d "release/mac-arm64/Web to EPUB.app" || { echo "Chưa có release/mac-arm64/Web to EPUB.app — chạy 'make app' trước."; exit 1; }
+	@# Thoát app đang chạy: bản cũ còn sống sẽ giữ cổng/DB và che bản vừa thay.
+	@-osascript -e 'quit app "Web to EPUB"' 2>/dev/null
+	@for i in 1 2 3 4 5 6 7 8 9 10; do pgrep -x "Web to EPUB" >/dev/null || exit 0; sleep 1; done; \
+		echo "App vẫn đang chạy — thoát hẳn app rồi chạy lại 'make install-mac'."; exit 1
+	@# Copy sang tên tạm rồi mới thay: ditto lỗi giữa chừng vẫn còn app cũ.
+	rm -rf "/Applications/Web to EPUB.app.new"
+	ditto "release/mac-arm64/Web to EPUB.app" "/Applications/Web to EPUB.app.new"
+	rm -rf "/Applications/Web to EPUB.app"
+	mv "/Applications/Web to EPUB.app.new" "/Applications/Web to EPUB.app"
+	@echo "Đã cài Web to EPUB $(VERSION) vào /Applications/Web to EPUB.app"
 
 release-mac: app ## Build app rồi thay file .dmg + .zip trên GitHub release cùng version
 	@# gh 2.96.0 trả rỗng `gh release view --json assets` nên --clobber không xoá được

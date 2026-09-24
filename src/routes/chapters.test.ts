@@ -213,3 +213,102 @@ describe("PATCH /stories/:id/chapters/:order/title", () => {
     expect(res.status).toBe(404);
   });
 });
+
+/**
+ * DELETE /stories/:id/chapters/:order — remove a junk chapter from the library. The order
+ * is the TOC position, so the rest keeps theirs (a gap, not a renumbering), and a crawl in
+ * flight must not have a chapter yanked out from under it.
+ */
+describe("DELETE /stories/:id/chapters/:order", () => {
+  let server: Server;
+  let base: string;
+  let stories: typeof import("../services/storyStore").storyStore;
+  let library: NonNullable<ReturnType<typeof import("./library").libraryFor>>;
+  let id: string;
+
+  beforeAll(async () => {
+    const express = (await import("express")).default;
+    const { chaptersRouter } = await import("./chapters");
+    const store = await import("../services/storyStore");
+    const { libraryFor } = await import("./library");
+    stories = store.storyStore;
+    id = store.storyId(STORY_URL);
+    library = libraryFor({ header: () => undefined, query: {} } as never, {} as never)!;
+
+    const app = express();
+    app.use(express.json());
+    app.use("/api", chaptersRouter);
+    server = app.listen(0);
+    await new Promise((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    if (typeof address === "string" || address === null) throw new Error("expected a TCP address");
+    base = `http://127.0.0.1:${address.port}`;
+  });
+
+  beforeEach(async () => {
+    library.runningCrawls.clear();
+    await stories.remove(id);
+    const story: StoredStory = {
+      id,
+      storyUrl: STORY_URL,
+      site: "fanfiction.net",
+      title: "Reluctant Cultivator in Konoha",
+      watching: false,
+      newChapterCount: 0,
+      chapters: [
+        { order: 1, url: "https://www.fanfiction.net/s/14575449/1/x", title: "Prologue", status: "pending" },
+        {
+          order: 2,
+          url: "https://www.fanfiction.net/s/14575449/2/x",
+          title: "Chapter 1",
+          status: "done",
+          blocks: [{ type: "paragraph", text: "hi" }],
+        },
+        { order: 3, url: "https://www.fanfiction.net/s/14575449/3/x", title: "Junk", status: "error", error: "boom" },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    await stories.save(story);
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(DATA_DIR, { recursive: true, force: true });
+  });
+
+  async function deleteChapter(order: number | string) {
+    return fetch(`${base}/api/stories/${id}/chapters/${order}`, { method: "DELETE" });
+  }
+
+  it("removes the chapter and leaves the others' order alone", async () => {
+    const res = await deleteChapter(2);
+    expect(res.status).toBe(204);
+
+    const story = await stories.getOutline(id);
+    expect(story?.chapters.map((c) => c.order)).toEqual([1, 3]);
+    expect(story?.chapters[1].title).toBe("Junk");
+    expect(await stories.getChapter(id, 2)).toBeUndefined();
+  });
+
+  it("404s for a chapter order that doesn't exist", async () => {
+    const res = await deleteChapter(99);
+    expect(res.status).toBe(404);
+    // The route's own 404, not Express's default for a missing route.
+    expect(((await res.json()) as { message: string }).message).toBe("Chapter not found");
+    expect((await stories.getOutline(id))?.chapters).toHaveLength(3);
+  });
+
+  it("rejects a non-integer order", async () => {
+    const res = await deleteChapter("abc");
+    expect(res.status).toBe(400);
+  });
+
+  it("409s while the story is crawling, leaving the chapter in place", async () => {
+    library.runningCrawls.set(id, { cursor: 0, total: 3, startedAt: Date.now(), abort: new AbortController() });
+
+    const res = await deleteChapter(2);
+    expect(res.status).toBe(409);
+    expect(await stories.getChapter(id, 2)).toBeDefined();
+  });
+});

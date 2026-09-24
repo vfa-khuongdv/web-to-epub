@@ -156,3 +156,30 @@ chaptersRouter.patch("/stories/:id/chapters/:order/title", async (req, res) => {
   await library.stories.saveChapter(id, updated);
   res.json({ chapter: updated });
 });
+
+// Remove one chapter from the library: junk TOC entries and chapters the site will never
+// serve are deleted outright, highlights included. Order is the TOC position, so the rest
+// keeps theirs — the list shows a gap. A later TOC refresh can bring the chapter back as
+// pending while the site still lists its URL; that is accepted, not a bug.
+chaptersRouter.delete("/stories/:id/chapters/:order", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { id } = req.params;
+  const order = Number(req.params.order);
+  if (!Number.isInteger(order)) {
+    res.status(400).json({ message: t("Invalid chapter order") });
+    return;
+  }
+  // Same reasoning as the edits above: the crawl in flight would write this chapter next.
+  if (library.runningCrawls.has(id)) {
+    res.status(409).json({ message: t("Story is currently crawling, cannot edit chapters") });
+    return;
+  }
+
+  const removed = await library.stories.removeChapter(id, order);
+  if (!removed) {
+    res.status(404).json({ message: t("Chapter not found") });
+    return;
+  }
+  res.status(204).end();
+});

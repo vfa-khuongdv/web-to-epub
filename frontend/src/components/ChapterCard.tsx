@@ -14,6 +14,8 @@ export function PendingChapterRow({
   url,
   state = "pending",
   onSaveTitle,
+  onDelete,
+  deleteDisabled,
 }: {
   order: number;
   title: string;
@@ -23,12 +25,29 @@ export function PendingChapterRow({
   // name can be wrong; fixing it here — before the chapter is even crawled — means the
   // corrected title is what ends up in the book, not something patched up afterwards.
   onSaveTitle?: (title: string) => Promise<void>;
+  // Missing when the chapter cannot be deleted from this context (e.g. no library yet).
+  onDelete?: () => Promise<void>;
+  deleteDisabled?: boolean;
 }) {
   const { t } = useLang();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(title);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } catch {
+      // The detail pane's banner reports the failure; keep the confirm open to retry.
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function startEdit() {
     setDraft(title);
@@ -102,17 +121,47 @@ export function PendingChapterRow({
       <td className="w-32">
         <StatusChip state={state} />
       </td>
-      <td className="w-28">
-        <a
-          className="btn btn-quiet btn-tiny"
-          href={url}
-          target="_blank"
-          rel="noreferrer"
-          title={t("Open source page")}
-        >
-          <Icon name="open" size={13} />
-          <span className="visually-hidden">{t("Open source page for chapter {order}", { order })}</span>
-        </a>
+      <td className="w-36">
+        {confirmDelete ? (
+          <span className="flex items-center justify-end gap-1.5">
+            <button type="button" className="btn btn-tiny btn-danger" disabled={deleting} onClick={handleDelete}>
+              {t("Delete")}
+            </button>
+            <button
+              type="button"
+              className="btn btn-quiet btn-tiny"
+              disabled={deleting}
+              onClick={() => setConfirmDelete(false)}
+            >
+              {t("Cancel")}
+            </button>
+          </span>
+        ) : (
+          <span className="flex items-center justify-end gap-1">
+            <a
+              className="btn btn-quiet btn-tiny"
+              href={url}
+              target="_blank"
+              rel="noreferrer"
+              title={t("Open source page")}
+            >
+              <Icon name="open" size={13} />
+              <span className="visually-hidden">{t("Open source page for chapter {order}", { order })}</span>
+            </a>
+            {onDelete && (
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                title={deleteDisabled ? t("Crawling, cannot delete") : t("Delete chapter")}
+                aria-label={t("Delete chapter {order}", { order })}
+                disabled={deleteDisabled}
+                onClick={() => setConfirmDelete(true)}
+              >
+                <Icon name="trash" size={13} />
+              </button>
+            )}
+          </span>
+        )}
       </td>
     </tr>
   );
@@ -135,6 +184,9 @@ interface ChapterCardProps {
   // Missing for the same reason as onSave. Only persists the URL — content/status are
   // untouched, so the user still clicks Retry afterwards to re-crawl from the new URL.
   onSaveUrl?: (url: string) => Promise<void>;
+  // Missing when the chapter cannot be deleted from this context.
+  onDelete?: () => Promise<void>;
+  deleteDisabled?: boolean;
 }
 
 // Playwright's failure text arrives with time annotations from Call log still
@@ -170,6 +222,8 @@ export default function ChapterCard({
   loadBody,
   onSave,
   onSaveUrl,
+  onDelete,
+  deleteDisabled,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
   const [html, setHtml] = useState(initialHtml);
@@ -197,6 +251,8 @@ export default function ChapterCard({
   const [urlDraft, setUrlDraft] = useState(chapter.sourceUrl);
   const [urlSaving, setUrlSaving] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadedBody = useRef(false);
@@ -341,6 +397,18 @@ export default function ChapterCard({
     if (window.confirm(t("Re-crawling will overwrite this chapter's saved content. Continue?"))) onRetry();
   }
 
+  async function handleDelete() {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } catch {
+      // The detail pane's banner reports the failure; keep the confirm open to retry.
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <>
       <tr className={open ? "row-open" : undefined}>
@@ -374,18 +442,54 @@ export default function ChapterCard({
             </span>
           )}
         </td>
-        <td className="w-28">
-          {failed && (
-            <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
-              <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
-              {retrying ? t("Retrying…") : t("Retry")}
-            </button>
-          )}
-          {chip === "done" && (
-            <button type="button" className="btn btn-quiet btn-tiny" disabled={retrying} onClick={handleRecrawl}>
-              <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
-              {retrying ? t("Retrying…") : t("Re-crawl")}
-            </button>
+        <td className="w-36">
+          {confirmDelete ? (
+            <span className="flex items-center justify-end gap-1.5">
+              <button type="button" className="btn btn-tiny btn-danger" disabled={deleting} onClick={handleDelete}>
+                {t("Delete")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                disabled={deleting}
+                onClick={() => setConfirmDelete(false)}
+              >
+                {t("Cancel")}
+              </button>
+            </span>
+          ) : (
+            <span className="flex items-center justify-end gap-1">
+              {failed && (
+                <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
+                  <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+                  {retrying ? t("Retrying…") : t("Retry")}
+                </button>
+              )}
+              {chip === "done" && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-tiny"
+                  title={retrying ? t("Retrying…") : t("Re-crawl")}
+                  disabled={retrying}
+                  onClick={handleRecrawl}
+                >
+                  <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+                  <span className="visually-hidden">{retrying ? t("Retrying…") : t("Re-crawl")}</span>
+                </button>
+              )}
+              {onDelete && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-tiny"
+                  title={deleteDisabled ? t("Crawling, cannot delete") : t("Delete chapter")}
+                  aria-label={t("Delete chapter {order}", { order })}
+                  disabled={deleteDisabled}
+                  onClick={() => setConfirmDelete(true)}
+                >
+                  <Icon name="trash" size={13} />
+                </button>
+              )}
+            </span>
           )}
         </td>
       </tr>
@@ -545,14 +649,20 @@ export default function ChapterCard({
                       <Icon name={saved ? "check" : "upload"} size={13} />
                       {saving ? t("Saving…") : saved ? t("Saved") : t("Save chapter")}
                     </button>
-                    <button type="button" className="btn btn-quiet btn-tiny" disabled={saving || !dirty} onClick={handleRevert}>
-                      <Icon name="retry" size={13} />
-                      {t("Undo")}
-                    </button>
-                    <button type="button" className="btn btn-quiet btn-tiny" disabled={retrying} onClick={handleRecrawl}>
-                      <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
-                      {retrying ? t("Retrying…") : t("Re-crawl")}
-                    </button>
+                    {dirty && (
+                      <button type="button" className="btn btn-quiet btn-tiny" disabled={saving} onClick={handleRevert}>
+                        <Icon name="retry" size={13} />
+                        {t("Undo")}
+                      </button>
+                    )}
+                    {/* A done chapter already carries Re-crawl in its collapsed row; manual
+                        input has no row action, so its way back to a real crawl lives here. */}
+                    {chip !== "done" && (
+                      <button type="button" className="btn btn-quiet btn-tiny" disabled={retrying} onClick={handleRecrawl}>
+                        <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+                        {retrying ? t("Retrying…") : t("Re-crawl")}
+                      </button>
+                    )}
                     <span className="text-xs text-ink-3">
                       {dirty
                         ? t("Remember to click Save chapter after editing, or changes will be lost when you close.")
