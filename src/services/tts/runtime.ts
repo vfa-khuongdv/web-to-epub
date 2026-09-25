@@ -47,7 +47,7 @@ export interface TtsRuntimeDeps {
   constraintsFile: string;
   uvUrl: string | undefined;
   download(url: string, dest: string, onBytes: (done: number, total: number) => void): Promise<void>;
-  exec(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<void>;
+  exec(command: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string): Promise<void>;
   startWorker(cmd: WorkerCommand, log: (line: string) => void): Promise<TtsWorker>;
   idleMs: number;
   log(line: string): void;
@@ -159,10 +159,13 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     progress = { phase: "packages" };
     // -c: exact versions of every dependency, so today's release of some transitive package
     // cannot change what the model runs on (see tts/constraints.txt).
+    // Passed relative to its own folder: uv cuts an absolute `-c` path at the first space, and
+    // the packaged app lives in "/Applications/Web to EPUB.app".
     await deps.exec(
       uvBin,
-      ["pip", "install", "--python", python, "-c", deps.constraintsFile, `vieneu==${VIENEU_VERSION}`],
-      env
+      ["pip", "install", "--python", python, "-c", path.basename(deps.constraintsFile), `vieneu==${VIENEU_VERSION}`],
+      env,
+      path.dirname(deps.constraintsFile)
     );
 
     // Loading once downloads the model, so the first narration does not stall on it. A cache
@@ -292,9 +295,9 @@ async function downloadToFile(url: string, dest: string, onBytes: (done: number,
 // Output goes to the server log; on failure the last lines become the error the settings
 // page shows, since "exit code 1" alone tells the reader nothing.
 function execLogged(log: (line: string) => void) {
-  return (command: string, args: string[], extraEnv: NodeJS.ProcessEnv) =>
+  return (command: string, args: string[], extraEnv: NodeJS.ProcessEnv, cwd?: string) =>
     new Promise<void>((resolve, reject) => {
-      const child = spawn(command, args, { env: { ...process.env, ...extraEnv }, stdio: ["ignore", "pipe", "pipe"] });
+      const child = spawn(command, args, { cwd, env: { ...process.env, ...extraEnv }, stdio: ["ignore", "pipe", "pipe"] });
       const tail: string[] = [];
       const collect = (chunk: Buffer) => {
         for (const line of chunk.toString("utf8").split(/\r?\n/)) {
