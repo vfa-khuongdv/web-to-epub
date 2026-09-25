@@ -7,8 +7,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
 import { useNarration } from "../hooks/useNarration";
-import { useNarrationPlayer } from "../hooks/useNarrationPlayer";
-import PlayerBar from "./PlayerBar";
+import { PlayerQueue, useNarrationPlayer } from "../hooks/narrationPlayer";
 import NarrationPanel from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
@@ -121,11 +120,36 @@ export default function StoryDetail({
         .sort((a, b) => a - b),
     [narration.state]
   );
-  const player = useNarrationPlayer(story.id, vault.active, narratedOrders);
-  const chapterTitle = (order: number) =>
-    story.chapters.find((c) => c.order === order)?.title || t("Chapter {order}", { order });
+  const player = useNarrationPlayer();
+  // This story as the player's queue; kept current while the page is open, so a chapter
+  // narrated or edited meanwhile joins or leaves what is playing.
+  const queue = useMemo<PlayerQueue>(
+    () => ({
+      storyId: story.id,
+      storyTitle: bookTitle || story.title,
+      orders: narratedOrders,
+      titles: Object.fromEntries(story.chapters.map((c) => [c.order, c.title || t("Chapter {order}", { order: c.order })])),
+    }),
+    [story.id, story.title, story.chapters, bookTitle, narratedOrders, t]
+  );
+  const { updateQueue } = player;
+  const narrationLoaded = narration.state !== null;
+  useEffect(() => {
+    // Not before this page knows which chapters have audio: an empty list would read as
+    // "the chapter playing lost its audio" and stop the player on the way back to its story.
+    if (narrationLoaded) updateQueue(queue);
+  }, [narrationLoaded, queue, updateQueue]);
+  const playChapter = (order: number) =>
+    player.storyId === story.id && player.order === order ? player.toggle() : player.play(queue, order);
   // Opened from the player: the reader starts on the chapter being played.
   const [readerStart, setReaderStart] = useState<number | undefined>(undefined);
+  const { openRequest, clearOpenRequest } = player;
+  useEffect(() => {
+    if (openRequest?.storyId !== story.id) return;
+    setReaderStart(openRequest.order);
+    setReading(true);
+    clearOpenRequest();
+  }, [openRequest, story.id, clearOpenRequest]);
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -638,10 +662,8 @@ export default function StoryDetail({
                       ? chapterAudioUrl(story.id, c.order, { download: true })
                       : undefined
                   }
-                  audioPlaying={player.order === c.order && player.playing}
-                  onPlayAudio={() =>
-                    player.order === c.order ? player.toggle() : player.play(c.order)
-                  }
+                  audioPlaying={player.isPlaying(story.id, c.order)}
+                  onPlayAudio={() => playChapter(c.order)}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {
@@ -711,19 +733,6 @@ export default function StoryDetail({
 
       </div>
 
-      {narratable && (
-        <div className="flex-none">
-          <PlayerBar
-            player={player}
-            titleOf={chapterTitle}
-            onShowChapter={(order) => {
-              setReaderStart(order);
-              setReading(true);
-            }}
-          />
-        </div>
-      )}
-
       {reading && (
         <ReaderOverlay
           storyId={story.id}
@@ -746,6 +755,7 @@ export default function StoryDetail({
           startOrder={readerStart}
           player={narratable ? player : undefined}
           narratedOrders={narratedOrders}
+          onListen={playChapter}
         />
       )}
     </section>

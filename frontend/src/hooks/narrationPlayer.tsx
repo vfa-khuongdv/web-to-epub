@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { chapterAudioUrl } from "../lib/api";
+import { useVault } from "../vault";
 
 export const PLAYBACK_RATES = [0.8, 1, 1.25, 1.5, 1.75, 2] as const;
 const RATE_KEY = "narration-rate";
@@ -61,19 +62,35 @@ export function readRate(): number {
   }
 }
 
+// What the player plays through: one story's chapters that have narration, in reading
+// order, with their titles for the bar.
+export interface PlayerQueue {
+  storyId: string;
+  storyTitle: string;
+  orders: number[];
+  titles: Record<number, string>;
+}
+
 export interface NarrationPlayer {
-  // The chapter loaded in the player, or null when nothing is.
+  // The story and chapter loaded in the player, or null when nothing is.
+  storyId: string | null;
+  storyTitle: string;
   order: number | null;
   playing: boolean;
   time: number;
   duration: number;
   rate: number;
   error: string | null;
-  // Where the reader left off in this story, if that chapter still has audio.
-  resumeOrder: number | undefined;
   hasNext: boolean;
   hasPrevious: boolean;
-  play: (order: number) => void;
+  titleOf: (order: number) => string;
+  // Whether this chapter of this story is the one playing right now.
+  isPlaying: (storyId: string, order: number) => boolean;
+  // Play `order` from `queue` (switching story if needed); the same chapter resumes.
+  play: (queue: PlayerQueue, order: number) => void;
+  // A story page refreshes its own queue (a chapter got narrated, one went stale); only
+  // applied when that story is the one loaded.
+  updateQueue: (queue: PlayerQueue) => void;
   toggle: () => void;
   seek: (time: number) => void;
   skip: (seconds: number) => void;
@@ -81,28 +98,46 @@ export interface NarrationPlayer {
   previous: () => void;
   setRate: (rate: number) => void;
   close: () => void;
+  // "Show me what is playing": the library opens that story and its reader at the chapter.
+  openRequest: { storyId: string; order: number } | null;
+  requestOpen: (storyId: string, order: number) => void;
+  clearOpenRequest: () => void;
+}
+
+const PlayerContext = createContext<NarrationPlayer | null>(null);
+
+export function useNarrationPlayer(): NarrationPlayer {
+  const player = useContext(PlayerContext);
+  if (!player) throw new Error("useNarrationPlayer outside NarrationPlayerProvider");
+  return player;
 }
 
 /**
- * The story page's audio player: one <audio> element shared by the chapter list and the
- * reader, so opening the reader does not interrupt what is playing. Plays the chapters
- * that have narration in reading order, moving on by itself when one ends, and remembers
- * the position per story in this browser.
+ * The app's narration player: one <audio> element for the whole library, so browsing
+ * to another story, opening the reader or going back to the list never interrupts what
+ * is playing. Plays a story's narrated chapters in reading order, moving on by itself
+ * when one ends, and remembers the position per story in this browser. Mounted inside
+ * App, which is remounted when switching library — locking private mode stops it.
  */
-export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: number[]): NarrationPlayer {
+export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
+  const isPrivate = useVault().active;
   const audioRef = useRef<HTMLAudioElement | null>(null);
-  const readyRef = useRef(ready);
-  readyRef.current = ready;
+  const queueRef = useRef<PlayerQueue | null>(null);
   const orderRef = useRef<number | null>(null);
   const lastSaved = useRef(0);
 
+  const [queue, setQueue] = useState<PlayerQueue | null>(null);
   const [order, setOrder] = useState<number | null>(null);
   const [playing, setPlaying] = useState(false);
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [rate, setRateState] = useState(readRate);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(() => readPosition(storyId, isPrivate));
+  const [openRequest, setOpenRequest] = useState<{ storyId: string; order: number } | null>(null);
+  const requestOpen = useCallback((storyId: string, o: number) => setOpenRequest({ storyId, order: o }), []);
+  const clearOpenRequest = useCallback(() => setOpenRequest(null), []);
+  const rateRef = useRef(rate);
+  rateRef.current = rate;
 
   const audio = useCallback(() => {
     if (!audioRef.current) {
@@ -114,22 +149,30 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
 
   const save = useCallback(
     (position: SavedPosition | undefined) => {
-      writePosition(storyId, isPrivate, position);
-      setSaved(position);
+      const current = queueRef.current;
+      if (current) writePosition(current.storyId, isPrivate, position);
     },
-    [storyId, isPrivate]
+    [isPrivate]
   );
+
+  const setQueueBoth = useCallback((next: PlayerQueue | null) => {
+    queueRef.current = next;
+    setQueue(next);
+  }, []);
 
   const load = useCallback(
     (next: number, startAt: number) => {
       const el = audio();
+      const current = queueRef.current;
+      if (!current) return;
       orderRef.current = next;
+      lastSaved.current = startAt;
       setOrder(next);
       setTime(startAt);
       setDuration(0);
       setError(null);
-      el.src = chapterAudioUrl(storyId, next);
-      el.playbackRate = rate;
+      el.src = chapterAudioUrl(current.storyId, next);
+      el.playbackRate = rateRef.current;
       if (startAt > 0) {
         const seekOnce = () => {
           el.currentTime = startAt;
@@ -142,21 +185,22 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
         if (err.name !== "AbortError") setError(err.message);
       });
     },
-    [audio, storyId, rate]
+    [audio]
   );
 
-  const play = useCallback(
-    (next: number) => {
-      const el = audio();
-      if (orderRef.current === next && el.src) {
-        void el.play();
-        return;
-      }
-      const resumeAt = saved?.order === next ? saved.time : 0;
-      load(next, resumeAt);
-    },
-    [audio, load, saved]
-  );
+  const close = useCallback(() => {
+    const el = audio();
+    el.pause();
+    el.removeAttribute("src");
+    el.load();
+    orderRef.current = null;
+    setQueueBoth(null);
+    setOrder(null);
+    setPlaying(false);
+    setTime(0);
+    setDuration(0);
+    setError(null);
+  }, [audio, setQueueBoth]);
 
   // Element events → state. Attached once; handlers read refs, not stale state.
   useEffect(() => {
@@ -180,7 +224,8 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
     };
     const onEnded = () => {
       const current = orderRef.current;
-      const following = current === null ? undefined : nextOrder(readyRef.current, current);
+      const orders = queueRef.current?.orders ?? [];
+      const following = current === null ? undefined : nextOrder(orders, current);
       if (following !== undefined) {
         save({ order: following, time: 0 });
         load(following, 0);
@@ -190,7 +235,7 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
       }
     };
     const onError = () => {
-      if (el.src) setError("error");
+      if (el.getAttribute("src")) setError("error");
     };
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("loadedmetadata", onMeta);
@@ -210,7 +255,7 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
     };
   }, [audio, load, save]);
 
-  // Leaving the story stops it: the player belongs to the story page.
+  // Unmounting App (switching library) stops the audio: it belongs to that library.
   useEffect(
     () => () => {
       const el = audioRef.current;
@@ -222,22 +267,31 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
     []
   );
 
-  const close = useCallback(() => {
-    const el = audio();
-    el.pause();
-    el.removeAttribute("src");
-    el.load();
-    orderRef.current = null;
-    setOrder(null);
-    setPlaying(false);
-    setTime(0);
-    setDuration(0);
-  }, [audio]);
+  const play = useCallback(
+    (next: PlayerQueue, chapter: number) => {
+      const el = audio();
+      const sameStory = queueRef.current?.storyId === next.storyId;
+      setQueueBoth(next);
+      if (sameStory && orderRef.current === chapter && el.getAttribute("src")) {
+        void el.play();
+        return;
+      }
+      const saved = readPosition(next.storyId, isPrivate);
+      load(chapter, saved?.order === chapter ? saved.time : 0);
+    },
+    [audio, isPrivate, load, setQueueBoth]
+  );
 
-  // A chapter whose audio went stale (edited) or was removed cannot keep playing.
-  useEffect(() => {
-    if (order !== null && !ready.includes(order)) close();
-  }, [ready, order, close]);
+  const updateQueue = useCallback(
+    (next: PlayerQueue) => {
+      if (queueRef.current?.storyId !== next.storyId) return;
+      setQueueBoth(next);
+      // A chapter whose audio went stale (edited) or was removed cannot keep playing.
+      const current = orderRef.current;
+      if (current !== null && !next.orders.includes(current)) close();
+    },
+    [close, setQueueBoth]
+  );
 
   const setRate = useCallback(
     (next: number) => {
@@ -252,40 +306,70 @@ export function useNarrationPlayer(storyId: string, isPrivate: boolean, ready: n
     [audio]
   );
 
-  const current = order ?? -1;
-  return {
+  const value = useMemo<NarrationPlayer>(() => {
+    const orders = queue?.orders ?? [];
+    const current = order ?? -1;
+    return {
+      storyId: queue?.storyId ?? null,
+      storyTitle: queue?.storyTitle ?? "",
+      order,
+      playing,
+      time,
+      duration,
+      rate,
+      error,
+      hasNext: order !== null && nextOrder(orders, current) !== undefined,
+      hasPrevious: order !== null && previousOrder(orders, current) !== undefined,
+      titleOf: (o) => queue?.titles[o] ?? "",
+      isPlaying: (storyId, o) => playing && queue?.storyId === storyId && order === o,
+      play,
+      updateQueue,
+      toggle: () => {
+        const el = audio();
+        if (orderRef.current === null) return;
+        if (el.paused) void el.play();
+        else el.pause();
+      },
+      seek: (to) => {
+        audio().currentTime = Math.max(0, Math.min(to, duration || to));
+      },
+      skip: (seconds) => {
+        const el = audio();
+        const to = el.currentTime + seconds;
+        el.currentTime = Math.max(0, Math.min(to, duration || to));
+      },
+      next: () => {
+        const following = order === null ? undefined : nextOrder(orders, order);
+        if (following !== undefined) load(following, 0);
+      },
+      previous: () => {
+        const before = order === null ? undefined : previousOrder(orders, order);
+        if (before !== undefined) load(before, 0);
+      },
+      setRate,
+      close,
+      openRequest,
+      requestOpen,
+      clearOpenRequest,
+    };
+  }, [
+    queue,
     order,
     playing,
     time,
     duration,
     rate,
     error,
-    resumeOrder: saved && ready.includes(saved.order) ? saved.order : undefined,
-    hasNext: order !== null && nextOrder(ready, current) !== undefined,
-    hasPrevious: order !== null && previousOrder(ready, current) !== undefined,
+    openRequest,
     play,
-    toggle: () => {
-      const el = audio();
-      if (order === null) return;
-      if (el.paused) void el.play();
-      else el.pause();
-    },
-    seek: (to) => {
-      audio().currentTime = Math.max(0, Math.min(to, duration || to));
-    },
-    skip: (seconds) => {
-      const el = audio();
-      el.currentTime = Math.max(0, Math.min(el.currentTime + seconds, duration || el.currentTime + seconds));
-    },
-    next: () => {
-      const following = order === null ? undefined : nextOrder(ready, order);
-      if (following !== undefined) load(following, 0);
-    },
-    previous: () => {
-      const before = order === null ? undefined : previousOrder(ready, order);
-      if (before !== undefined) load(before, 0);
-    },
+    updateQueue,
     setRate,
     close,
-  };
+    audio,
+    load,
+    requestOpen,
+    clearOpenRequest,
+  ]);
+
+  return <PlayerContext.Provider value={value}>{children}</PlayerContext.Provider>;
 }

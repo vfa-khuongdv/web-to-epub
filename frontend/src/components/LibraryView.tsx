@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNarrationPlayer } from "../hooks/narrationPlayer";
 import {
   ApiError,
   checkStoryUpdates,
@@ -273,6 +274,14 @@ export default function LibraryView({
   // Clicking a second story before the first arrives must not end with the first one
   // on screen, and must not clear the skeleton the second one is still waiting behind:
   // only the newest request is allowed to finish.
+  // The player's "show what is playing": open that story (its page then opens the reader).
+  const player = useNarrationPlayer();
+  const playerRequest = player.openRequest;
+  useEffect(() => {
+    if (playerRequest && selected?.id !== playerRequest.storyId) void openStory(playerRequest.storyId);
+    // openStory is recreated every render; only a new request should trigger this.
+  }, [playerRequest]);
+
   async function openStory(id: string) {
     const request = ++openRequest.current;
     setOpening(true);

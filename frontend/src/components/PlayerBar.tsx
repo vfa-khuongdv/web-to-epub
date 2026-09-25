@@ -1,5 +1,5 @@
 import { useLang } from "../i18n";
-import { NarrationPlayer, PLAYBACK_RATES } from "../hooks/useNarrationPlayer";
+import { NarrationPlayer, PLAYBACK_RATES } from "../hooks/narrationPlayer";
 import { Icon } from "./Icon";
 
 // m:ss, or h:mm:ss for the rare chapter past an hour.
@@ -14,22 +14,23 @@ export function formatClock(seconds: number): string {
 const SKIP_S = 15;
 
 /**
- * Controls for the story's narration player, shown on the story page and inside the
- * reader. Renders nothing while no chapter is loaded.
+ * Controls for the app's narration player: along the bottom of the app, and inside the
+ * reader (which covers it). Names the story too — it keeps playing while the reader
+ * browses to another one. Renders nothing while no chapter is loaded.
  */
 export default function PlayerBar({
   player,
-  titleOf,
   onShowChapter,
 }: {
   player: NarrationPlayer;
-  titleOf: (order: number) => string;
-  // Opens the chapter being played in the reader (story page only).
-  onShowChapter?: (order: number) => void;
+  // Opens the chapter being played in its story's reader (the app-wide bar only).
+  onShowChapter?: (storyId: string, order: number) => void;
 }) {
   const { t } = useLang();
-  if (player.order === null) return null;
+  if (player.order === null || player.storyId === null) return null;
   const order = player.order;
+  const storyId = player.storyId;
+  const chapterTitle = player.titleOf(order) || t("Chapter {order}", { order });
 
   return (
     <div
@@ -83,18 +84,21 @@ export default function PlayerBar({
       </div>
 
       <div className="flex min-w-0 flex-1 basis-56 flex-col gap-0.5">
-        {onShowChapter ? (
-          <button
-            type="button"
-            className="truncate text-left text-[12.5px] font-semibold hover:underline"
-            onClick={() => onShowChapter(order)}
-            title={t("Read this chapter")}
-          >
-            {titleOf(order)}
-          </button>
-        ) : (
-          <span className="truncate text-[12.5px] font-semibold">{titleOf(order)}</span>
-        )}
+        <span className="flex min-w-0 items-baseline gap-1.5 text-[12.5px]">
+          {onShowChapter ? (
+            <button
+              type="button"
+              className="truncate text-left font-semibold hover:underline"
+              onClick={() => onShowChapter(storyId, order)}
+              title={t("Read this chapter")}
+            >
+              {chapterTitle}
+            </button>
+          ) : (
+            <span className="truncate font-semibold">{chapterTitle}</span>
+          )}
+          {player.storyTitle && <span className="truncate text-ink-3">· {player.storyTitle}</span>}
+        </span>
         <div className="flex items-center gap-2 text-[11px] tabular-nums text-ink-3">
           <span>{formatClock(player.time)}</span>
           <input
