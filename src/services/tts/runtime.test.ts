@@ -85,7 +85,8 @@ describe("TTS runtime", () => {
   it("installs with the constraints file and asks to install again when it changes", async () => {
     await runtime.install("turbo");
     const pip = vi.mocked(deps.exec).mock.calls.find(([, args]) => args[0] === "pip")!;
-    expect(pip[1]).toEqual(["pip", "install", "--python", expect.any(String), "-c", deps.constraintsFile, `vieneu==${VIENEU_VERSION}`]);
+    expect(pip[1]).toEqual(["pip", "install", "--python", expect.any(String), "-c", "constraints.txt", `vieneu==${VIENEU_VERSION}`]);
+    expect(pip[3]).toBe(path.dirname(deps.constraintsFile));
     expect((await runtime.status()).state).toBe("installed");
 
     await fs.writeFile(deps.constraintsFile, "onnxruntime==1.24.5\n");
