@@ -37,6 +37,13 @@ describe("settingsStore", () => {
     });
   });
 
+  it("saves the narration model and voice; an unknown saved variant reads as the default", () => {
+    settings.update({ ttsVariant: "nano", ttsVoice: "Mỹ Duyên" });
+    expect(settings.get()).toMatchObject({ ttsVariant: "nano", ttsVoice: "Mỹ Duyên" });
+    settings.update({ ttsVariant: "bogus" as never });
+    expect(settings.get().ttsVariant).toBe(DEFAULT_SETTINGS.ttsVariant);
+  });
+
   it("returns the settings it just saved", () => {
     expect(settings.update({ defaultBookLanguage: "en" })).toEqual({
       ...DEFAULT_SETTINGS,
@@ -54,11 +61,19 @@ describe("settingsStore", () => {
   });
 
   it("survives a restart", () => {
-    settings.update({ autoScanOnOpen: false, defaultBookLanguage: "en", defaultAuthor: "Ẩn danh" });
+    settings.update({
+      autoScanOnOpen: false,
+      defaultBookLanguage: "en",
+      defaultAuthor: "Ẩn danh",
+      ttsVariant: "nano",
+      ttsVoice: "Adam",
+    });
     expect(createSettingsStore(dir).get()).toEqual({
       autoScanOnOpen: false,
       defaultBookLanguage: "en",
       defaultAuthor: "Ẩn danh",
+      ttsVariant: "nano",
+      ttsVoice: "Adam",
     });
   });
 

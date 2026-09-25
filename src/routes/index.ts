@@ -10,6 +10,7 @@ import { liveRouter } from "./live";
 import { settingsRouter } from "./settings";
 import { siteSessionsRouter } from "./siteSessions";
 import { storiesRouter } from "./stories";
+import { ttsRouter } from "./tts";
 import { vaultRouter } from "./vault";
 
 const router = Router();
@@ -28,6 +29,7 @@ router.get("/supported-sites", (_req, res) => {
 router.use(vaultRouter);
 router.use(settingsRouter);
 router.use(appUpdateRouter);
+router.use(ttsRouter);
 router.use(siteSessionsRouter);
 router.use(exportsRouter);
 // Mounted before storiesRouter: GET /stories/live would otherwise match GET /stories/:id

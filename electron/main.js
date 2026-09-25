@@ -168,6 +168,9 @@ let closing = false;
 app.on("before-quit", (event) => {
   if (closing) return;
   const { closeBrowser } = require(path.join(__dirname, "..", "dist", "services", "renderer.js"));
+  // The narration worker is a child Python process holding the model in RAM; it must
+  // not outlive the app.
+  require(path.join(__dirname, "..", "dist", "services", "tts", "runtime.js")).ttsRuntime.shutdown();
   closing = true;
   event.preventDefault();
   closeBrowser().catch(() => {}).then(() => app.quit());

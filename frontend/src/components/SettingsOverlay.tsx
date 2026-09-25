@@ -11,6 +11,7 @@ import { Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "../lib/theme";
 import { timeAgo } from "../lib/timeAgo";
 import { AppInfo, AppSettings } from "../types";
 import { Icon } from "./Icon";
+import NarrationSettings from "./NarrationSettings";
 import SiteSessionDialog from "./SiteSessionDialog";
 import { SkeletonBar } from "./Skeleton";
 import { CODE_LENGTH, PinInput } from "./VaultPrompt";
@@ -309,6 +310,10 @@ function SettingsBody({
             />
           }
         />
+      </Section>
+
+      <Section title={t("Narration")}>
+        <NarrationSettings settings={settings} onSave={save} Row={Row} />
       </Section>
 
       <Section title={t("Private mode")}>

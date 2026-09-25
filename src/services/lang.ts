@@ -139,6 +139,22 @@ const vi: Record<string, string> = {
     "Không thấy cookie trong cURL này — hãy copy một request từ chính trang đó khi đã đăng nhập",
   "Saved Asianfanfics session has expired — log in again in your browser, then re-import it in Settings → Site sessions: {url}":
     "Phiên đăng nhập Asianfanfics đã hết hạn — đăng nhập lại bằng trình duyệt rồi nhập lại phiên trong Cài đặt → Phiên đăng nhập theo trang: {url}",
+
+  // Narration (text-to-speech)
+  "Narration is not supported on this platform": "Giọng đọc chưa hỗ trợ nền tảng này",
+  "Narration is being installed — wait for it to finish": "Đang cài giọng đọc — hãy chờ cài xong",
+  "Narration is running — stop it first": "Đang đọc truyện — hãy dừng trước",
+  "Download failed ({status})": "Tải về thất bại ({status})",
+  "Narration is not installed — install it in Settings → Narration":
+    "Chưa cài giọng đọc — hãy cài trong Cài đặt → Giọng đọc",
+  "Narration is only available for Vietnamese stories": "Giọng đọc chỉ dùng được cho truyện tiếng Việt",
+  "This story is already being narrated": "Truyện này đang được đọc",
+  "Chapter audio has not been generated yet — narrate the chapter first":
+    "Chương này chưa có audio — hãy tạo giọng đọc cho chương trước",
+  "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",
+  "Unsupported narration variant": "Kiểu giọng đọc không hợp lệ",
+  "Voice name is too long": "Tên giọng quá dài",
+  Narration: "Giọng đọc",
 };
 
 let current: Lang = DEFAULT_LANG;

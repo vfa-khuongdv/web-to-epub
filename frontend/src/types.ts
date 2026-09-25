@@ -95,6 +95,30 @@ export interface AppSettings {
   autoScanOnOpen: boolean;
   defaultBookLanguage: string;
   defaultAuthor: string;
+  // Narration model ("turbo" = quality, "nano" = fast) and preset voice; "" = model default.
+  ttsVariant: TtsVariant;
+  ttsVoice: string;
+}
+
+export type TtsVariant = "turbo" | "nano";
+
+// Mirrors TtsStatus in src/services/tts/runtime.ts.
+export interface TtsStatus {
+  supported: boolean;
+  state: "not-installed" | "installing" | "installed" | "error";
+  phase?: "uv" | "python" | "packages" | "model";
+  downloaded?: number;
+  total?: number;
+  error?: string;
+  version: string;
+  running: boolean;
+  busy: boolean;
+  diskBytes?: number;
+}
+
+export interface TtsVoice {
+  id: string;
+  label: string;
 }
 
 // Read-only facts about this installation, shown beside the settings.
