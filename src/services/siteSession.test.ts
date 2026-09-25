@@ -216,3 +216,59 @@ describe("persistRenderedCookies", () => {
   });
 });
 });
+
+describe("sessionRequestHeaders", () => {
+  // The plain-fetch path of sites whose pages are served in the raw HTML (truyenfull.live):
+  // the request has to look like the session's own browser, and a cookie for another
+  // domain must never be sent along.
+  let session: typeof import("./siteSession");
+  const cookie = (name: string, value: string, domain: string) => ({
+    name,
+    value,
+    domain,
+    path: "/",
+    expires: -1,
+    httpOnly: true,
+    secure: true,
+    sameSite: "Lax" as const,
+  });
+
+  beforeAll(async () => {
+    session = await import("./siteSession");
+    session.saveSiteSession("truyenfull.live", {
+      userAgent: "UA-MAC",
+      cookies: [
+        cookie("cf_clearance", "abc", ".truyenfull.live"),
+        cookie("other_site", "zzz", ".example.com"),
+        cookie("no_domain", "yyy", ""),
+      ],
+      origins: [],
+    });
+  });
+
+  it("trả user agent và chỉ cookie thuộc host của URL", () => {
+    expect(session.sessionRequestHeaders("https://truyenfull.live/a/chuong-1/")).toEqual({
+      "User-Agent": "UA-MAC",
+      Cookie: "cf_clearance=abc",
+    });
+  });
+
+  it("khớp cả subdomain của host", () => {
+    expect(session.sessionRequestHeaders("https://www.truyenfull.live/a/")).toEqual({
+      "User-Agent": "UA-MAC",
+      Cookie: "cf_clearance=abc",
+    });
+  });
+
+  it("không gửi cookie của site khác cho host gần giống", () => {
+    expect(session.sessionRequestHeaders("https://nottruyenfull.live/a/")).toEqual({});
+  });
+
+  it("không có phiên đã lưu thì trả rỗng", () => {
+    expect(session.sessionRequestHeaders("https://xtruyen.vn/truyen/a/")).toEqual({});
+  });
+
+  it("URL không hợp lệ thì trả rỗng", () => {
+    expect(session.sessionRequestHeaders("khong-phai-url")).toEqual({});
+  });
+});

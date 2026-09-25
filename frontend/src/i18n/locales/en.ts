@@ -344,7 +344,7 @@ export const en: Record<string, string> = {
   "Saved {ago}.": "Saved {ago}.",
   "Account:": "Account:",
   "Saved login for {username}": "Saved login for {username}",
-  "Saved login session": "Saved login session",
+  "Saved site session": "Saved site session",
   "Expires in about {minutes} min.": "Expires in about {minutes} min.",
   "Session has expired — import a fresh one.": "Session has expired — import a fresh one.",
   "The saved login lasts about an hour; import a fresh one when it expires.":
@@ -375,6 +375,23 @@ export const en: Record<string, string> = {
   "Could not check the saved session": "Could not check the saved session",
   "Could not save the session": "Could not save the session",
   "Could not remove the session": "Could not remove the session",
+  "TruyenFull session": "TruyenFull session",
+  "TruyenFull checks every browser with Cloudflare before showing a story, and the app cannot pass that check on its own — it reuses the pass your browser already has. No password is involved.":
+    "TruyenFull checks every browser with Cloudflare before showing a story, and the app cannot pass that check on its own — it reuses the pass your browser already has. No password is involved.",
+  "Open truyenfull.live in your browser and let the security check finish.":
+    "Open truyenfull.live in your browser and let the security check finish.",
+  'Right-click the first request (the truyenfull.live page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Right-click the first request (the truyenfull.live page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.',
+  "The pass is tied to this browser and network and usually lasts about half an hour — import a fresh one when crawls start getting blocked again.":
+    "The pass is tied to this browser and network and usually lasts about half an hour — import a fresh one when crawls start getting blocked again.",
+  "Copy the request from a story or chapter page that already loaded — a blocked page carries no pass.":
+    "Copy the request from a story or chapter page that already loaded — a blocked page carries no pass.",
+  "A saved browser session is in use to pass TruyenFull's Cloudflare check.":
+    "A saved browser session is in use to pass TruyenFull's Cloudflare check.",
+  "TruyenFull needs a saved browser session to pass its Cloudflare check.":
+    "TruyenFull needs a saved browser session to pass its Cloudflare check.",
+  "Skipping means adding a TruyenFull story will fail while the site blocks the app.":
+    "Skipping means adding a TruyenFull story will fail while the site blocks the app.",
 
   // Narration (Settings)
   "Narration": "Narration",

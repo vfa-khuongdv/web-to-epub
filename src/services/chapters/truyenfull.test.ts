@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LockedContentError } from "../extractor";
 import { renderPageHtml } from "../renderer";
+import { loadSiteSession, sessionRequestHeaders } from "../siteSession";
 import { fetchText } from "../toc/http";
 import { fetchTruyenfullChapter } from "./truyenfull";
 
 vi.mock("../toc/http", () => ({ fetchText: vi.fn() }));
 vi.mock("../renderer", () => ({ renderPageHtml: vi.fn() }));
+vi.mock("../siteSession", () => ({ loadSiteSession: vi.fn(), sessionRequestHeaders: vi.fn() }));
+
+const mockedLoadSession = vi.mocked(loadSiteSession);
+const mockedSessionHeaders = vi.mocked(sessionRequestHeaders);
 
 const CHAPTER_URL = "https://truyenfull.live/truyen-thu/chuong-1/";
 const LOCKED_TEXT = "Nội dung chương đang bị khóa, vui lòng tắt quảng cáo rồi tải lại trang.";
+const CHALLENGE_HTML =
+  "<html><head><title>Chờ một chút...</title></head><body><p>Trang này xác minh bạn không phải là bot.</p></body></html>";
 
 // Truyenfull page is minimal: full text is in #chapter-c, hidden by CSS behind ad overlay.
 // The overlay sits inside #chapter-c and says "mở khoá", so extraction only passes by stripping it.
@@ -39,6 +46,8 @@ describe("fetchTruyenfullChapter", () => {
   beforeEach(() => {
     vi.mocked(fetchText).mockReset();
     vi.mocked(renderPageHtml).mockReset();
+    mockedSessionHeaders.mockReset().mockReturnValue({});
+    mockedLoadSession.mockReset().mockReturnValue(undefined);
   });
 
   it("fetches content directly from pre-served HTML, does not open browser", async () => {
@@ -137,11 +146,54 @@ describe("fetchTruyenfullChapter", () => {
     ]);
   });
 
-  it("if fetching the served HTML fails, the error propagates without rendering", async () => {
-    vi.mocked(fetchText).mockRejectedValue(new Error("Failed to fetch (HTTP 500)"));
+  it("if fetching the served HTML is blocked, falls back to browser rendering", async () => {
+    vi.mocked(fetchText).mockRejectedValue(new Error("Failed to fetch (HTTP 403)"));
+    vi.mocked(renderPageHtml).mockResolvedValue(page(LONG, false));
 
-    await expect(fetchTruyenfullChapter(CHAPTER_URL)).rejects.toThrow("HTTP 500");
-    expect(renderPageHtml).not.toHaveBeenCalled();
+    const chapter = await fetchTruyenfullChapter(CHAPTER_URL);
+
+    expect(renderPageHtml).toHaveBeenCalledWith(CHAPTER_URL);
+    expect(chapter.blocks).toEqual(paragraphBlocks(LONG));
+  });
+
+  it("if the served HTML is a Cloudflare challenge, renders instead of extracting it", async () => {
+    vi.mocked(fetchText).mockResolvedValue(CHALLENGE_HTML);
+    vi.mocked(renderPageHtml).mockResolvedValue(page(LONG, false));
+
+    const chapter = await fetchTruyenfullChapter(CHAPTER_URL);
+
+    expect(renderPageHtml).toHaveBeenCalledWith(CHAPTER_URL);
+    expect(chapter.blocks).toEqual(paragraphBlocks(LONG));
+  });
+
+  it("if the render is still a Cloudflare challenge, says to import a session", async () => {
+    vi.mocked(fetchText).mockRejectedValue(new Error("Failed to fetch (HTTP 403)"));
+    vi.mocked(renderPageHtml).mockResolvedValue(CHALLENGE_HTML);
+
+    await expect(fetchTruyenfullChapter(CHAPTER_URL)).rejects.toThrow(
+      /Cloudflare check the app cannot pass on its own/
+    );
+  });
+
+  it("if the saved session is no longer accepted, says to re-import it", async () => {
+    vi.mocked(fetchText).mockRejectedValue(new Error("Failed to fetch (HTTP 403)"));
+    vi.mocked(renderPageHtml).mockResolvedValue(CHALLENGE_HTML);
+    mockedLoadSession.mockReturnValue({ cookies: [], origins: [] });
+
+    await expect(fetchTruyenfullChapter(CHAPTER_URL)).rejects.toThrow(
+      /Saved session is no longer accepted by Cloudflare/
+    );
+  });
+
+  it("sends the saved session's user agent and cookies on the fast path", async () => {
+    mockedSessionHeaders.mockReturnValue({ "User-Agent": "UA-MAC", Cookie: "cf_clearance=abc" });
+    vi.mocked(fetchText).mockResolvedValue(page(LONG));
+
+    await fetchTruyenfullChapter(CHAPTER_URL);
+
+    expect(fetchText).toHaveBeenCalledWith(CHAPTER_URL, {
+      headers: { "User-Agent": "UA-MAC", Cookie: "cf_clearance=abc" },
+    });
   });
 
   it("if rendering fails, the error propagates", async () => {

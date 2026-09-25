@@ -13,6 +13,8 @@ export interface SupportedSite {
 // scripts/aff-session.mjs). FanFiction.net is Cloudflare-protected like
 // Asianfanfics (so its adapter/fetcher render through a real browser too),
 // but unlike Asianfanfics its M-rated stories are publicly readable, no login.
+// truyenfull.live also needs an imported browser session, for the Cloudflare
+// check on its story and chapter pages (see services/cloudflare.ts).
 export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "xtruyen.vn", name: "XTruyện" },
   { domain: "truyenfull.vn", name: "TruyenFull" },

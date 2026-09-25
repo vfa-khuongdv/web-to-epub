@@ -7,6 +7,7 @@ import {
   saveSettings,
 } from "../lib/api";
 import { LANGUAGES, useLang } from "../i18n";
+import { SESSION_SITES, SessionSite } from "../lib/siteSessions";
 import { Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "../lib/theme";
 import { timeAgo } from "../lib/timeAgo";
 import { AppInfo, AppSettings } from "../types";
@@ -156,46 +157,6 @@ function SettingsBody({
   const { lang, setLang, t } = useLang();
   const [author, setAuthor] = useState(settings.defaultAuthor);
   const [error, setError] = useState<string | null>(null);
-  const [sessionConfigured, setSessionConfigured] = useState<boolean | null>(null);
-  const [sessionSavedAt, setSessionSavedAt] = useState<string | undefined>(undefined);
-  const [sessionExpiresAt, setSessionExpiresAt] = useState<string | undefined>(undefined);
-  const [sessionUsername, setSessionUsername] = useState<string | undefined>(undefined);
-  const [sessionDialogOpen, setSessionDialogOpen] = useState(false);
-  // Computed when the page renders: it is opened for a moment, and a stale session is
-  // exactly what the reader came here to see.
-  const sessionExpired = !!sessionExpiresAt && Date.parse(sessionExpiresAt) <= Date.now();
-  const sessionMinutesLeft = sessionExpiresAt
-    ? Math.max(0, Math.round((Date.parse(sessionExpiresAt) - Date.now()) / 60_000))
-    : 0;
-
-  const loadSession = useCallback(async () => {
-    try {
-      const status = await fetchSiteSession();
-      setSessionConfigured(status.configured);
-      setSessionSavedAt(status.savedAt);
-      setSessionExpiresAt(status.expiresAt);
-      setSessionUsername(status.username);
-    } catch {
-      setSessionConfigured(null);
-    }
-  }, []);
-
-  useEffect(() => {
-    void loadSession();
-  }, [loadSession]);
-
-  async function handleRemoveSession() {
-    setError(null);
-    try {
-      await removeSiteSession();
-      setSessionConfigured(false);
-      setSessionExpiresAt(undefined);
-      setSessionUsername(undefined);
-      onFlashSaved();
-    } catch (err) {
-      setError((err as Error).message);
-    }
-  }
 
   async function save(patch: Partial<AppSettings>) {
     setError(null);
@@ -351,63 +312,9 @@ function SettingsBody({
       </Section>
 
       <Section title={t("Site sessions")}>
-        <Row
-          label="Asianfanfics"
-          hint={
-            sessionConfigured ? (
-              <>
-                {t("A saved login is in use for rated-M and subscribers-only stories.")}{" "}
-                {sessionUsername && (
-                  <>
-                    {t("Account:")}{" "}
-                    <a
-                      className="font-semibold text-select hover:underline"
-                      href={`https://www.asianfanfics.com/profile/u/${encodeURIComponent(sessionUsername)}`}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {sessionUsername}
-                    </a>
-                    .{" "}
-                  </>
-                )}
-                {sessionExpired ? (
-                  <span className="font-semibold text-error">{t("Session has expired — import a fresh one.")}</span>
-                ) : sessionExpiresAt ? (
-                  <span>{t("Expires in about {minutes} min.", { minutes: sessionMinutesLeft })}</span>
-                ) : null}
-                {sessionSavedAt ? ` ${t("Saved {ago}.", { ago: timeAgo(sessionSavedAt, lang) })}` : ""}
-              </>
-            ) : (
-              `${t("Rated-M and subscribers-only stories need a login saved from your own browser.")} ${t("Click Import session for step-by-step instructions.")}`
-            )
-          }
-          control={
-            <>
-              <button type="button" className="btn btn-tiny" onClick={() => setSessionDialogOpen(true)}>
-                <Icon name="lock" size={12} />
-                {sessionConfigured && !sessionExpired ? t("Replace session") : t("Import session")}
-              </button>
-              {sessionConfigured && (
-                <button type="button" className="btn btn-tiny" onClick={() => void handleRemoveSession()}>
-                  {t("Remove")}
-                </button>
-              )}
-            </>
-          }
-        />
-        {sessionDialogOpen && (
-          <SiteSessionDialog
-            onSaved={() => {
-              setSessionDialogOpen(false);
-              setSessionConfigured(true);
-              // Refetch to pick up the account name and the new expiry.
-              void loadSession();
-              onFlashSaved();
-            }}
-            onSkip={() => setSessionDialogOpen(false)}
-          />
-        )}
+        {SESSION_SITES.map((site) => (
+          <SiteSessionRow key={site.slug} site={site} onFlashSaved={onFlashSaved} onError={setError} />
+        ))}
       </Section>
 
       <Section title={t("About")}>
@@ -421,6 +328,126 @@ function SettingsBody({
           })}
         />
       </Section>
+    </>
+  );
+}
+
+/**
+ * One site's saved session: what the crawler uses it for, when it was saved, and the
+ * buttons to import a fresh one or remove it. Each site owns its state, so importing one
+ * cannot reload the other.
+ */
+function SiteSessionRow({
+  site,
+  onFlashSaved,
+  onError,
+}: {
+  site: SessionSite;
+  onFlashSaved: () => void;
+  onError: (message: string) => void;
+}) {
+  const { lang, t } = useLang();
+  const [configured, setConfigured] = useState<boolean | null>(null);
+  const [savedAt, setSavedAt] = useState<string | undefined>(undefined);
+  const [expiresAt, setExpiresAt] = useState<string | undefined>(undefined);
+  const [username, setUsername] = useState<string | undefined>(undefined);
+  const [dialogOpen, setDialogOpen] = useState(false);
+  // Computed when the page renders: it is opened for a moment, and a stale session is
+  // exactly what the reader came here to see.
+  const expired = !!expiresAt && Date.parse(expiresAt) <= Date.now();
+  const minutesLeft = expiresAt
+    ? Math.max(0, Math.round((Date.parse(expiresAt) - Date.now()) / 60_000))
+    : 0;
+
+  const load = useCallback(async () => {
+    try {
+      const status = await fetchSiteSession(site.slug);
+      setConfigured(status.configured);
+      setSavedAt(status.savedAt);
+      setExpiresAt(status.expiresAt);
+      setUsername(status.username);
+    } catch {
+      setConfigured(null);
+    }
+  }, [site.slug]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function handleRemove() {
+    try {
+      await removeSiteSession(site.slug);
+      setConfigured(false);
+      setExpiresAt(undefined);
+      setUsername(undefined);
+      onFlashSaved();
+    } catch (err) {
+      onError((err as Error).message);
+    }
+  }
+
+  return (
+    <>
+      <Row
+        label={site.label}
+        hint={
+          configured ? (
+            <>
+              {t(site.settingsConfiguredHint)}{" "}
+              {site.accountUrl && username && (
+                <>
+                  {t("Account:")}{" "}
+                  <a
+                    className="font-semibold text-select hover:underline"
+                    href={site.accountUrl(username)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {username}
+                  </a>
+                  .{" "}
+                </>
+              )}
+              {site.showsExpiry &&
+                (expired ? (
+                  <span className="font-semibold text-error">{t("Session has expired — import a fresh one.")}</span>
+                ) : expiresAt ? (
+                  <span>{t("Expires in about {minutes} min.", { minutes: minutesLeft })}</span>
+                ) : null)}
+              {savedAt ? ` ${t("Saved {ago}.", { ago: timeAgo(savedAt, lang) })}` : ""}
+            </>
+          ) : (
+            `${t(site.settingsEmptyHint)} ${t("Click Import session for step-by-step instructions.")}`
+          )
+        }
+        control={
+          <>
+            <button type="button" className="btn btn-tiny" onClick={() => setDialogOpen(true)}>
+              <Icon name="lock" size={12} />
+              {configured && !expired ? t("Replace session") : t("Import session")}
+            </button>
+            {configured && (
+              <button type="button" className="btn btn-tiny" onClick={() => void handleRemove()}>
+                {t("Remove")}
+              </button>
+            )}
+          </>
+        }
+      />
+      {dialogOpen && (
+        <SiteSessionDialog
+          site={site}
+          onSaved={() => {
+            setDialogOpen(false);
+            setConfigured(true);
+            // Refetch to pick up the account name and the new expiry.
+            void load();
+            onFlashSaved();
+          }}
+          onSkip={() => setDialogOpen(false)}
+        />
+      )}
     </>
   );
 }

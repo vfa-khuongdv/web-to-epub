@@ -2,7 +2,10 @@ import { JSDOM } from "jsdom";
 import { fetchText } from "./http";
 import { normalizeStoryUrl } from "./normalizeUrl";
 import { TocAdapter, TocChapter, TocResult } from "./types";
+import { cloudflareBlockedMessage, isCloudflareChallenge } from "../cloudflare";
 import { t } from "../lang";
+import { renderPageHtml } from "../renderer";
+import { loadSiteSession, sessionRequestHeaders } from "../siteSession";
 
 export const TRUYENFULL_TEMPLATE_DOMAINS = [
   "truyenfull.live",
@@ -68,8 +71,25 @@ export function parseTotalPages(html: string): number | undefined {
   return max > 0 ? max : undefined;
 }
 
+/**
+ * The sites on this template are fast to read without a browser as long as Cloudflare
+ * lets the raw request through. A saved session (cf_clearance plus the user agent it is
+ * bound to) rides along with it; when the request is challenged or fails, render with
+ * the same session instead — that is the part Cloudflare accepts as a real browser.
+ */
 async function fetchHtml(url: string): Promise<string> {
-  return fetchText(url, { headers: { "User-Agent": USER_AGENT } });
+  try {
+    const html = await fetchText(url, { headers: { "User-Agent": USER_AGENT, ...sessionRequestHeaders(url) } });
+    if (!isCloudflareChallenge(html)) return html;
+  } catch {
+    // Cloudflare answers the raw request with 403, and a transient network error lands
+    // here too — the render below is the fallback for both.
+  }
+  const rendered = await renderPageHtml(url);
+  if (isCloudflareChallenge(rendered)) {
+    throw new Error(cloudflareBlockedMessage(url, !!loadSiteSession(url)));
+  }
+  return rendered;
 }
 
 export async function fetchToc(storyUrl: string): Promise<TocResult> {
