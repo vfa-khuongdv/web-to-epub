@@ -419,7 +419,6 @@ export const vi: Record<string, string> = {
   "{ready}/{total} chapters narrated": "{ready}/{total} chương đã có giọng đọc",
   "Stop narration": "Dừng đọc",
   "Narrate ({count} chapters)": "Tạo giọng đọc ({count} chương)",
-  "Install narration in Settings → Narration first.": "Hãy cài giọng đọc trong Cài đặt → Giọng đọc trước.",
   "Narration progress": "Tiến độ tạo giọng đọc",
   "Reading chapter {order} — part {part}/{parts}": "Đang đọc chương {order} — đoạn {part}/{parts}",
   "Loading the voice model…": "Đang nạp model giọng đọc…",
@@ -439,4 +438,7 @@ export const vi: Record<string, string> = {
   // Narration (EPUB export)
   "Kindle does not play audio in EPUB books; Apple Books and Thorium do.": "Kindle không phát audio trong sách EPUB; Apple Books và Thorium thì có.",
   "Include narration (not played on Kindle)": "Kèm giọng đọc (Kindle không phát được)",
+
+  // Narration (story page)
+  "Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.": "Chưa cài giọng đọc — cài lại trong Cài đặt → Giọng đọc để tạo thêm chương.",
 };
