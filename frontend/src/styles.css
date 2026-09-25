@@ -775,90 +775,6 @@
     white-space: nowrap;
   }
 
-  .jobs {
-    background: var(--color-chrome);
-    border-top: 1px solid var(--color-rule-2);
-  }
-
-  .jobs-bar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 10px 14px;
-    min-height: 36px;
-    padding: 5px 14px;
-    font-size: 12.5px;
-    color: var(--color-ink-2);
-  }
-
-  .jobs-bar.jobs-active {
-    min-height: 58px;
-    padding: 9px 14px 11px;
-  }
-
-  .jobs-bar .state {
-    display: flex;
-    align-items: center;
-    gap: 7px;
-    min-width: 0;
-    color: var(--color-ink);
-    font-weight: 600;
-  }
-
-  .jobs-bar .what {
-    max-width: 34ch;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .jobs-bar .track {
-    order: 3;
-    flex: 1 1 100%;
-    min-width: 0;
-  }
-
-  .jobs-bar .counts {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-family: var(--font-mono);
-    font-size: 12px;
-    font-variant-numeric: tabular-nums;
-  }
-
-  .jobs-bar .bad {
-    color: var(--color-error);
-    font-weight: 600;
-  }
-
-  .jobs-bar .end {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-left: auto;
-  }
-
-  .log {
-    max-height: 190px;
-    overflow: auto;
-    padding: 8px 14px 10px;
-    border-top: 1px solid var(--color-rule);
-    background: var(--color-sunken);
-    font-family: var(--font-mono);
-    font-size: 11.5px;
-    line-height: 1.6;
-  }
-
-  .log p {
-    color: var(--color-ink-2);
-    word-break: break-word;
-  }
-
-  .log p.error {
-    color: var(--color-error);
-  }
-
   /* Reading view: covers the whole window so nothing but the page is in sight.
      The page itself lives in an iframe carrying the EPUB's stylesheet — none of
      the rules below reach inside it, which is what keeps the preview honest. */
@@ -1342,14 +1258,6 @@
 
     .readout-n {
       font-size: 42px;
-    }
-
-    .jobs-bar {
-      gap: 6px 12px;
-    }
-
-    .jobs-bar .end {
-      margin-left: 0;
     }
   }
 }
