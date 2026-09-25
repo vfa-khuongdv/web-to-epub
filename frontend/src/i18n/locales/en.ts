@@ -409,4 +409,19 @@ export const en: Record<string, string> = {
   "Model default": "Model default",
   "Generating…": "Generating…",
   "Preview": "Preview",
+
+  // Narration (story page)
+  "Could not load narration": "Could not load narration",
+  "Could not start narration": "Could not start narration",
+  "Could not stop narration": "Could not stop narration",
+  "{ready}/{total} chapters narrated": "{ready}/{total} chapters narrated",
+  "Stop narration": "Stop narration",
+  "Narrate ({count} chapters)": "Narrate ({count} chapters)",
+  "Install narration in Settings → Narration first.": "Install narration in Settings → Narration first.",
+  "Narration progress": "Narration progress",
+  "Reading chapter {order} — part {part}/{parts}": "Reading chapter {order} — part {part}/{parts}",
+  "Loading the voice model…": "Loading the voice model…",
+  "Narration stopped: {done}/{total} chapters have audio.": "Narration stopped: {done}/{total} chapters have audio.",
+  "Narration finished: {done}/{total} chapters have audio.": "Narration finished: {done}/{total} chapters have audio.",
+  "{count} failed: {message}": "{count} failed: {message}",
 };

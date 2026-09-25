@@ -7,6 +7,7 @@ import { crawlRouter } from "./crawl";
 import { exportsRouter } from "./exports";
 import { highlightsRouter } from "./highlights";
 import { liveRouter } from "./live";
+import { narrationRouter } from "./narration";
 import { settingsRouter } from "./settings";
 import { siteSessionsRouter } from "./siteSessions";
 import { storiesRouter } from "./stories";
@@ -35,6 +36,7 @@ router.use(exportsRouter);
 // Mounted before storiesRouter: GET /stories/live would otherwise match GET /stories/:id
 // with "live" as the story id.
 router.use(liveRouter);
+router.use(narrationRouter);
 router.use(storiesRouter);
 router.use(chaptersRouter);
 router.use(highlightsRouter);

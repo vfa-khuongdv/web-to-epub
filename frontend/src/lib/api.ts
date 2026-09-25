@@ -9,6 +9,7 @@ import {
   StoredStory,
   StorySummary,
   SupportedSite,
+  NarrationState,
   TtsStatus,
   TtsVariant,
   TtsVoice,
@@ -487,6 +488,32 @@ export async function previewTts(variant: TtsVariant, voice: string): Promise<Bl
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not preview the voice")));
   return res.blob();
+}
+
+// ---- Story narration (see src/routes/narration.ts) -------------------------
+
+export async function fetchNarration(storyId: string): Promise<NarrationState> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/narration`, { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load narration")));
+  return (await res.json()) as NarrationState;
+}
+
+export async function startNarration(storyId: string, orders?: number[]): Promise<{ total: number }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/narrate`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(orders ? { orders } : {}),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not start narration")));
+  return (await res.json()) as { total: number };
+}
+
+export async function stopNarration(storyId: string): Promise<void> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/narrate/stop`, {
+    method: "POST",
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not stop narration")));
 }
 
 // ---- App update (see src/services/appUpdate.ts) ------------------------------
