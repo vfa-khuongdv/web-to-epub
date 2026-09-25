@@ -6,6 +6,7 @@
 interface ElectronExportBridge {
   pickFolder(): Promise<string | null>;
   writeFile(folderPath: string, fileName: string, data: ArrayBuffer): Promise<void>;
+  saveUrl(folderPath: string, fileName: string, url: string): Promise<void>;
 }
 
 interface Window {

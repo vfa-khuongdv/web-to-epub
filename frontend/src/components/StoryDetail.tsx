@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
+import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
@@ -481,6 +481,7 @@ export default function StoryDetail({
 
           {narratable && narration.state && (
             <NarrationPanel
+              storyId={story.id}
               state={narration.state}
               outcome={narration.outcome}
               error={narration.error}
@@ -589,6 +590,11 @@ export default function StoryDetail({
                     setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)))
                   }
                   onRetry={() => handleCrawl([c.order])}
+                  audioUrl={
+                    narratable && narration.state?.chapters[c.order] === "ready"
+                      ? chapterAudioUrl(story.id, c.order)
+                      : undefined
+                  }
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {

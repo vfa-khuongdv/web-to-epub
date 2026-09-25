@@ -2,6 +2,7 @@ import { Router } from "express";
 import { SUPPORTED_SITES } from "../config/supportedSites";
 import { setLang } from "../services/lang";
 import { appUpdateRouter } from "./appUpdate";
+import { audioExportsRouter } from "./audioExports";
 import { chaptersRouter } from "./chapters";
 import { crawlRouter } from "./crawl";
 import { exportsRouter } from "./exports";
@@ -37,6 +38,7 @@ router.use(exportsRouter);
 // with "live" as the story id.
 router.use(liveRouter);
 router.use(narrationRouter);
+router.use(audioExportsRouter);
 router.use(storiesRouter);
 router.use(chaptersRouter);
 router.use(highlightsRouter);
