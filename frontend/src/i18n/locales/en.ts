@@ -417,7 +417,6 @@ export const en: Record<string, string> = {
   "{ready}/{total} chapters narrated": "{ready}/{total} chapters narrated",
   "Stop narration": "Stop narration",
   "Narrate ({count} chapters)": "Narrate ({count} chapters)",
-  "Install narration in Settings → Narration first.": "Install narration in Settings → Narration first.",
   "Narration progress": "Narration progress",
   "Reading chapter {order} — part {part}/{parts}": "Reading chapter {order} — part {part}/{parts}",
   "Loading the voice model…": "Loading the voice model…",
@@ -437,4 +436,7 @@ export const en: Record<string, string> = {
   // Narration (EPUB export)
   "Kindle does not play audio in EPUB books; Apple Books and Thorium do.": "Kindle does not play audio in EPUB books; Apple Books and Thorium do.",
   "Include narration (not played on Kindle)": "Include narration (not played on Kindle)",
+
+  // Narration (story page)
+  "Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.": "Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.",
 };

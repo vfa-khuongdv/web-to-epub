@@ -53,6 +53,11 @@ export default function NarrationPanel({
   const ready = states.filter((s) => s === "ready").length;
   const missing = states.length - ready;
 
+  // Nothing to show until the engine is installed, unless this story already has audio
+  // (e.g. the engine was uninstalled since): the block would only hold a dead button,
+  // pushing the chapter list down on every Vietnamese story for readers who never narrate.
+  if (installed !== true && ready === 0 && !running && state.bytes === 0) return null;
+
   return (
     <div className="flex flex-col gap-2 rounded-tool border border-rule bg-raised px-3 py-2.5">
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
@@ -104,7 +109,7 @@ export default function NarrationPanel({
       </div>
 
       {installed === false && (
-        <p className="text-xs text-ink-3">{t("Install narration in Settings → Narration first.")}</p>
+        <p className="text-xs text-ink-3">{t("Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.")}</p>
       )}
 
       {running && (
