@@ -5,6 +5,7 @@ import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { unzipSync, zipSync } from "fflate";
 import sharp from "sharp";
+import { JSDOM } from "jsdom";
 import type { ExportChapter } from "../types";
 import {
   buildEpub,
@@ -830,7 +831,10 @@ describe("packMedia", () => {
     expect(Buffer.from(entries["OEBPS/content.opf"]).toString()).toContain(
       '<item id="media_0" href="media/0.mp3" media-type="audio/mpeg" />'
     );
-    expect(Buffer.from(entries["OEBPS/0_c1.xhtml"]).toString()).toContain('<audio controls src="media/0.mp3">');
+    const xhtml = Buffer.from(entries["OEBPS/0_c1.xhtml"]).toString();
+    expect(xhtml).toContain('<audio controls="controls" src="media/0.mp3">');
+    // Strict XML, the way Apple Books parses a chapter: a bare `controls` would throw here.
+    expect(() => new JSDOM(xhtml, { contentType: "application/xhtml+xml" })).not.toThrow();
   });
 
   it("keeps mimetype as first entry and uncompressed", async () => {
@@ -842,6 +846,17 @@ describe("packMedia", () => {
     // Robust checks against the zip's own headers instead of fixed byte offsets.
     expect(Object.keys(unzipSync(out))[0]).toBe("mimetype");
     expect(localHeaderMethod(out, "mimetype")).toBe(0);
+  });
+
+  it("turns an existing bare controls into controls=\"controls\" without duplicating it", async () => {
+    const filePath = path.join(dir, "media-0.mp3");
+    fs.writeFileSync(filePath, "bytes");
+    const out = await packMedia(fakeEpub('<body><audio controls src="media/0.mp3" controls="">A</audio></body>'), [
+      { href: "media/0.mp3", mediaType: "audio/mpeg", filePath },
+    ]);
+    const xhtml = Buffer.from(unzipSync(out)["OEBPS/0_c1.xhtml"]).toString();
+    expect(xhtml).toBe('<body><audio controls="controls" src="media/0.mp3">A</audio></body>');
+    expect(() => new JSDOM(xhtml, { contentType: "application/xhtml+xml" })).not.toThrow();
   });
 
   it("restores controls on video tags and declares every media item in the manifest", async () => {
@@ -863,7 +878,7 @@ describe("packMedia", () => {
     );
     expect(Buffer.from(entries["OEBPS/media/0.mp3"]).toString()).toBe("audio-bytes");
     expect(Buffer.from(entries["OEBPS/media/1.mp4"]).toString()).toBe("video-bytes");
-    expect(Buffer.from(entries["OEBPS/0_c1.xhtml"]).toString()).toContain('<video controls src="media/1.mp4">');
+    expect(Buffer.from(entries["OEBPS/0_c1.xhtml"]).toString()).toContain('<video controls="controls" src="media/1.mp4">');
   });
 
   it("leaves xhtml without media tags untouched", async () => {
