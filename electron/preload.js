@@ -10,6 +10,8 @@ contextBridge.exposeInMainWorld("electronExport", {
   pickFolder: () => ipcRenderer.invoke("export:pick-folder"),
   // `data` is the file's bytes as an ArrayBuffer (structured-cloned over IPC).
   writeFile: (folderPath, fileName, data) => ipcRenderer.invoke("export:write-file", folderPath, fileName, data),
+  // Streams a file the app's own server prepared (narration zips) into the folder.
+  saveUrl: (folderPath, fileName, url) => ipcRenderer.invoke("export:save-url", folderPath, fileName, url),
 });
 
 // Update bridge: the packaged app downloads a release zip and replaces its own

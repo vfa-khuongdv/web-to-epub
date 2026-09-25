@@ -424,4 +424,13 @@ export const en: Record<string, string> = {
   "Narration stopped: {done}/{total} chapters have audio.": "Narration stopped: {done}/{total} chapters have audio.",
   "Narration finished: {done}/{total} chapters have audio.": "Narration finished: {done}/{total} chapters have audio.",
   "{count} failed: {message}": "{count} failed: {message}",
+
+  // Narration (audio export)
+  "Download this chapter's narration (.mp3)": "Download this chapter's narration (.mp3)",
+  "Download narration of chapter {order}": "Download narration of chapter {order}",
+  "Could not export audio": "Could not export audio",
+  "Preparing audio…": "Preparing audio…",
+  "Export audio (.zip)": "Export audio (.zip)",
+  "Exported {count} chapters. {missing} chapters have no audio yet and were left out.": "Exported {count} chapters. {missing} chapters have no audio yet and were left out.",
+  "Exported {count} chapters.": "Exported {count} chapters.",
 };

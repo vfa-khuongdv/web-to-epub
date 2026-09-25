@@ -30,14 +30,18 @@ img, video { height: auto; }
 const ILLEGAL_FILENAME_CHARS = /[\\/:*?"<>|\u0000-\u001f\u007f]/g;
 const MAX_FILENAME_LENGTH = 120;
 
-export function epubFileName(title: string): string {
+export function fileStem(title: string, fallback: string): string {
   const base = title
     .replace(ILLEGAL_FILENAME_CHARS, " ")
     .replace(/\s+/g, " ")
     .trim()
     .slice(0, MAX_FILENAME_LENGTH)
     .trim();
-  return `${base || "book"}.epub`;
+  return base || fallback;
+}
+
+export function epubFileName(title: string): string {
+  return `${fileStem(title, "book")}.epub`;
 }
 
 // RFC 6266: ASCII fallback for old clients, plus UTF-8 percent-encoded version

@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { fetchTtsStatus } from "../lib/api";
+import { exportStoryAudio, fetchTtsStatus } from "../lib/api";
 import { formatBytes } from "../lib/formatBytes";
 import { formatEta } from "../lib/formatEta";
 import { useLang } from "../i18n";
@@ -14,6 +14,7 @@ import { ProgressBar } from "./ProgressBar";
  * render it for others. Narration runs server-side; this only reflects it.
  */
 export default function NarrationPanel({
+  storyId,
   state,
   outcome,
   error,
@@ -22,6 +23,7 @@ export default function NarrationPanel({
   onDismissOutcome,
   actions,
 }: {
+  storyId: string;
   state: NarrationState;
   outcome: NarrationOutcome | null;
   error: string | null;
@@ -31,6 +33,7 @@ export default function NarrationPanel({
   // Export buttons, placed with the others.
   actions?: ReactNode;
 }) {
+  const audioExport = useAudioExport(storyId);
   const { lang, t } = useLang();
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [stopping, setStopping] = useState(false);
@@ -87,6 +90,15 @@ export default function NarrationPanel({
               {t("Narrate ({count} chapters)", { count: missing })}
             </button>
           )}
+          <button
+            type="button"
+            className="btn btn-tiny"
+            disabled={ready === 0 || audioExport.exporting}
+            onClick={() => void audioExport.run()}
+          >
+            <Icon name="download" size={12} />
+            {audioExport.exporting ? t("Preparing audio…") : t("Export audio (.zip)")}
+          </button>
           {actions}
         </span>
       </div>
@@ -132,12 +144,67 @@ export default function NarrationPanel({
         </p>
       )}
 
-      {error && (
+      {audioExport.message && (
+        <p className="text-xs text-ink-2" role="status">
+          {audioExport.message}
+        </p>
+      )}
+
+      {(error || audioExport.error) && (
         <p className="flex items-center gap-2 text-xs text-error" role="alert">
           <Icon name="alert" size={13} />
-          {error}
+          {error || audioExport.error}
         </p>
       )}
     </div>
   );
+}
+
+/**
+ * "Export audio": the server zips the narrated chapters to a temp file, then the zip is
+ * saved without passing through this page's memory — the packaged app streams it into
+ * a folder the reader picks (electron/main.js), a browser downloads it from a link.
+ */
+function useAudioExport(storyId: string) {
+  const { t } = useLang();
+  const [exporting, setExporting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function run() {
+    if (exporting) return;
+    setError(null);
+    setMessage(null);
+    setExporting(true);
+    try {
+      const bridge = window.electronExport;
+      const folder = bridge ? await bridge.pickFolder() : null;
+      if (bridge && folder === null) return;
+      const created = await exportStoryAudio(storyId);
+      if (bridge && folder !== null) {
+        await bridge.saveUrl(folder, created.fileName, `${window.location.origin}${created.url}`);
+      } else {
+        const a = document.createElement("a");
+        a.href = created.url;
+        a.download = created.fileName;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      }
+      setMessage(
+        created.missing.length > 0
+          ? t("Exported {count} chapters. {missing} chapters have no audio yet and were left out.", {
+              count: created.count,
+              missing: created.missing.length,
+            })
+          : t("Exported {count} chapters.", { count: created.count })
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  return { exporting, error, message, run };
 }

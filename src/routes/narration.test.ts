@@ -68,6 +68,7 @@ describe("narration routes", () => {
     const express = (await import("express")).default;
     const { narrationRouter } = await import("./narration");
     const { storiesRouter } = await import("./stories");
+    const { audioExportsRouter } = await import("./audioExports");
     const store = await import("../services/storyStore");
     stories = store.storyStore;
     viId = store.storyId("https://xtruyen.vn/truyen/vi/");
@@ -75,7 +76,7 @@ describe("narration routes", () => {
 
     const app = express();
     app.use(express.json());
-    app.use("/api", narrationRouter, storiesRouter);
+    app.use("/api", narrationRouter, audioExportsRouter, storiesRouter);
     server = app.listen(0);
     const address = server.address();
     base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/api`;
@@ -195,5 +196,41 @@ describe("narration routes", () => {
     ]);
     expect(events.slice(1).every((e) => e.storyId === viId)).toBe(true);
     expect(events.at(-1)).toMatchObject({ done: 2, failed: 0, total: 2, cancelled: false });
+  });
+
+  it("serves one chapter's audio only while it matches the chapter", async () => {
+    expect((await fetch(`${base}/stories/${viId}/chapters/1/audio`)).status).toBe(409);
+    await post(`/stories/${viId}/narrate`);
+    await waitIdle(viId);
+
+    const res = await fetch(`${base}/stories/${viId}/chapters/1/audio`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("audio/mpeg");
+    expect(decodeURIComponent(res.headers.get("content-disposition") ?? "")).toContain("001 - Chương 1.mp3");
+    expect(await res.text()).toBe("Chương 1|Một.");
+
+    const edited = (await stories.getChapter(viId, 1))!;
+    edited.blocks = [{ type: "paragraph", text: "Đã sửa." }];
+    await stories.saveChapter(viId, edited);
+    expect((await fetch(`${base}/stories/${viId}/chapters/1/audio`)).status).toBe(409);
+  });
+
+  it("zips the narrated chapters, lists the missing ones, and serves the zip once", async () => {
+    expect((await post(`/stories/${viId}/export-audio`)).status).toBe(400);
+    await post(`/stories/${viId}/narrate`, { orders: [2] });
+    await waitIdle(viId);
+
+    const res = await post(`/stories/${viId}/export-audio`);
+    expect(res.status).toBe(200);
+    const created = await res.json();
+    expect(created).toMatchObject({ fileName: "Truyện (audio).zip", count: 1, missing: [1] });
+
+    const zip = await fetch(`${base}/exports/audio/${created.exportId}`);
+    expect(zip.status).toBe(200);
+    const { unzipSync } = await import("fflate");
+    const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+    expect(Object.keys(entries)).toEqual(["002 - Chương 2.mp3"]);
+
+    expect((await fetch(`${base}/exports/audio/${created.exportId}`)).status).toBe(404);
   });
 });

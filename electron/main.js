@@ -74,6 +74,19 @@ ipcMain.handle("export:write-file", async (_event, folderPath, fileName, data) =
   await fsp.writeFile(filePath, Buffer.from(data));
 });
 
+// Narration zips run to gigabytes, too big to pass through the renderer as an ArrayBuffer
+// like an EPUB: the main process streams them from the app's own server straight to the
+// chosen folder. Only this server's audio-export URLs are accepted, so the bridge cannot
+// be used to fetch anything else onto disk.
+ipcMain.handle("export:save-url", async (_event, folderPath, fileName, url) => {
+  const allowed = `http://127.0.0.1:${process.env.PORT}/api/exports/audio/`;
+  if (typeof url !== "string" || !url.startsWith(allowed)) throw new Error("URL not allowed");
+  const res = await fetch(url);
+  if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
+  const filePath = path.join(folderPath, path.basename(fileName));
+  await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(filePath));
+});
+
 // ---- App update (see src/services/appInstaller.ts) ---------------------------
 
 // Only assets from our own releases may be downloaded and installed.

@@ -426,4 +426,13 @@ export const vi: Record<string, string> = {
   "Narration stopped: {done}/{total} chapters have audio.": "Đã dừng đọc: {done}/{total} chương có audio.",
   "Narration finished: {done}/{total} chapters have audio.": "Đọc xong: {done}/{total} chương có audio.",
   "{count} failed: {message}": "{count} chương lỗi: {message}",
+
+  // Narration (audio export)
+  "Download this chapter's narration (.mp3)": "Tải giọng đọc của chương này (.mp3)",
+  "Download narration of chapter {order}": "Tải giọng đọc chương {order}",
+  "Could not export audio": "Không xuất được audio",
+  "Preparing audio…": "Đang chuẩn bị audio…",
+  "Export audio (.zip)": "Xuất audio (.zip)",
+  "Exported {count} chapters. {missing} chapters have no audio yet and were left out.": "Đã xuất {count} chương. {missing} chương chưa có audio nên không được đưa vào.",
+  "Exported {count} chapters.": "Đã xuất {count} chương.",
 };

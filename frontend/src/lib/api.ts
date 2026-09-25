@@ -516,6 +516,32 @@ export async function stopNarration(storyId: string): Promise<void> {
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not stop narration")));
 }
 
+// Opened by <a href>, which sends no headers: the private-mode token rides in the query.
+export function chapterAudioUrl(storyId: string, order: number): string {
+  const token = currentVaultToken();
+  const base = `/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/audio`;
+  return token ? `${base}?vault=${encodeURIComponent(token)}` : base;
+}
+
+export interface AudioExport {
+  exportId: string;
+  fileName: string;
+  count: number;
+  // Chapters left out because their audio is missing or out of date.
+  missing: number[];
+}
+
+export async function exportStoryAudio(storyId: string): Promise<AudioExport & { url: string }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/export-audio`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: "{}",
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not export audio")));
+  const created = (await res.json()) as AudioExport;
+  return { ...created, url: `/api/exports/audio/${encodeURIComponent(created.exportId)}` };
+}
+
 // ---- App update (see src/services/appUpdate.ts) ------------------------------
 
 export async function fetchAppUpdate(): Promise<AppUpdateInfo> {

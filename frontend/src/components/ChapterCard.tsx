@@ -187,6 +187,8 @@ interface ChapterCardProps {
   // Missing when the chapter cannot be deleted from this context.
   onDelete?: () => Promise<void>;
   deleteDisabled?: boolean;
+  // Set when the chapter has narration matching its current text: a download link.
+  audioUrl?: string;
 }
 
 // Playwright's failure text arrives with time annotations from Call log still
@@ -224,6 +226,7 @@ export default function ChapterCard({
   onSaveUrl,
   onDelete,
   deleteDisabled,
+  audioUrl,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
   const [html, setHtml] = useState(initialHtml);
@@ -459,6 +462,17 @@ export default function ChapterCard({
             </span>
           ) : (
             <span className="flex items-center justify-end gap-1">
+              {audioUrl && (
+                <a
+                  className="btn btn-quiet btn-tiny"
+                  href={audioUrl}
+                  download
+                  title={t("Download this chapter's narration (.mp3)")}
+                  aria-label={t("Download narration of chapter {order}", { order })}
+                >
+                  <Icon name="narration" size={13} />
+                </a>
+              )}
               {failed && (
                 <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
                   <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
