@@ -441,4 +441,8 @@ export const vi: Record<string, string> = {
 
   // Narration (story page)
   "Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.": "Chưa cài giọng đọc — cài lại trong Cài đặt → Giọng đọc để tạo thêm chương.",
+
+  // Narration (story page)
+  "Turn chapters into audio with a voice model on this machine.": "Chuyển chương thành audio bằng model giọng đọc chạy trên máy này.",
+  "Set up narration": "Cài giọng đọc",
 };

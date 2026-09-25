@@ -21,6 +21,7 @@ export default function NarrationPanel({
   onStart,
   onStop,
   onDismissOutcome,
+  onOpenSettings,
   actions,
 }: {
   storyId: string;
@@ -30,6 +31,7 @@ export default function NarrationPanel({
   onStart: () => void;
   onStop: () => void;
   onDismissOutcome: () => void;
+  onOpenSettings: () => void;
   // Export buttons, placed with the others.
   actions?: ReactNode;
 }) {
@@ -53,10 +55,25 @@ export default function NarrationPanel({
   const ready = states.filter((s) => s === "ready").length;
   const missing = states.length - ready;
 
-  // Nothing to show until the engine is installed, unless this story already has audio
-  // (e.g. the engine was uninstalled since): the block would only hold a dead button,
-  // pushing the chapter list down on every Vietnamese story for readers who never narrate.
-  if (installed !== true && ready === 0 && !running && state.bytes === 0) return null;
+  // Until the engine is installed (and while the story has no audio yet) the block is one
+  // line pointing to Settings: the full block would only hold dead buttons, pushing the
+  // chapter list down on every Vietnamese story for readers who never narrate.
+  if (installed === null && !running) return null;
+  if (installed === false && ready === 0 && !running && state.bytes === 0) {
+    return (
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-tool border border-rule bg-raised px-3 py-1.5">
+        <span className="flex items-center gap-1.5 text-[13px] font-semibold">
+          <Icon name="narration" size={14} />
+          {t("Narration")}
+        </span>
+        <span className="text-xs text-ink-3">{t("Turn chapters into audio with a voice model on this machine.")}</span>
+        <button type="button" className="btn btn-tiny ml-auto" onClick={onOpenSettings}>
+          <Icon name="settings" size={12} />
+          {t("Set up narration")}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2 rounded-tool border border-rule bg-raised px-3 py-2.5">

@@ -439,4 +439,8 @@ export const en: Record<string, string> = {
 
   // Narration (story page)
   "Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.": "Narration is not installed — reinstall it in Settings → Narration to narrate more chapters.",
+
+  // Narration (story page)
+  "Turn chapters into audio with a voice model on this machine.": "Turn chapters into audio with a voice model on this machine.",
+  "Set up narration": "Set up narration",
 };
