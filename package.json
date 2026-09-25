@@ -15,7 +15,7 @@
     "build": "tsc && npm run build -w frontend",
     "build:backend": "tsc",
     "start": "node dist/server.js",
-    "dev": "tsc --watch & nodemon dist/server.js",
+    "dev": "tsc --watch & nodemon --watch dist dist/server.js",
     "dev:frontend": "npm run dev -w frontend",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
