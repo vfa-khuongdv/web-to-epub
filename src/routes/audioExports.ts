@@ -7,10 +7,8 @@ import { Router } from "express";
 import { contentDisposition, fileStem } from "../services/epubBuilder";
 import { t } from "../services/lang";
 import { settingsStore } from "../services/settingsStore";
-import { readFreshAudio } from "../services/tts/audioCache";
 import { AudioZipEntry, chapterAudioFileName, writeAudioZip } from "../services/tts/audioExport";
-import { chapterKey, chaptersToNarrate } from "../services/tts/narrate";
-import { StoryStore } from "../services/storyStore";
+import { chaptersToNarrate, freshChapterAudio as freshAudio } from "../services/tts/narrate";
 import { libraryFor } from "./library";
 
 export const audioExportsRouter = Router();
@@ -25,14 +23,8 @@ const narrationSettings = () => {
   return { variant: ttsVariant, voice: ttsVoice };
 };
 
-// The audio file of one chapter, if it matches the chapter's current text and voice.
-async function freshChapterAudio(stories: StoryStore, dataDir: string, storyId: string, order: number) {
-  const chapter = await stories.getChapter(storyId, order);
-  if (!chapter || chapter.status !== "done") return undefined;
-  const key = chapterKey(chapter, narrationSettings());
-  const audio = key ? await readFreshAudio(dataDir, storyId, order, key) : undefined;
-  return audio ? { ...audio, title: chapter.title } : undefined;
-}
+const freshChapterAudio = (stories: Parameters<typeof freshAudio>[0], dataDir: string, storyId: string, order: number) =>
+  freshAudio(stories, dataDir, storyId, order, narrationSettings());
 
 // Opened by an <a href> / <audio src>, which cannot send headers: the private-mode token
 // comes as ?vault=, which libraryFor already accepts.

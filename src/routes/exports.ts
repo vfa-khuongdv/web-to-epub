@@ -1,10 +1,14 @@
 import { randomUUID } from "crypto";
+import { pathToFileURL } from "url";
 import { Response as ExpressResponse, Router } from "express";
 import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { coverPathForExport } from "../services/coverStore";
 import { blocksToHtml } from "../services/chapterHtml";
 import { t } from "../services/lang";
 import { BookMetadata, ExportChapter } from "../types";
+import { settingsStore } from "../services/settingsStore";
+import { storyAudioDir } from "../services/tts/audioCache";
+import { freshChapterAudio, isNarratable } from "../services/tts/narrate";
 import { libraryFor } from "./library";
 
 export const exportsRouter = Router();
@@ -35,7 +39,8 @@ async function streamExport(
   metadata: BookMetadata,
   chapters: ExportChapter[],
   baseTitle: string,
-  dataDir: string
+  dataDir: string,
+  localMediaRoots: string[] = []
 ): Promise<void> {
   res.writeHead(200, {
     "Content-Type": "application/x-ndjson; charset=utf-8",
@@ -61,7 +66,9 @@ async function streamExport(
     const parts = await buildEpub(
       { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl, dataDir) : undefined },
       chapters,
-      onProgress
+      onProgress,
+      undefined,
+      localMediaRoots
     );
     // Only a story too big for one file gets numbered — a normal export keeps its plain name.
     const exports = parts.map((part) => {
@@ -102,9 +109,11 @@ exportsRouter.post("/stories/:id/export", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) return;
   const { id } = req.params;
-  const { metadata, chapters } = req.body as {
+  const { metadata, chapters, includeNarration } = req.body as {
     metadata?: BookMetadata;
     chapters?: { order: number; title?: string; contentHtml?: string }[];
+    // Put each chapter's narration (when current) at the top of the chapter.
+    includeNarration?: boolean;
   };
   if (!metadata || !Array.isArray(chapters)) {
     res.status(400).json({ message: t("metadata and chapters are required") });
@@ -119,6 +128,8 @@ exportsRouter.post("/stories/:id/export", async (req, res) => {
 
   try {
     const byOrder = new Map(story.chapters.map((c) => [c.order, c]));
+    const withNarration = includeNarration === true && isNarratable(story);
+    const { ttsVariant, ttsVoice } = settingsStore.get();
     const included: ExportChapter[] = [];
     for (const wanted of chapters) {
       const stored = byOrder.get(wanted.order);
@@ -126,12 +137,24 @@ exportsRouter.post("/stories/:id/export", async (req, res) => {
       // build from saved blocks.
       // Empty string (chapter opened but content failed to load) also falls back to DB
       // so we don't silently export blank chapters.
-      const contentHtml = wanted.contentHtml || (stored ? blocksToHtml(stored.blocks ?? []) : "");
+      let contentHtml = wanted.contentHtml || (stored ? blocksToHtml(stored.blocks ?? []) : "");
       if (!contentHtml) continue;
+      // Only audio matching the saved text: unsaved edits in the editor are not narrated.
+      const audio = withNarration
+        ? await freshChapterAudio(library.stories, library.dataDir, id, wanted.order, { variant: ttsVariant, voice: ttsVoice })
+        : undefined;
+      if (audio) contentHtml = `<audio controls src="${pathToFileURL(audio.filePath).href}">${t("Narration")}</audio>\n${contentHtml}`;
       included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
     }
 
-    await streamExport(res, metadata, included, metadata.title || story.title || "book", library.dataDir);
+    await streamExport(
+      res,
+      metadata,
+      included,
+      metadata.title || story.title || "book",
+      library.dataDir,
+      withNarration ? [storyAudioDir(library.dataDir, id)] : []
+    );
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "EPUB export error" });
   }

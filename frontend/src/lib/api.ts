@@ -370,9 +370,15 @@ export async function exportStoryEpub(
   storyId: string,
   metadata: BookMetadata,
   chapters: StoryExportChapter[],
-  onProgress?: (progress: ExportProgress) => void
+  onProgress?: (progress: ExportProgress) => void,
+  // Put each chapter's current narration at its top (Vietnamese stories).
+  includeNarration = false
 ): Promise<ExportedFile[]> {
-  return runExport(`/api/stories/${encodeURIComponent(storyId)}/export`, { metadata, chapters }, onProgress);
+  return runExport(
+    `/api/stories/${encodeURIComponent(storyId)}/export`,
+    { metadata, chapters, includeNarration },
+    onProgress
+  );
 }
 
 export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink"] as const;

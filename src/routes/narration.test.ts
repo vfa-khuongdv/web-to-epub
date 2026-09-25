@@ -69,6 +69,7 @@ describe("narration routes", () => {
     const { narrationRouter } = await import("./narration");
     const { storiesRouter } = await import("./stories");
     const { audioExportsRouter } = await import("./audioExports");
+    const { exportsRouter } = await import("./exports");
     const store = await import("../services/storyStore");
     stories = store.storyStore;
     viId = store.storyId("https://xtruyen.vn/truyen/vi/");
@@ -76,7 +77,7 @@ describe("narration routes", () => {
 
     const app = express();
     app.use(express.json());
-    app.use("/api", narrationRouter, audioExportsRouter, storiesRouter);
+    app.use("/api", narrationRouter, audioExportsRouter, exportsRouter, storiesRouter);
     server = app.listen(0);
     const address = server.address();
     base = `http://127.0.0.1:${typeof address === "object" && address ? address.port : 0}/api`;
@@ -233,4 +234,37 @@ describe("narration routes", () => {
 
     expect((await fetch(`${base}/exports/audio/${created.exportId}`)).status).toBe(404);
   });
+
+  it("puts current narration into the EPUB only when asked", async () => {
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+    const { unzipSync } = await import("fflate");
+
+    async function exportBook(includeNarration: boolean) {
+      const res = await post(`/stories/${viId}/export`, {
+        metadata: { title: "Truyện", author: "A", language: "vi" },
+        chapters: [{ order: 1 }, { order: 2 }],
+        includeNarration,
+      });
+      const lines = (await res.text()).trim().split("\n").map((line) => JSON.parse(line));
+      const done = lines.find((line) => line.type === "done");
+      expect(done, JSON.stringify(lines.at(-1))).toBeDefined();
+      const book = await fetch(`${base}/exports/${done.exports[0].exportId}`);
+      return unzipSync(new Uint8Array(await book.arrayBuffer()));
+    }
+
+    const plain = await exportBook(false);
+    expect(Object.keys(plain).some((name) => name.endsWith(".mp3"))).toBe(false);
+
+    const narrated = await exportBook(true);
+    const mp3s = Object.keys(narrated).filter((name) => name.endsWith(".mp3"));
+    expect(mp3s).toHaveLength(1);
+    expect(Buffer.from(narrated[mp3s[0]]).toString()).toBe("Chương 1|Một.");
+    const opf = Buffer.from(narrated["OEBPS/content.opf"]).toString();
+    expect(opf).toContain('media-type="audio/mpeg"');
+    const withAudio = Object.entries(narrated).filter(
+      ([name, bytes]) => name.endsWith(".xhtml") && Buffer.from(bytes).toString().includes("<audio controls")
+    );
+    expect(withAudio).toHaveLength(1);
+  }, 30_000);
 });

@@ -435,4 +435,8 @@ export const vi: Record<string, string> = {
   "Export audio (.zip)": "Xuất audio (.zip)",
   "Exported {count} chapters. {missing} chapters have no audio yet and were left out.": "Đã xuất {count} chương. {missing} chương chưa có audio nên không được đưa vào.",
   "Exported {count} chapters.": "Đã xuất {count} chương.",
+
+  // Narration (EPUB export)
+  "Kindle does not play audio in EPUB books; Apple Books and Thorium do.": "Kindle không phát audio trong sách EPUB; Apple Books và Thorium thì có.",
+  "Include narration (not played on Kindle)": "Kèm giọng đọc (Kindle không phát được)",
 };

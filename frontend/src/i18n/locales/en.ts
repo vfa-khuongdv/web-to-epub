@@ -433,4 +433,8 @@ export const en: Record<string, string> = {
   "Export audio (.zip)": "Export audio (.zip)",
   "Exported {count} chapters. {missing} chapters have no audio yet and were left out.": "Exported {count} chapters. {missing} chapters have no audio yet and were left out.",
   "Exported {count} chapters.": "Exported {count} chapters.",
+
+  // Narration (EPUB export)
+  "Kindle does not play audio in EPUB books; Apple Books and Thorium do.": "Kindle does not play audio in EPUB books; Apple Books and Thorium do.",
+  "Include narration (not played on Kindle)": "Include narration (not played on Kindle)",
 };

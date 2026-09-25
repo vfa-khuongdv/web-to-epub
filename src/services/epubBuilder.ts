@@ -5,6 +5,7 @@ import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
 import sharp from "sharp";
+import { fileURLToPath } from "url";
 import { BookMetadata, ExportChapter } from "../types";
 import { EXTENSION_BY_TYPE, sniffImageExtension } from "./coverStore";
 import { fetchWithRetry } from "./toc/http";
@@ -301,12 +302,37 @@ async function readCapped(res: Response, maxBytes: number): Promise<Buffer | und
   return Buffer.concat(chunks);
 }
 
-async function saveMedia(src: string, dir: string, index: number): Promise<EpubMedia | undefined> {
+// A local file is only read from inside one of `localRoots` (the story's narration
+// folder): chapter HTML also comes from the client, and a crafted
+// <audio src="file:///…"> must not pull an arbitrary file from this machine into a book.
+function localMediaPath(src: string, localRoots: string[]): string | undefined {
+  if (!/^file:\/\//i.test(src)) return undefined;
+  let filePath: string;
+  try {
+    filePath = path.resolve(fileURLToPath(src));
+  } catch {
+    return undefined;
+  }
+  return localRoots.some((root) => filePath.startsWith(path.resolve(root) + path.sep)) ? filePath : undefined;
+}
+
+async function saveMedia(src: string, dir: string, index: number, localRoots: string[] = []): Promise<EpubMedia | undefined> {
   let bytes: Buffer;
   let extension: string | undefined;
 
   const dataUri = src.match(DATA_URI_MEDIA_RE);
-  if (dataUri) {
+  const localPath = localMediaPath(src, localRoots);
+  if (localPath) {
+    extension = path.extname(localPath).slice(1).toLowerCase();
+    if (!MEDIA_TYPES[extension]) return undefined;
+    try {
+      const { size } = await fs.stat(localPath);
+      if (size > MAX_MEDIA_BYTES) return undefined;
+      bytes = await fs.readFile(localPath);
+    } catch {
+      return undefined;
+    }
+  } else if (dataUri) {
     bytes = Buffer.from(dataUri[2], "base64");
     extension = MEDIA_EXTENSION_BY_TYPE.get(dataUri[1].toLowerCase());
   } else if (/^https?:/i.test(src)) {
@@ -355,7 +381,8 @@ function mediaLabel(name: string): string {
 export async function embedMedia(
   chapters: ExportChapter[],
   dir: string,
-  onProgress?: OnBuildProgress
+  onProgress?: OnBuildProgress,
+  localRoots: string[] = []
 ): Promise<{ chapters: ExportChapter[]; media: EpubMedia[] }> {
   const sources = new Set<string>();
   for (const chapter of chapters) {
@@ -369,7 +396,7 @@ export async function embedMedia(
   const list = [...sources];
   let done = 0;
   const saved = await mapWithConcurrency(list, MEDIA_CONCURRENCY, async (src, index) => {
-    const file = await saveMedia(src, dir, index);
+    const file = await saveMedia(src, dir, index, localRoots);
     onProgress?.({ phase: "media", done: ++done, total: list.length });
     return file;
   });
@@ -528,7 +555,9 @@ export async function buildEpub(
   metadata: BookMetadata,
   chapters: ExportChapter[],
   onProgress?: OnBuildProgress,
-  maxBytes: number = MAX_EPUB_BYTES
+  maxBytes: number = MAX_EPUB_BYTES,
+  // Folders chapters may embed local media from (a story's narration, see embedMedia).
+  localMediaRoots: string[] = []
 ): Promise<EpubPart[]> {
   const included = chapters.filter((c) => c.includeInBook);
   if (included.length === 0) {
@@ -538,7 +567,7 @@ export async function buildEpub(
   const imageDir = await fs.mkdtemp(path.join(os.tmpdir(), "epub-img-"));
   try {
     const withImages = await embedImages(included, imageDir, onProgress);
-    const { chapters: withMedia, media } = await embedMedia(withImages, imageDir, onProgress);
+    const { chapters: withMedia, media } = await embedMedia(withImages, imageDir, onProgress, localMediaRoots);
 
     const groups = await groupChaptersBySize(withMedia, media, maxBytes);
     const buffers: Buffer[] = [];

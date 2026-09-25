@@ -41,6 +41,21 @@ export function chapterKey(chapter: StoredChapter, settings: NarrationSettings):
   return narrationKey(parts, narrationVoice(settings), VIENEU_VERSION);
 }
 
+// The audio file of one chapter, if it matches the chapter's current text and voice.
+export async function freshChapterAudio(
+  stories: StoryStore,
+  dataDir: string,
+  storyId: string,
+  order: number,
+  settings: NarrationSettings
+): Promise<{ filePath: string; seconds: number; title: string } | undefined> {
+  const chapter = await stories.getChapter(storyId, order);
+  if (!chapter || !readable(chapter)) return undefined;
+  const key = chapterKey(chapter, settings);
+  const audio = key ? await readFreshAudio(dataDir, storyId, order, key) : undefined;
+  return audio ? { ...audio, title: chapter.title } : undefined;
+}
+
 /**
  * Which chapters already have audio matching their current text and the current voice.
  * Reads each chapter's content one at a time rather than the whole story at once.

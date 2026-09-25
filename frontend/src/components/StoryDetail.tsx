@@ -104,6 +104,10 @@ export default function StoryDetail({
   // Vietnamese books only, by the language saved on the story (not the unsaved field).
   const narratable = (story.language || "vi") === "vi";
   const narration = useNarration(story.id, narratable, story.updatedAt);
+  const narratedCount = narration.state
+    ? Object.values(narration.state.chapters).filter((s) => s === "ready").length
+    : 0;
+  const [includeNarration, setIncludeNarration] = useState(false);
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -338,7 +342,8 @@ export default function StoryDetail({
         story.id,
         { title: bookTitle || story.title, author: author || "Unknown", language, coverUrl },
         payload,
-        null
+        null,
+        includeNarration && narratedCount > 0
       );
       // null means the reader cancelled the folder picker before anything was exported.
       if (fileCount !== null) pushNotice({ kind: "export-done", fileCount });
@@ -458,6 +463,21 @@ export default function StoryDetail({
               <Icon name="download" size={14} />
               {isExporting ? t("Exporting…") : t("Export EPUB")}
             </button>
+            {narratable && narratedCount > 0 && (
+              <label
+                className="flex items-center gap-1.5 text-xs text-ink-2"
+                title={t("Kindle does not play audio in EPUB books; Apple Books and Thorium do.")}
+              >
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-select"
+                  checked={includeNarration}
+                  disabled={isExporting}
+                  onChange={(event) => setIncludeNarration(event.target.checked)}
+                />
+                {t("Include narration (not played on Kindle)")}
+              </label>
+            )}
             {isExporting && (
               <span className="export-progress" role="status">
                 {progress ? exportProgressLabel(progress, t) : t("Preparing…")}
