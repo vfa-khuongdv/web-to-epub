@@ -27,6 +27,12 @@ export function uvDownloadUrl(platform: string = process.platform, arch: string 
   return `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${target}.tar.gz`;
 }
 
+// The full dependency set VieNeu was tested with, installed as uv constraints: pinning
+// only `vieneu` let a newer onnxruntime in, which refuses the Turbo model (see the file).
+export const CONSTRAINTS_FILE = path
+  .join(__dirname, "..", "..", "tts", "constraints.txt")
+  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
 // The worker script ships next to dist/. Inside the packaged Electron app it is unpacked
 // out of app.asar (see asarUnpack in package.json) because Python cannot read an asar.
 export const WORKER_SCRIPT = path

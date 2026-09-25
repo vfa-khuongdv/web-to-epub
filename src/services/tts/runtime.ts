@@ -1,10 +1,11 @@
 import { spawn } from "child_process";
+import { createHash } from "crypto";
 import { createWriteStream } from "fs";
 import fs from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
-import { PYTHON_VERSION, TTS_DIR, VIENEU_VERSION, WORKER_SCRIPT, uvDownloadUrl } from "../../config/tts";
+import { CONSTRAINTS_FILE, PYTHON_VERSION, TTS_DIR, VIENEU_VERSION, WORKER_SCRIPT, uvDownloadUrl } from "../../config/tts";
 import { t } from "../lang";
 import { LoadedModel, TtsVariant, TtsWorker, WorkerCommand, startTtsWorker } from "./workerClient";
 
@@ -14,8 +15,13 @@ import { LoadedModel, TtsVariant, TtsWorker, WorkerCommand, startTtsWorker } fro
  *   <TTS_DIR>/bin/uv          standalone uv, downloaded from its GitHub release
  *   <TTS_DIR>/python/         the CPython uv fetches (UV_PYTHON_INSTALL_DIR)
  *   <TTS_DIR>/venv/           virtualenv with `vieneu` pinned to VIENEU_VERSION
- *   <TTS_DIR>/hf/             model files (HF_HOME)
- *   <TTS_DIR>/installed.json  written last: its presence is what "installed" means
+ *   <TTS_DIR>/hf/             model files (HF_HOME), stamped with the constraints hash that
+ *                             downloaded them: huggingface_hub versions lay the cache out
+ *                             differently, and onnxruntime rejects a model whose external
+ *                             data file resolves outside the model's own blob folder
+ *   <TTS_DIR>/installed.json  written last: its presence is what "installed" means — and it
+ *                             records the VieNeu version and a hash of the constraints, so
+ *                             changing either makes the app ask to install again
  *
  * One worker process at most, started on first use and closed after a quiet spell, so
  * the ~1 GB model is not held in RAM by an app that is only crawling.
@@ -38,6 +44,7 @@ export interface TtsStatus {
 export interface TtsRuntimeDeps {
   ttsDir: string;
   workerScript: string;
+  constraintsFile: string;
   uvUrl: string | undefined;
   download(url: string, dest: string, onBytes: (done: number, total: number) => void): Promise<void>;
   exec(command: string, args: string[], env: NodeJS.ProcessEnv): Promise<void>;
@@ -63,6 +70,8 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
   const venvDir = path.join(deps.ttsDir, "venv");
   const python = path.join(venvDir, "bin", "python");
   const marker = path.join(deps.ttsDir, "installed.json");
+  const hfDir = path.join(deps.ttsDir, "hf");
+  const hfStamp = path.join(hfDir, ".constraints");
 
   // Keep every tool inside TTS_DIR and away from the user's own uv / pip / HF config.
   const env: NodeJS.ProcessEnv = {
@@ -70,7 +79,7 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     UV_NO_CACHE: "1",
     UV_NO_CONFIG: "1",
     UV_PYTHON_PREFERENCE: "only-managed",
-    HF_HOME: path.join(deps.ttsDir, "hf"),
+    HF_HOME: hfDir,
     HF_HUB_DISABLE_TELEMETRY: "1",
   };
 
@@ -84,10 +93,14 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
   let pending = 0;
   let idleTimer: NodeJS.Timeout | undefined;
 
+  async function constraintsHash(): Promise<string> {
+    return createHash("sha1").update(await fs.readFile(deps.constraintsFile)).digest("hex");
+  }
+
   async function isInstalled(): Promise<boolean> {
     try {
-      const saved = JSON.parse(await fs.readFile(marker, "utf8")) as { vieneu?: string };
-      return saved.vieneu === VIENEU_VERSION;
+      const saved = JSON.parse(await fs.readFile(marker, "utf8")) as { vieneu?: string; constraints?: string };
+      return saved.vieneu === VIENEU_VERSION && saved.constraints === (await constraintsHash());
     } catch {
       return false;
     }
@@ -144,14 +157,32 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     }
 
     progress = { phase: "packages" };
-    await deps.exec(uvBin, ["pip", "install", "--python", python, `vieneu==${VIENEU_VERSION}`], env);
+    // -c: exact versions of every dependency, so today's release of some transitive package
+    // cannot change what the model runs on (see tts/constraints.txt).
+    await deps.exec(
+      uvBin,
+      ["pip", "install", "--python", python, "-c", deps.constraintsFile, `vieneu==${VIENEU_VERSION}`],
+      env
+    );
 
-    // Loading once downloads the model, so the first narration does not stall on it.
+    // Loading once downloads the model, so the first narration does not stall on it. A cache
+    // written by other library versions is thrown away first (a partial download by these
+    // same versions is kept and resumed).
     progress = { phase: "model" };
+    const hash = await constraintsHash();
+    const stamp = await fs.readFile(hfStamp, "utf8").catch(() => undefined);
+    if (stamp !== hash) {
+      await fs.rm(hfDir, { recursive: true, force: true });
+      await fs.mkdir(hfDir, { recursive: true });
+      await fs.writeFile(hfStamp, hash);
+    }
     closeWorker();
     await runtime.withModel(variant, async () => undefined);
 
-    await fs.writeFile(marker, JSON.stringify({ vieneu: VIENEU_VERSION, installedAt: new Date().toISOString() }));
+    await fs.writeFile(
+      marker,
+      JSON.stringify({ vieneu: VIENEU_VERSION, constraints: await constraintsHash(), installedAt: new Date().toISOString() })
+    );
   }
 
   const runtime: TtsRuntime = {
@@ -288,6 +319,7 @@ const log = (line: string) => console.log(`[tts] ${line}`);
 export const ttsRuntime = createTtsRuntime({
   ttsDir: TTS_DIR,
   workerScript: WORKER_SCRIPT,
+  constraintsFile: CONSTRAINTS_FILE,
   uvUrl: uvDownloadUrl(),
   download: downloadToFile,
   exec: execLogged(log),
