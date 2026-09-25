@@ -33,14 +33,12 @@ export const en: Record<string, string> = {
   "New chapters": "New chapters",
 
   // Job strip
-  "Ready": "Ready",
   "Crawl progress": "Crawl progress",
   "Crawl completed": "Crawl completed",
   "Preparing…": "Preparing…",
   "{done}/{total} chapters": "{done}/{total} chapters",
   "{eta} remaining": "{eta} remaining",
   "{count} errors": "{count} errors",
-  "Log ({count})": "Log ({count})",
   "Downloaded {count} chapters": "Downloaded {count} chapters",
   "Downloaded {done}/{total} chapters": "Downloaded {done}/{total} chapters",
   "Exported EPUB": "Exported EPUB",
@@ -462,4 +460,9 @@ export const en: Record<string, string> = {
   "Listen": "Listen",
   "Pause the narration": "Pause the narration",
   "Listen to this chapter": "Listen to this chapter",
+
+  // Crawl log dialog
+  "Show the crawl log": "Show the crawl log",
+  "Crawl log": "Crawl log",
+  "Nothing logged yet.": "Nothing logged yet.",
 };

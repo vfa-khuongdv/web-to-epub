@@ -20,12 +20,19 @@ test("crawls pending chapters with live progress and stores extracted content", 
   await page.getByRole("button", { name: "Crawl happy path", exact: true }).click();
   await page.getByRole("button", { name: "Continue crawl (3 chapters)" }).click();
 
-  await expect(page.locator("header").getByText(/^Crawling/)).toBeVisible();
-  await expect(page.getByRole("progressbar", { name: "Crawl progress" })).toBeVisible();
+  // Progress and log live in a dialog opened from the header, not a strip along the bottom.
+  await page.locator("header").getByRole("button", { name: /^Crawling/ }).click();
+  const log = page.getByRole("dialog", { name: "Crawl log" });
+  await expect(log.getByRole("progressbar", { name: "Crawl progress" })).toBeVisible();
   await expect(page.getByRole("status").filter({ hasText: "Downloaded 3 chapters" })).toBeVisible({
     timeout: 90_000,
   });
-  await expect(page.getByText("Done · Story: Crawl happy path")).toBeVisible();
+  await expect(log.getByText("Done · Story: Crawl happy path")).toBeVisible();
+  await expect(log.getByRole("progressbar", { name: "Crawl completed" })).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(log).toHaveCount(0);
+  // Closed, the last run stays one click away.
+  await expect(page.locator("header").getByRole("button", { name: "Crawl log" })).toBeVisible();
 
   const stored = await store.get(story.id);
   expect(stored?.chapters.map((c) => c.status)).toEqual(["done", "done", "done"]);

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import LibraryView from "./components/LibraryView";
 import SettingsOverlay from "./components/SettingsOverlay";
-import { JobStrip } from "./components/JobStrip";
+import { CrawlLogButton, CrawlLogDialog } from "./components/CrawlLog";
 import { NoticeStack } from "./components/NoticeStack";
 import { UpdateDialog } from "./components/UpdateDialog";
 import { Icon } from "./components/Icon";
@@ -17,6 +17,7 @@ export default function App() {
   const [sitesOpen, setSitesOpen] = useState(false);
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [crawlLogOpen, setCrawlLogOpen] = useState(false);
   // Only autoScanOnOpen is needed out here (the library reads it); the settings page
   // loads the rest itself. Undefined until the answer arrives, so the library does not
   // run the launch check against a guess.
@@ -146,12 +147,9 @@ export default function App() {
             <Icon name="settings" size={14} />
           </button>
 
-          {job.running ? (
-            <span className="chip chip-running">
-              <Icon name="dot" size={12} className="animate-pulse" />
-              {job.total > 0 ? t("Crawling {done}/{total}", { done: job.cursor, total: job.total }) : t("Crawling")}
-            </span>
-          ) : (
+          <CrawlLogButton job={job} onOpen={() => setCrawlLogOpen(true)} />
+
+          {job.running ? null : (
             // Help: the count alone doesn't say *which* sites are accepted, and that
             // is the first thing someone with a URL in hand wants to know.
             <span className="relative flex items-center">
@@ -227,7 +225,7 @@ export default function App() {
         />
       </div>
 
-      <JobStrip job={job} />
+      {crawlLogOpen && <CrawlLogDialog job={job} onClose={() => setCrawlLogOpen(false)} />}
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
 
       {settingsOpen && (

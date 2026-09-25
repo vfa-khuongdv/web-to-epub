@@ -34,14 +34,12 @@ export const vi: Record<string, string> = {
   "New chapters": "Chương mới",
 
   // Job strip
-  "Ready": "Sẵn sàng",
   "Crawl progress": "Tiến trình crawl",
   "Crawl completed": "Lần crawl đã xong",
   "Preparing…": "Đang chuẩn bị…",
   "{done}/{total} chapters": "{done}/{total} chương",
   "{eta} remaining": "còn {eta}",
   "{count} errors": "{count} lỗi",
-  "Log ({count})": "Nhật ký ({count})",
   "Downloaded {count} chapters": "Đã tải xong {count} chương",
   "Downloaded {done}/{total} chapters": "Đã tải xong {done}/{total} chương",
   "Exported EPUB": "Đã xuất xong EPUB",
@@ -464,4 +462,9 @@ export const vi: Record<string, string> = {
   "Listen": "Nghe",
   "Pause the narration": "Tạm dừng giọng đọc",
   "Listen to this chapter": "Nghe chương này",
+
+  // Crawl log dialog
+  "Show the crawl log": "Xem nhật ký crawl",
+  "Crawl log": "Nhật ký crawl",
+  "Nothing logged yet.": "Chưa có nhật ký nào.",
 };
