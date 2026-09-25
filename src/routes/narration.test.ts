@@ -263,8 +263,14 @@ describe("narration routes", () => {
     const opf = Buffer.from(narrated["OEBPS/content.opf"]).toString();
     expect(opf).toContain('media-type="audio/mpeg"');
     const withAudio = Object.entries(narrated).filter(
-      ([name, bytes]) => name.endsWith(".xhtml") && Buffer.from(bytes).toString().includes("<audio controls")
+      ([name, bytes]) => name.endsWith(".xhtml") && Buffer.from(bytes).toString().includes('<audio controls="controls"')
     );
     expect(withAudio).toHaveLength(1);
+    // Every chapter must be well-formed XHTML, the way Apple Books parses it.
+    const { JSDOM } = await import("jsdom");
+    for (const [name, bytes] of Object.entries(narrated)) {
+      if (!name.endsWith(".xhtml")) continue;
+      expect(() => new JSDOM(Buffer.from(bytes).toString(), { contentType: "application/xhtml+xml" }), name).not.toThrow();
+    }
   }, 30_000);
 });

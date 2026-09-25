@@ -90,7 +90,7 @@ test("exports a validated EPUB with edits, images and media", async ({ page }) =
   // packMedia patched the media file, manifest and the controls attribute back in.
   expect(Object.keys(epub.files).some((key) => key.endsWith(".mp3"))).toBe(true);
   expect(epub.opf).toContain("audio/mpeg");
-  expect(epub.allXhtml).toMatch(/<audio controls/);
+  expect(epub.allXhtml).toMatch(/<audio controls="controls"/);
 });
 
 test("disables export when no chapter is done", async ({ page }) => {

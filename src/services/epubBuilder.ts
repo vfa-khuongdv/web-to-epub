@@ -445,7 +445,15 @@ export async function packMedia(epubBytes: Buffer, media: EpubMedia[]): Promise<
     if (!name.endsWith(".xhtml")) continue;
     const html = Buffer.from(bytes).toString("utf8");
     if (!/<(?:audio|video)\b/i.test(html)) continue;
-    entries[name] = Buffer.from(html.replace(/<(audio|video)\b/gi, "<$1 controls"), "utf8");
+    // Chapters are XHTML, where every attribute needs a value: a bare `controls` is a
+    // fatal XML error in strict readers (Apple Books refuses to render the chapter).
+    // Any `controls` already on the tag is dropped first so it is never duplicated.
+    const patched = html.replace(
+      /<(audio|video)\b([^>]*)>/gi,
+      (_tag, name: string, attrs: string) =>
+        `<${name} controls="controls"${attrs.replace(/\s+controls(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?(?=[\s/>]|$)/gi, "")}>`
+    );
+    entries[name] = Buffer.from(patched, "utf8");
   }
 
   for (const m of media) {
