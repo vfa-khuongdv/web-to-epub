@@ -20,6 +20,7 @@ describe("TTS runtime", () => {
     deps = {
       ttsDir,
       workerScript: FAKE_WORKER,
+      constraintsFile: path.join(path.dirname(ttsDir), "constraints.txt"),
       uvUrl: "https://example.test/uv.tar.gz",
       download: vi.fn(async (_url: string, dest: string, onBytes: (d: number, t: number) => void) => {
         onBytes(5, 10);
@@ -42,6 +43,7 @@ describe("TTS runtime", () => {
       idleMs: 50,
       log: () => {},
     };
+    await fs.writeFile(deps.constraintsFile, "onnxruntime==1.24.4\n");
     runtime = createTtsRuntime(deps);
   });
 
@@ -78,6 +80,32 @@ describe("TTS runtime", () => {
     const [cmd] = vi.mocked(deps.startWorker).mock.calls[0];
     expect(cmd.env?.HF_HOME).toBe(path.join(ttsDir, "hf"));
     expect(cmd.args).toEqual([FAKE_WORKER]);
+  });
+
+  it("installs with the constraints file and asks to install again when it changes", async () => {
+    await runtime.install("turbo");
+    const pip = vi.mocked(deps.exec).mock.calls.find(([, args]) => args[0] === "pip")!;
+    expect(pip[1]).toEqual(["pip", "install", "--python", expect.any(String), "-c", deps.constraintsFile, `vieneu==${VIENEU_VERSION}`]);
+    expect((await runtime.status()).state).toBe("installed");
+
+    await fs.writeFile(deps.constraintsFile, "onnxruntime==1.24.5\n");
+    expect((await runtime.status()).state).toBe("not-installed");
+    await runtime.install("turbo");
+    expect((await runtime.status()).state).toBe("installed");
+  });
+
+  it("throws away a model cache written by other library versions, keeps one written by these", async () => {
+    const leftover = path.join(ttsDir, "hf", "hub", "stale-blob");
+    await fs.mkdir(path.dirname(leftover), { recursive: true });
+    await fs.writeFile(leftover, "downloaded by another huggingface_hub");
+    await runtime.install("turbo");
+    await expect(fs.access(leftover)).rejects.toThrow();
+
+    const partial = path.join(ttsDir, "hf", "hub", "partial.incomplete");
+    await fs.mkdir(path.dirname(partial), { recursive: true });
+    await fs.writeFile(partial, "resume me");
+    await runtime.install("turbo");
+    expect(await fs.readFile(partial, "utf8")).toBe("resume me");
   });
 
   it("reinstalling skips the steps already done", async () => {
