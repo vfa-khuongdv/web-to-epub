@@ -5,11 +5,10 @@ import {
   NarrationVoice,
   chapterAudioPath,
   ensureStoryAudioDir,
-  narrationKey,
   readFreshAudio,
   writeAudioMeta,
 } from "./audioCache";
-import { chapterParts } from "./chapterText";
+import { chapterParts, chapterPartsWithBlocks } from "./chapterText";
 import { TtsRuntime } from "./runtime";
 import { NarrationCancelled, TtsVariant } from "./workerClient";
 
@@ -35,29 +34,77 @@ function readable(chapter: Pick<StoredChapter, "status">): boolean {
   return chapter.status === "done";
 }
 
-export function chapterKey(chapter: StoredChapter, settings: NarrationSettings): string | undefined {
-  const parts = chapterParts(chapter.title, chapter.blocks ?? []);
-  if (parts.length === 0) return undefined;
-  return narrationKey(parts, narrationVoice(settings), VIENEU_VERSION);
+// The current voice, so audio saved before text-only freshness is still recognised.
+function legacy(settings: NarrationSettings) {
+  return { voice: narrationVoice(settings), engineVersion: VIENEU_VERSION };
 }
 
-// The audio file of one chapter, if it matches the chapter's current text and voice.
+// The audio file of one chapter, if it matches the chapter's current text. The voice in
+// Settings does not matter: audio made with another voice keeps playing.
 export async function freshChapterAudio(
   stories: StoryStore,
   dataDir: string,
   storyId: string,
   order: number,
   settings: NarrationSettings
-): Promise<{ filePath: string; seconds: number; title: string } | undefined> {
+): Promise<{ filePath: string; seconds: number; timings?: [number, number][]; title: string; chapter: StoredChapter } | undefined> {
   const chapter = await stories.getChapter(storyId, order);
   if (!chapter || !readable(chapter)) return undefined;
-  const key = chapterKey(chapter, settings);
-  const audio = key ? await readFreshAudio(dataDir, storyId, order, key) : undefined;
-  return audio ? { ...audio, title: chapter.title } : undefined;
+  const parts = chapterParts(chapter.title, chapter.blocks ?? []);
+  if (parts.length === 0) return undefined;
+  const audio = await readFreshAudio(dataDir, storyId, order, parts, legacy(settings));
+  return audio ? { ...audio, title: chapter.title, chapter } : undefined;
+}
+
+// Silence the worker puts after every part (tts/vieneu_worker.py PAUSE_SECONDS).
+const PAUSE_SECONDS = 0.35;
+
+export interface TimelinePart {
+  // Block index in the chapter (element index in its HTML), -1 for the title.
+  block: number;
+  start: number;
+  end: number;
 }
 
 /**
- * Which chapters already have audio matching their current text and the current voice.
+ * When each part of a chapter's audio plays, and which block it reads — what the reader
+ * highlights while listening. Audio made before timings were recorded gets an estimate:
+ * the speech time shared out by each part's length in characters.
+ */
+export async function chapterNarrationTimeline(
+  stories: StoryStore,
+  dataDir: string,
+  storyId: string,
+  order: number,
+  settings: NarrationSettings
+): Promise<TimelinePart[] | undefined> {
+  const audio = await freshChapterAudio(stories, dataDir, storyId, order, settings);
+  if (!audio) return undefined;
+  const parts = chapterPartsWithBlocks(audio.chapter.title, audio.chapter.blocks ?? []);
+  if (audio.timings && audio.timings.length === parts.length) {
+    return parts.map((part, i) => ({ block: part.block, start: audio.timings![i][0], end: audio.timings![i][1] }));
+  }
+  return estimateTimeline(parts, audio.seconds);
+}
+
+export function estimateTimeline(parts: { text: string; block: number }[], seconds: number): TimelinePart[] {
+  const speech = Math.max(0, seconds - PAUSE_SECONDS * parts.length);
+  const chars = parts.reduce((sum, part) => sum + part.text.length, 0) || 1;
+  let at = 0;
+  return parts.map((part) => {
+    const length = (speech * part.text.length) / chars;
+    const entry = { block: part.block, start: round(at), end: round(at + length) };
+    at += length + PAUSE_SECONDS;
+    return entry;
+  });
+}
+
+function round(seconds: number): number {
+  return Math.round(seconds * 1000) / 1000;
+}
+
+/**
+ * Which chapters already have audio matching their current text.
  * Reads each chapter's content one at a time rather than the whole story at once.
  */
 export async function narrationStates(
@@ -71,9 +118,8 @@ export async function narrationStates(
   if (!outline) return states;
   for (const summary of outline.chapters) {
     if (!readable(summary)) continue;
-    const chapter = await stories.getChapter(storyId, summary.order);
-    const key = chapter && chapterKey(chapter, settings);
-    states[summary.order] = key && (await readFreshAudio(dataDir, storyId, summary.order, key)) ? "ready" : "missing";
+    const audio = await freshChapterAudio(stories, dataDir, storyId, summary.order, settings);
+    states[summary.order] = audio ? "ready" : "missing";
   }
   return states;
 }
@@ -131,8 +177,7 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
       continue;
     }
 
-    const key = narrationKey(parts, narrationVoice(settings), VIENEU_VERSION);
-    const cached = await readFreshAudio(job.dataDir, job.storyId, order, key);
+    const cached = await readFreshAudio(job.dataDir, job.storyId, order, parts, legacy(settings));
     if (cached) {
       done++;
       job.onEvent({ type: "narrate-chapter-done", order, seconds: cached.seconds, skipped: true, done, total });
@@ -140,7 +185,7 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
     }
 
     try {
-      const { seconds } = await job.runtime.withModel(settings.variant, (worker) =>
+      const { seconds, timings } = await job.runtime.withModel(settings.variant, (worker) =>
         worker.synth({
           parts,
           voice: settings.voice,
@@ -150,7 +195,12 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
             job.onEvent({ type: "narrate-progress", order, part, parts: count, done, total }),
         })
       );
-      await writeAudioMeta(job.dataDir, job.storyId, order, key, seconds);
+      await writeAudioMeta(job.dataDir, job.storyId, order, parts, {
+        seconds,
+        voice: narrationVoice(settings),
+        engineVersion: VIENEU_VERSION,
+        timings,
+      });
       done++;
       job.onEvent({ type: "narrate-chapter-done", order, seconds, skipped: false, done, total });
     } catch (err) {

@@ -31,7 +31,8 @@ async function handle(message) {
       send({ type: "progress", id: message.id, part: i + 1, parts: message.parts.length });
     }
     fs.writeFileSync(message.out, `${variant}:${message.voice}:${message.parts.join("|")}`);
-    send({ type: "done", id: message.id, seconds: message.parts.length });
+    // One second per part, no pauses: part i spans [i, i + 1].
+    send({ type: "done", id: message.id, seconds: message.parts.length, timings: message.parts.map((_, i) => [i, i + 1]) });
     return;
   }
   send({ type: "error", id: message.id ?? null, message: `unknown command: ${message.cmd}` });

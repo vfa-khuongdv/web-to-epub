@@ -522,6 +522,27 @@ export async function stopNarration(storyId: string): Promise<void> {
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not stop narration")));
 }
 
+// When each part of a chapter's narration plays, and which block it reads (the reader's
+// highlight). Blocks index the chapter content's elements; -1 is the title.
+export async function fetchNarrationTimeline(
+  storyId: string,
+  order: number
+): Promise<{ block: number; start: number; end: number }[]> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/narration`, {
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load narration")));
+  return ((await res.json()) as { parts: { block: number; start: number; end: number }[] }).parts;
+}
+
+export async function deleteStoryAudio(storyId: string): Promise<void> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/narration`, {
+    method: "DELETE",
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete the audio")));
+}
+
 // Opened by <a href> / <audio src>, which send no headers: the private-mode token rides
 // in the query. `download` asks for the attachment file name (the player does not want it).
 export function chapterAudioUrl(storyId: string, order: number, options: { download?: boolean } = {}): string {

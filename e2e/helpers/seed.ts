@@ -160,8 +160,8 @@ export function writeStoredCover(storyId: string): string {
   return `covers/${storyId}.png`;
 }
 
-const narrate = require(path.join(REPO_ROOT, "dist", "services", "tts", "narrate.js")) as typeof import(
-  "../../src/services/tts/narrate"
+const chapterText = require(path.join(REPO_ROOT, "dist", "services", "tts", "chapterText.js")) as typeof import(
+  "../../src/services/tts/chapterText"
 );
 const audioCache = require(path.join(REPO_ROOT, "dist", "services", "tts", "audioCache.js")) as typeof import(
   "../../src/services/tts/audioCache"
@@ -172,15 +172,19 @@ export const NARRATION_MP3 = path.join(REPO_ROOT, "e2e", "assets", "narration.mp
 
 /**
  * Give a chapter narration as if a job had made it: the MP3 plus the key over its
- * current text and the default voice (Settings untouched: turbo, model default), so
- * the app reads it as current. Needs no TTS engine.
+ * current text, so the app reads it as current. Needs no TTS engine.
  */
 export async function seedNarration(storyId: string, order: number, target: StoryStore = store): Promise<void> {
   const chapter = await target.getChapter(storyId, order);
   if (!chapter) throw new Error(`Seed failed: chapter ${order} of ${storyId} not found`);
-  const key = narrate.chapterKey(chapter, { variant: "turbo", voice: "" });
-  if (!key) throw new Error(`Seed failed: chapter ${order} has nothing to narrate`);
+  const parts = chapterText.chapterParts(chapter.title, chapter.blocks ?? []);
+  if (parts.length === 0) throw new Error(`Seed failed: chapter ${order} has nothing to narrate`);
   await audioCache.ensureStoryAudioDir(DATA_DIR, storyId);
   fs.copyFileSync(NARRATION_MP3, audioCache.chapterAudioPath(DATA_DIR, storyId, order));
-  await audioCache.writeAudioMeta(DATA_DIR, storyId, order, key, 2.5);
+  // No timings: the reader's highlight then runs on the estimated timeline.
+  await audioCache.writeAudioMeta(DATA_DIR, storyId, order, parts, {
+    seconds: 2.5,
+    voice: { variant: "turbo", voice: "" },
+    engineVersion: "e2e",
+  });
 }

@@ -5,7 +5,16 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { StoredStory } from "../../types";
 import { StoryStore, createStoryStore, storyId } from "../storyStore";
 import { chapterAudioPath } from "./audioCache";
-import { NarrateEvent, NarrationSettings, chaptersToNarrate, isNarratable, narrateChapters, narrationStates } from "./narrate";
+import {
+  NarrateEvent,
+  NarrationSettings,
+  chapterNarrationTimeline,
+  chaptersToNarrate,
+  estimateTimeline,
+  isNarratable,
+  narrateChapters,
+  narrationStates,
+} from "./narrate";
 import { NarrationCancelled, SynthRequest, TtsWorker } from "./workerClient";
 
 const STORY_ID = storyId("https://example.com/truyen/");
@@ -38,6 +47,7 @@ function fakeRuntime() {
   const runtime = {
     calls,
     beforeSynth: undefined as undefined | ((request: SynthRequest) => void),
+    timings: undefined as undefined | [number, number][],
     async withModel<T>(variant: string, fn: (worker: TtsWorker) => Promise<T>): Promise<T> {
       const worker = {
         closed: false,
@@ -50,7 +60,7 @@ function fakeRuntime() {
           if (request.parts.includes("FAIL")) throw new Error("model blew up");
           request.onProgress?.(1, request.parts.length);
           await fs.writeFile(request.out, request.parts.join("|"));
-          return { seconds: request.parts.length * 2 };
+          return { seconds: request.parts.length * 2, timings: runtime.timings ?? [] };
         },
       } as unknown as TtsWorker;
       return fn(worker);
@@ -121,7 +131,7 @@ describe("narration job", () => {
     expect(events.at(-1)).toMatchObject({ seconds: 4, skipped: false, done: 2, total: 4 });
   });
 
-  it("skips chapters whose audio is fresh, and redoes them when text or voice change", async () => {
+  it("skips chapters whose audio is current, keeps it when the voice changes, redoes it when the text does", async () => {
     await narrateChapters(job(fakeRuntime()), [1, 5]);
     expect(await narrationStates(stories, dir, STORY_ID, settings)).toEqual({ 1: "ready", 3: "missing", 4: "missing", 5: "ready" });
 
@@ -129,15 +139,42 @@ describe("narration job", () => {
     await narrateChapters(job(again), [1, 5]);
     expect(again.calls).toHaveLength(0);
 
+    // Another model/voice in Settings: what exists stays ready and is not redone.
+    settings = { variant: "nano", voice: "B" };
+    expect(await narrationStates(stories, dir, STORY_ID, settings)).toMatchObject({ 1: "ready", 5: "ready" });
+    const revoiced = fakeRuntime();
+    await narrateChapters(job(revoiced), [1, 5]);
+    expect(revoiced.calls).toHaveLength(0);
+
+    // An edited chapter is stale, and only that one is redone — in the new voice.
     const edited = (await stories.getChapter(STORY_ID, 1))!;
     edited.blocks = [{ type: "paragraph", text: "Một, đã sửa." }];
     await stories.saveChapter(STORY_ID, edited);
-    settings = { variant: "turbo", voice: "B" };
-    expect(await narrationStates(stories, dir, STORY_ID, settings)).toMatchObject({ 1: "missing", 5: "missing" });
-
+    expect(await narrationStates(stories, dir, STORY_ID, settings)).toMatchObject({ 1: "missing", 5: "ready" });
     const redo = fakeRuntime();
     await narrateChapters(job(redo), [1, 5]);
-    expect(redo.calls.map((c) => c.request.voice)).toEqual(["B", "B"]);
+    expect(redo.calls.map((c) => [c.variant, c.request.voice])).toEqual([["nano", "B"]]);
+  });
+
+  it("records each part's timing and serves the chapter's timeline, estimating it for older audio", async () => {
+    await narrateChapters(job(fakeRuntime()), [1]);
+    // The fake worker gives no timings, so this is the estimate: title first (block -1),
+    // then the paragraph (block 0), in order, within the audio's length.
+    const estimated = await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings);
+    expect(estimated?.map((p) => p.block)).toEqual([-1, 0]);
+    expect(estimated![0].start).toBe(0);
+    expect(estimated![1].start).toBeGreaterThan(estimated![0].end);
+    expect(estimated![1].end).toBeLessThanOrEqual(4);
+
+    const timed = fakeRuntime();
+    timed.timings = [[0, 1.2], [1.6, 3.9]];
+    await fs.rm(path.join(dir, "audio"), { recursive: true });
+    await narrateChapters(job(timed), [1]);
+    expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings)).toEqual([
+      { block: -1, start: 0, end: 1.2 },
+      { block: 0, start: 1.6, end: 3.9 },
+    ]);
+    expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 3, settings)).toBeUndefined();
   });
 
   it("reads the voice per chapter, so a change applies from the next chapter", async () => {
@@ -159,3 +196,18 @@ describe("narration job", () => {
     expect(events.some((e) => e.type === "narrate-error")).toBe(false);
   });
 });
+
+describe("estimateTimeline", () => {
+  it("shares the speech time by length and leaves the pause after each part", () => {
+    const parts = [
+      { text: "aa", block: -1 },
+      { text: "aaaaaa", block: 0 },
+    ];
+    // 4.7 s = 4 s of speech + 2 × 0.35 s of pause.
+    expect(estimateTimeline(parts, 4.7)).toEqual([
+      { block: -1, start: 0, end: 1 },
+      { block: 0, start: 1.35, end: 4.35 },
+    ]);
+  });
+});
+

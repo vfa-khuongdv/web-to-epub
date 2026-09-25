@@ -30,12 +30,23 @@ test("plays a chapter's narration, moves on to the next one, and keeps playing i
   await expect(bar).toContainText("Chương hai", { timeout: 15_000 });
   await expect(bar.getByRole("button", { name: "Pause" })).toBeVisible();
 
-  // The title opens the reader on the chapter being played, with the player still there.
+  // The title opens the reader on the chapter being played. Inside, a mini player sits in
+  // the reader's top bar (no big bar at the bottom), and the paragraph being read is
+  // highlighted — one element at a time.
   await bar.getByRole("button", { name: "Chương hai" }).click();
   const reader = page.getByRole("dialog", { name: /Reading/ });
   await expect(reader.locator(".reader-now")).toContainText("Chương hai");
-  await expect(reader.getByRole("region", { name: "Narration player" })).toBeVisible();
-  await expect(reader.getByRole("button", { name: "Pause" }).first()).toBeVisible();
+  const mini = reader.locator(".reader-bar").getByRole("region", { name: "Narration player" });
+  await expect(mini).toBeVisible();
+  await expect(reader.getByRole("region", { name: "Narration player" })).toHaveCount(1);
+  await expect(reader.frameLocator("iframe").locator(".narrating")).toHaveCount(1);
+
+  // Closing the mini player stops the voice and clears the highlight.
+  await mini.getByRole("button", { name: "Close player" }).click();
+  await expect(reader.getByRole("region", { name: "Narration player" })).toHaveCount(0);
+  await expect(reader.frameLocator("iframe").locator(".narrating")).toHaveCount(0);
+  // The chapter can be listened to again from the reader's Listen button.
+  await expect(reader.getByRole("button", { name: "Listen" })).toBeVisible();
 });
 
 test("offers no player for a story without narration", async ({ page }) => {
@@ -82,6 +93,7 @@ test("keeps playing while browsing to another story, and brings its reader back 
   await bar.getByRole("button", { name: "Hồi một" }).click();
   const reader = page.getByRole("dialog", { name: /Reading Đang nghe/ });
   await expect(reader.locator(".reader-now")).toContainText("Hồi một");
-  // The same player is inside the reader (the 2.5 s fixture may have ended by now).
-  await expect(reader.getByRole("region", { name: "Narration player" })).toContainText("Hồi một");
+  // The same player, as the reader's mini player (the 2.5 s fixture may have ended by now).
+  await expect(reader.locator(".reader-bar").getByRole("region", { name: "Narration player" })).toBeVisible();
+  await expect(reader.frameLocator("iframe").locator(".narrating")).toHaveCount(1);
 });

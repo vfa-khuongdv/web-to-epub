@@ -281,4 +281,32 @@ describe("narration routes", () => {
       expect(() => new JSDOM(Buffer.from(bytes).toString(), { contentType: "application/xhtml+xml" }), name).not.toThrow();
     }
   }, 30_000);
+
+  it("serves a chapter's narration timeline for the reader's highlight", async () => {
+    expect((await fetch(`${base}/stories/${viId}/chapters/1/narration`)).status).toBe(409);
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+    const { parts } = await (await fetch(`${base}/stories/${viId}/chapters/1/narration`)).json();
+    // Title, then the one paragraph (block 0); the fake gives 3 s of audio and no timings.
+    expect(parts.map((p: { block: number }) => p.block)).toEqual([-1, 0]);
+    expect(parts[1].end).toBeLessThanOrEqual(3);
+  });
+
+  it("deletes a story's audio, but not while it is being narrated", async () => {
+    await post(`/stories/${viId}/narrate`);
+    await waitIdle(viId);
+    expect((await fetch(`${base}/stories/${viId}/narration`)).ok).toBe(true);
+
+    let open!: () => void;
+    fake.gate = new Promise((r) => (open = r));
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    expect((await fetch(`${base}/stories/${viId}/narration`, { method: "DELETE" })).status).toBe(409);
+    open();
+    await waitIdle(viId);
+
+    expect((await fetch(`${base}/stories/${viId}/narration`, { method: "DELETE" })).status).toBe(200);
+    expect((await (await fetch(`${base}/stories/${viId}/narration`)).json()).chapters).toEqual({ 1: "missing", 2: "missing" });
+    expect((await fetch(`${base}/stories/${"0".repeat(40)}/narration`, { method: "DELETE" })).status).toBe(404);
+  });
 });
+

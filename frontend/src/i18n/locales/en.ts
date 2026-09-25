@@ -458,11 +458,16 @@ export const en: Record<string, string> = {
   "Pause chapter {order}": "Pause chapter {order}",
   "Listen to chapter {order}": "Listen to chapter {order}",
   "Listen": "Listen",
-  "Pause the narration": "Pause the narration",
   "Listen to this chapter": "Listen to this chapter",
 
   // Crawl log dialog
   "Show the crawl log": "Show the crawl log",
   "Crawl log": "Crawl log",
   "Nothing logged yet.": "Nothing logged yet.",
+
+  // Narration (reader, delete)
+  "Could not delete the audio": "Could not delete the audio",
+  "Ch. {order}": "Ch. {order}",
+  "Delete audio": "Delete audio",
+  "Delete this story's narration? Chapters can be narrated again afterwards.": "Delete this story's narration? Chapters can be narrated again afterwards.",
 };

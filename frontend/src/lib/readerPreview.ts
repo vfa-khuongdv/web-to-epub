@@ -1,4 +1,5 @@
 import { CONTENT_ID, HIGHLIGHT_CSS } from "./highlightDom";
+import { NARRATING_CSS } from "./narrationHighlight";
 
 // Keep in sync with KINDLE_CSS in src/services/epubBuilder.ts. The preview is only
 // honest if it uses the exact stylesheet the exported book carries — epub-gen replaces
@@ -93,7 +94,7 @@ export function readerDocument(
 <!-- Some CDNs (Google Drive) block hotlinked images by Referer, same as the cover thumbnail. -->
 <meta name="referrer" content="no-referrer" />
 <style>${KINDLE_CSS}</style>
-<style>${HIGHLIGHT_CSS}</style>
+<style>${HIGHLIGHT_CSS}${NARRATING_CSS}</style>
 <style>
 html { background: ${page.bg}; }
 body {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { chapterParts, splitLongText } from "./chapterText";
+import { chapterParts, chapterPartsWithBlocks, splitLongText } from "./chapterText";
 
 describe("splitLongText", () => {
   it("keeps short text as one part", () => {
@@ -58,4 +58,20 @@ describe("chapterParts", () => {
     expect(parts.length).toBeGreaterThan(1);
     expect(parts.every((p) => p.length <= 250)).toBe(true);
   });
+
+  it("says which block each part reads: -1 for the title, the block index otherwise", () => {
+    const long = "Một câu dài vừa phải để tách. ".repeat(12);
+    const parts = chapterPartsWithBlocks("Chương 3", [
+      { type: "heading", level: 1, text: "Chương 3" },
+      { type: "image", src: "x.png" },
+      { type: "paragraph", text: long },
+      { type: "paragraph", text: "Cuối." },
+    ]);
+    expect(parts[0]).toEqual({ text: "Chương 3", block: -1 });
+    const blocks = parts.slice(1).map((p) => p.block);
+    expect(new Set(blocks.slice(0, -1))).toEqual(new Set([2]));
+    expect(blocks.length).toBeGreaterThan(2);
+    expect(parts.at(-1)).toEqual({ text: "Cuối.", block: 3 });
+  });
 });
+

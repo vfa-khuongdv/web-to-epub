@@ -2,8 +2,15 @@ import { Router } from "express";
 import { estimateRemainingMs } from "../services/crawl";
 import { t } from "../services/lang";
 import { settingsStore } from "../services/settingsStore";
-import { storyAudioBytes } from "../services/tts/audioCache";
-import { NarrateEvent, chaptersToNarrate, isNarratable, narrateChapters, narrationStates } from "../services/tts/narrate";
+import { removeStoryAudio, storyAudioBytes } from "../services/tts/audioCache";
+import {
+  NarrateEvent,
+  chapterNarrationTimeline,
+  chaptersToNarrate,
+  isNarratable,
+  narrateChapters,
+  narrationStates,
+} from "../services/tts/narrate";
 import { ttsRuntime } from "../services/tts/runtime";
 import { Library, NarrationRun, libraryFor } from "./library";
 import { writeSse } from "./live";
@@ -173,6 +180,39 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
       cancelled: abort.signal.aborted,
     });
   }
+});
+
+// When each part of a chapter's audio plays and which block it reads: the reader
+// highlights the paragraph being read from this.
+narrationRouter.get("/stories/:id/chapters/:order/narration", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const order = Number(req.params.order);
+  const parts = Number.isInteger(order)
+    ? await chapterNarrationTimeline(library.stories, library.dataDir, req.params.id, order, narrationSettings())
+    : undefined;
+  if (!parts) {
+    res.status(409).json({ message: t("Chapter audio has not been generated yet — narrate the chapter first") });
+    return;
+  }
+  res.json({ parts });
+});
+
+// Drop a story's narration, e.g. to read it again with another voice: audio made with an
+// earlier voice keeps playing otherwise.
+narrationRouter.delete("/stories/:id/narration", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  if (library.runningNarrations.has(req.params.id)) {
+    res.status(409).json({ message: t("Narration is running — stop it first") });
+    return;
+  }
+  if (!(await library.stories.getOutline(req.params.id))) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  await removeStoryAudio(library.dataDir, req.params.id);
+  res.json({ ok: true });
 });
 
 narrationRouter.post("/stories/:id/narrate/stop", (req, res) => {

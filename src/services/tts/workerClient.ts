@@ -44,6 +44,7 @@ interface WorkerMessage {
   part?: number;
   parts?: number;
   seconds?: number;
+  timings?: [number, number][];
   variant?: TtsVariant;
   voices?: TtsVoice[];
   sampleRate?: number;
@@ -57,7 +58,8 @@ export interface WorkerCommand {
 
 export interface TtsWorker {
   load(variant: TtsVariant): Promise<LoadedModel>;
-  synth(request: SynthRequest): Promise<{ seconds: number }>;
+  // `timings`: [start, end] seconds of each part in the file.
+  synth(request: SynthRequest): Promise<{ seconds: number; timings: [number, number][] }>;
   close(): void;
   readonly closed: boolean;
 }
@@ -170,12 +172,12 @@ export function startTtsWorker(cmd: WorkerCommand, log: (line: string) => void =
       if (signal?.aborted) return Promise.reject(new NarrationCancelled());
       const id = randomUUID();
       let onAbort: (() => void) | undefined;
-      const promise = request<{ seconds: number }>(
+      const promise = request<{ seconds: number; timings: [number, number][] }>(
         { cmd: "synth", id, parts, voice, out },
         (message, resolve, reject) => {
           if (message.id !== id) return;
           if (message.type === "progress") onProgress?.(message.part ?? 0, message.parts ?? parts.length);
-          else if (message.type === "done") resolve({ seconds: message.seconds ?? 0 });
+          else if (message.type === "done") resolve({ seconds: message.seconds ?? 0, timings: message.timings ?? [] });
           else if (message.type === "cancelled") reject(new NarrationCancelled());
           else if (message.type === "error") reject(new Error(message.message ?? "TTS synthesis failed"));
         }
