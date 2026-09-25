@@ -445,4 +445,23 @@ export const vi: Record<string, string> = {
   // Narration (story page)
   "Turn chapters into audio with a voice model on this machine.": "Chuyển chương thành audio bằng model giọng đọc chạy trên máy này.",
   "Set up narration": "Cài giọng đọc",
+
+  // Narration player
+  "Narration player": "Trình phát giọng đọc",
+  "Previous chapter": "Chương trước",
+  "Next chapter": "Chương sau",
+  "Back {seconds} seconds": "Lùi {seconds} giây",
+  "Forward {seconds} seconds": "Tới {seconds} giây",
+  "Pause": "Tạm dừng",
+  "Play": "Phát",
+  "Read this chapter": "Đọc chương này",
+  "Position": "Vị trí",
+  "Playback speed": "Tốc độ phát",
+  "Close player": "Đóng trình phát",
+  "Could not play this chapter's audio.": "Không phát được audio của chương này.",
+  "Pause chapter {order}": "Tạm dừng chương {order}",
+  "Listen to chapter {order}": "Nghe chương {order}",
+  "Listen": "Nghe",
+  "Pause the narration": "Tạm dừng giọng đọc",
+  "Listen to this chapter": "Nghe chương này",
 };

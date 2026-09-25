@@ -20,6 +20,7 @@ import {
   Minimize,
   Monitor,
   Moon,
+  Pause,
   Pencil,
   Play,
   RotateCw,
@@ -62,6 +63,7 @@ export type IconName =
   | "lock"
   | "settings"
   | "narration"
+  | "pause"
   | "stop";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
@@ -96,6 +98,7 @@ const icons: Record<IconName, LucideIcon> = {
   lock: Lock,
   settings: Settings,
   narration: Headphones,
+  pause: Pause,
   stop: Square,
 };
 

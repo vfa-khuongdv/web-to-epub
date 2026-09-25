@@ -27,7 +27,8 @@ const freshChapterAudio = (stories: Parameters<typeof freshAudio>[0], dataDir: s
   freshAudio(stories, dataDir, storyId, order, narrationSettings());
 
 // Opened by an <a href> / <audio src>, which cannot send headers: the private-mode token
-// comes as ?vault=, which libraryFor already accepts.
+// comes as ?vault=, which libraryFor already accepts. Served with sendFile so the player
+// can seek (HTTP Range); `?download=1` adds the attachment name for the download link.
 audioExportsRouter.get("/stories/:id/chapters/:order/audio", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) return;
@@ -39,13 +40,9 @@ audioExportsRouter.get("/stories/:id/chapters/:order/audio", async (req, res) =>
     res.status(409).json({ message: t("Chapter audio has not been generated yet — narrate the chapter first") });
     return;
   }
-  const { size } = await fs.stat(audio.filePath);
-  res.writeHead(200, {
-    "Content-Type": "audio/mpeg",
-    "Content-Length": size,
-    "Content-Disposition": contentDisposition(chapterAudioFileName(order, audio.title, 3)),
-  });
-  createReadStream(audio.filePath).pipe(res);
+  const headers: Record<string, string> = { "Content-Type": "audio/mpeg", "Cache-Control": "no-cache" };
+  if (req.query.download === "1") headers["Content-Disposition"] = contentDisposition(chapterAudioFileName(order, audio.title, 3));
+  res.sendFile(audio.filePath, { headers });
 });
 
 // Zip every narrated chapter (or the requested ones) whose audio is current. Chapters

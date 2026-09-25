@@ -522,11 +522,15 @@ export async function stopNarration(storyId: string): Promise<void> {
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not stop narration")));
 }
 
-// Opened by <a href>, which sends no headers: the private-mode token rides in the query.
-export function chapterAudioUrl(storyId: string, order: number): string {
+// Opened by <a href> / <audio src>, which send no headers: the private-mode token rides
+// in the query. `download` asks for the attachment file name (the player does not want it).
+export function chapterAudioUrl(storyId: string, order: number, options: { download?: boolean } = {}): string {
   const token = currentVaultToken();
-  const base = `/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/audio`;
-  return token ? `${base}?vault=${encodeURIComponent(token)}` : base;
+  const params = new URLSearchParams();
+  if (token) params.set("vault", token);
+  if (options.download) params.set("download", "1");
+  const query = params.toString();
+  return `/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/audio${query ? `?${query}` : ""}`;
 }
 
 export interface AudioExport {

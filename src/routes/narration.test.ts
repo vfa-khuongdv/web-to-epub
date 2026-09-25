@@ -207,8 +207,16 @@ describe("narration routes", () => {
     const res = await fetch(`${base}/stories/${viId}/chapters/1/audio`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("audio/mpeg");
-    expect(decodeURIComponent(res.headers.get("content-disposition") ?? "")).toContain("001 - Chương 1.mp3");
+    expect(res.headers.get("content-disposition")).toBeNull();
     expect(await res.text()).toBe("Chương 1|Một.");
+
+    // The player seeks with Range requests.
+    const range = await fetch(`${base}/stories/${viId}/chapters/1/audio`, { headers: { Range: "bytes=0-4" } });
+    expect(range.status).toBe(206);
+    expect(Buffer.from(await range.arrayBuffer()).toString()).toBe(Buffer.from("Chương 1|Một.").subarray(0, 5).toString());
+
+    const download = await fetch(`${base}/stories/${viId}/chapters/1/audio?download=1`);
+    expect(decodeURIComponent(download.headers.get("content-disposition") ?? "")).toContain("001 - Chương 1.mp3");
 
     const edited = (await stories.getChapter(viId, 1))!;
     edited.blocks = [{ type: "paragraph", text: "Đã sửa." }];
