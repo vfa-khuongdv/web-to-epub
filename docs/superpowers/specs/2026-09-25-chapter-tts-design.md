@@ -1,7 +1,7 @@
 # Design: Chapter narration with VieNeu-TTS (local model)
 
 Date: 2026-09-25
-Status: Approved direction; spike done (§8)
+Status: Implemented (branch feat/chapter-narration); §9 lists where the build differs from the plan
 
 ## 1. Objectives
 
@@ -191,3 +191,29 @@ FastAPI):
 5. Per-chapter download + audio ZIP export.
 6. EPUB "Include narration".
 7. Packaging (Electron files, shutdown hook), Docker check, AGENTS.md notes.
+
+## 9. As built — differences from the plan
+
+- **Own live channel.** Narration events go to `/api/narration/live` (snapshot of
+  running jobs on connect, events tagged `storyId`), not the crawl channel: the
+  crawl channel's frontend listener treats every tagged event other than
+  `idle`/`done` as crawl progress, so narration there would mark the story as
+  crawling. `DELETE /narrate` became `POST /stories/:id/narrate/stop`, matching
+  `/crawl/stop`.
+- **Status endpoint.** `GET /stories/:id/narration` → `{ narratable, chapters:
+  { order: "ready" | "missing" }, bytes, running }`; the story page refetches it
+  whenever `story.updatedAt` changes, so an edited chapter shows as missing.
+- **ETA** counts only chapters actually synthesized (cached chapters are skipped in
+  milliseconds and would make it absurdly short).
+- **Worker cancel** is per part: the worker reads stdin on its own thread, so
+  `{"cmd":"cancel"}` lands while a synth is running.
+- **ZIP export** is written to a temp file with backpressure and served once from
+  `GET /exports/audio/:id` (30 min TTL). In the packaged app the renderer never
+  holds it: `electronExport.saveUrl` streams it from `http://127.0.0.1:<port>/api/exports/audio/`
+  (the only URLs it accepts) into the chosen folder.
+- **EPUB**: `embedMedia` reads `file://` sources only inside `localMediaRoots` (the
+  story's audio folder); the route adds the audio only for chapters whose saved
+  text still matches — unsaved editor changes are not narrated.
+- **Settings**: `ttsVariant` / `ttsVoice` in `settingsStore`; switching model resets
+  the voice (voice ids belong to one model).
+

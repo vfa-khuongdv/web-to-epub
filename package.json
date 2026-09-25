@@ -55,7 +55,11 @@
       "dist/**",
       "public/**",
       "electron/**",
+      "tts/**",
       "package.json"
+    ],
+    "asarUnpack": [
+      "tts/**"
     ],
     "extraResources": [
       {
