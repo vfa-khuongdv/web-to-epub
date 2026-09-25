@@ -223,6 +223,7 @@ export default function App() {
           supportedSites={supportedSites}
           pushNotice={pushNotice}
           autoScan={autoScan}
+          onOpenSettings={() => setSettingsOpen(true)}
         />
       </div>
 

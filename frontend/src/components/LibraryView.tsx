@@ -152,6 +152,7 @@ export default function LibraryView({
   supportedSites,
   pushNotice,
   autoScan,
+  onOpenSettings,
 }: {
   job: CrawlJobState;
   live: Record<string, LiveCrawl | undefined>;
@@ -162,6 +163,8 @@ export default function LibraryView({
   // The settings page's "check when the app opens". Undefined while it is still being
   // read: the launch check waits rather than guessing.
   autoScan: boolean | undefined;
+  // Reached from a story page that needs something set up first (narration).
+  onOpenSettings: () => void;
 }) {
   const { lang, t } = useLang();
   const [stories, setStories] = useState<StorySummary[]>([]);
@@ -764,6 +767,7 @@ export default function LibraryView({
           onStoryChanged={handleStoryChanged}
           onClear={() => setSelected(null)}
           pushNotice={pushNotice}
+          onOpenSettings={onOpenSettings}
         />
       ) : (
         <section className="pane">

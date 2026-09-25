@@ -66,6 +66,7 @@ export default function StoryDetail({
   onStoryChanged,
   onClear,
   pushNotice,
+  onOpenSettings,
 }: {
   story: StoredStory;
   job: CrawlJobState;
@@ -74,6 +75,7 @@ export default function StoryDetail({
   onStoryChanged: () => void | Promise<void>;
   onClear: () => void;
   pushNotice: (notice: NoticeInput) => void;
+  onOpenSettings: () => void;
 }) {
   // Before the state below: the chapter list's lazy initializer already needs `t`.
   const { lang, t } = useLang();
@@ -508,6 +510,7 @@ export default function StoryDetail({
               onStart={() => void narration.start()}
               onStop={() => void narration.stop()}
               onDismissOutcome={narration.dismissOutcome}
+              onOpenSettings={onOpenSettings}
             />
           )}
 
