@@ -443,4 +443,23 @@ export const en: Record<string, string> = {
   // Narration (story page)
   "Turn chapters into audio with a voice model on this machine.": "Turn chapters into audio with a voice model on this machine.",
   "Set up narration": "Set up narration",
+
+  // Narration player
+  "Narration player": "Narration player",
+  "Previous chapter": "Previous chapter",
+  "Next chapter": "Next chapter",
+  "Back {seconds} seconds": "Back {seconds} seconds",
+  "Forward {seconds} seconds": "Forward {seconds} seconds",
+  "Pause": "Pause",
+  "Play": "Play",
+  "Read this chapter": "Read this chapter",
+  "Position": "Position",
+  "Playback speed": "Playback speed",
+  "Close player": "Close player",
+  "Could not play this chapter's audio.": "Could not play this chapter's audio.",
+  "Pause chapter {order}": "Pause chapter {order}",
+  "Listen to chapter {order}": "Listen to chapter {order}",
+  "Listen": "Listen",
+  "Pause the narration": "Pause the narration",
+  "Listen to this chapter": "Listen to this chapter",
 };

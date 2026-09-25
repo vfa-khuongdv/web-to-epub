@@ -159,3 +159,28 @@ export function writeStoredCover(storyId: string): string {
   fs.writeFileSync(path.join(dir, `${storyId}.png`), PNG_1X1);
   return `covers/${storyId}.png`;
 }
+
+const narrate = require(path.join(REPO_ROOT, "dist", "services", "tts", "narrate.js")) as typeof import(
+  "../../src/services/tts/narrate"
+);
+const audioCache = require(path.join(REPO_ROOT, "dist", "services", "tts", "audioCache.js")) as typeof import(
+  "../../src/services/tts/audioCache"
+);
+
+// A real 2.5 s MP3 narrated by the app itself (VieNeu, an original test sentence).
+export const NARRATION_MP3 = path.join(REPO_ROOT, "e2e", "assets", "narration.mp3");
+
+/**
+ * Give a chapter narration as if a job had made it: the MP3 plus the key over its
+ * current text and the default voice (Settings untouched: turbo, model default), so
+ * the app reads it as current. Needs no TTS engine.
+ */
+export async function seedNarration(storyId: string, order: number, target: StoryStore = store): Promise<void> {
+  const chapter = await target.getChapter(storyId, order);
+  if (!chapter) throw new Error(`Seed failed: chapter ${order} of ${storyId} not found`);
+  const key = narrate.chapterKey(chapter, { variant: "turbo", voice: "" });
+  if (!key) throw new Error(`Seed failed: chapter ${order} has nothing to narrate`);
+  await audioCache.ensureStoryAudioDir(DATA_DIR, storyId);
+  fs.copyFileSync(NARRATION_MP3, audioCache.chapterAudioPath(DATA_DIR, storyId, order));
+  await audioCache.writeAudioMeta(DATA_DIR, storyId, order, key, 2.5);
+}

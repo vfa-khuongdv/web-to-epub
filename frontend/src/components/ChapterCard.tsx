@@ -189,6 +189,9 @@ interface ChapterCardProps {
   deleteDisabled?: boolean;
   // Set when the chapter has narration matching its current text: a download link.
   audioUrl?: string;
+  // Play / pause this chapter in the story's player (with audioUrl).
+  onPlayAudio?: () => void;
+  audioPlaying?: boolean;
 }
 
 // Playwright's failure text arrives with time annotations from Call log still
@@ -227,6 +230,8 @@ export default function ChapterCard({
   onDelete,
   deleteDisabled,
   audioUrl,
+  onPlayAudio,
+  audioPlaying,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
   const [html, setHtml] = useState(initialHtml);
@@ -462,6 +467,19 @@ export default function ChapterCard({
             </span>
           ) : (
             <span className="flex items-center justify-end gap-1">
+              {audioUrl && onPlayAudio && (
+                <button
+                  type="button"
+                  className={`btn btn-quiet btn-tiny${audioPlaying ? " text-select-deep" : ""}`}
+                  onClick={onPlayAudio}
+                  aria-label={
+                    audioPlaying ? t("Pause chapter {order}", { order }) : t("Listen to chapter {order}", { order })
+                  }
+                  title={audioPlaying ? t("Pause") : t("Listen")}
+                >
+                  <Icon name={audioPlaying ? "pause" : "play"} size={12} />
+                </button>
+              )}
               {audioUrl && (
                 <a
                   className="btn btn-quiet btn-tiny"

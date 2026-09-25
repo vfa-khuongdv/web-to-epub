@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
@@ -7,6 +7,8 @@ import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
 import { useNarration } from "../hooks/useNarration";
+import { useNarrationPlayer } from "../hooks/useNarrationPlayer";
+import PlayerBar from "./PlayerBar";
 import NarrationPanel from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
@@ -110,6 +112,20 @@ export default function StoryDetail({
     ? Object.values(narration.state.chapters).filter((s) => s === "ready").length
     : 0;
   const [includeNarration, setIncludeNarration] = useState(false);
+  // Chapters with current narration, in reading order: what the player can play.
+  const narratedOrders = useMemo(
+    () =>
+      Object.entries(narration.state?.chapters ?? {})
+        .filter(([, state]) => state === "ready")
+        .map(([order]) => Number(order))
+        .sort((a, b) => a - b),
+    [narration.state]
+  );
+  const player = useNarrationPlayer(story.id, vault.active, narratedOrders);
+  const chapterTitle = (order: number) =>
+    story.chapters.find((c) => c.order === order)?.title || t("Chapter {order}", { order });
+  // Opened from the player: the reader starts on the chapter being played.
+  const [readerStart, setReaderStart] = useState<number | undefined>(undefined);
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -364,6 +380,10 @@ export default function StoryDetail({
         <h2 className="ml-auto">{t("Story details")}</h2>
       </div>
 
+      {/* The story's details and its chapter list scroll as one: with only the list
+          scrolling, a tall details block (narration, a long title) squeezed the list
+          down to its sticky header on short windows. */}
+      <div className="min-h-0 flex-1 overflow-y-auto">
       <div className="detail">
         <div className="detail-cover">
           {coverSrc ? (
@@ -570,7 +590,7 @@ export default function StoryDetail({
         </div>
       </div>
 
-      <div className="pane-body">
+      <div className="pane-body flex-none overflow-visible">
         <table className="tbl">
           <thead>
             <tr>
@@ -615,8 +635,12 @@ export default function StoryDetail({
                   onRetry={() => handleCrawl([c.order])}
                   audioUrl={
                     narratable && narration.state?.chapters[c.order] === "ready"
-                      ? chapterAudioUrl(story.id, c.order)
+                      ? chapterAudioUrl(story.id, c.order, { download: true })
                       : undefined
+                  }
+                  audioPlaying={player.order === c.order && player.playing}
+                  onPlayAudio={() =>
+                    player.order === c.order ? player.toggle() : player.play(c.order)
                   }
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
@@ -685,6 +709,21 @@ export default function StoryDetail({
         )}
       </div>
 
+      </div>
+
+      {narratable && (
+        <div className="flex-none">
+          <PlayerBar
+            player={player}
+            titleOf={chapterTitle}
+            onShowChapter={(order) => {
+              setReaderStart(order);
+              setReading(true);
+            }}
+          />
+        </div>
+      )}
+
       {reading && (
         <ReaderOverlay
           storyId={story.id}
@@ -700,7 +739,13 @@ export default function StoryDetail({
             bodies.current.get(`stored-${order}`) ??
             blocksToHtml((await fetchChapterContent(story.id, order)).blocks ?? [])
           }
-          onClose={() => setReading(false)}
+          onClose={() => {
+            setReading(false);
+            setReaderStart(undefined);
+          }}
+          startOrder={readerStart}
+          player={narratable ? player : undefined}
+          narratedOrders={narratedOrders}
         />
       )}
     </section>

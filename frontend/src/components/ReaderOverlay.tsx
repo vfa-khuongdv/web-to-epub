@@ -24,6 +24,8 @@ import {
   savePrefs,
 } from "../lib/readerPreview";
 import { Icon } from "./Icon";
+import PlayerBar from "./PlayerBar";
+import { NarrationPlayer } from "../hooks/useNarrationPlayer";
 
 export interface ReaderChapter {
   order: number;
@@ -80,6 +82,9 @@ export default function ReaderOverlay({
   loadChapterHtml,
   onClose,
   isPrivate,
+  startOrder,
+  player,
+  narratedOrders = [],
 }: {
   storyId: string;
   storyTitle: string;
@@ -93,9 +98,16 @@ export default function ReaderOverlay({
   // useVault().active, not module state, so it can't go stale relative to which
   // library is actually open.
   isPrivate: boolean;
+  // Open on this chapter instead of the saved reading position (from the player).
+  startOrder?: number;
+  // The story page's narration player, shared so reading does not interrupt listening.
+  player?: NarrationPlayer;
+  narratedOrders?: number[];
 }) {
   const { t } = useLang();
   const [resume] = useState(() => {
+    const started = startOrder !== undefined ? chapters.findIndex((c) => c.order === startOrder) : -1;
+    if (started >= 0) return { index: started, scroll: 0 };
     const position = readPosition(storyId, isPrivate);
     const found = position ? chapters.findIndex((c) => c.order === position.order) : -1;
     return found >= 0 ? { index: found, scroll: position!.scroll } : { index: 0, scroll: 0 };
@@ -272,6 +284,26 @@ export default function ReaderOverlay({
     setIndex(next);
     savePosition(storyId, isPrivate, { order: chapters[next].order, scroll: 0 });
   }
+
+  // Listening while reading: when the player moves on to the next chapter, the reader
+  // follows — but only if it was showing the chapter being played, so a reader who
+  // browsed elsewhere is not yanked back.
+  const followed = useRef<number | null>(player?.order ?? null);
+  const playingOrder = player?.order ?? null;
+  useEffect(() => {
+    const before = followed.current;
+    followed.current = playingOrder;
+    if (playingOrder === null || before === null || before === playingOrder) return;
+    if (chapters[index]?.order !== before) return;
+    const target = chapters.findIndex((c) => c.order === playingOrder);
+    if (target >= 0) goTo(target);
+    // Only a chapter change of the player triggers this; goTo/index are read as they are
+    // at that moment, deliberately.
+  }, [playingOrder]);
+
+  const currentOrder = chapters[index]?.order;
+  const currentNarrated = player !== undefined && currentOrder !== undefined && narratedOrders.includes(currentOrder);
+  const listeningHere = player?.order === currentOrder && player?.playing;
 
   function toggleFull() {
     // Either call rejects when the browser refuses full screen (an embedded frame, a
@@ -472,6 +504,20 @@ export default function ReaderOverlay({
           <span>{t("Chapter {number} / {total}", { number: index + 1, total: chapters.length })}</span>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
+          {currentNarrated && (
+            <button
+              type="button"
+              className={`btn btn-tiny${listeningHere ? " text-select-deep" : ""}`}
+              aria-pressed={!!listeningHere}
+              title={listeningHere ? t("Pause the narration") : t("Listen to this chapter")}
+              onClick={() =>
+                player!.order === currentOrder ? player!.toggle() : player!.play(currentOrder!)
+              }
+            >
+              <Icon name={listeningHere ? "pause" : "narration"} size={13} />
+              {listeningHere ? t("Pause") : t("Listen")}
+            </button>
+          )}
           <button
             type="button"
             className="btn btn-tiny"
@@ -751,6 +797,13 @@ export default function ReaderOverlay({
           </aside>
         )}
       </div>
+
+      {player && (
+        <PlayerBar
+          player={player}
+          titleOf={(order) => chapters.find((c) => c.order === order)?.title || t("Chapter {order}", { order })}
+        />
+      )}
 
       <div className="reader-foot">
         <div className="reader-progress" aria-hidden="true">
