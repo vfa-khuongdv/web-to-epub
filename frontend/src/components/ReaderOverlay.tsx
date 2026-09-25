@@ -24,7 +24,9 @@ import {
   savePrefs,
 } from "../lib/readerPreview";
 import { Icon } from "./Icon";
-import PlayerBar from "./PlayerBar";
+import MiniPlayer from "./MiniPlayer";
+import { fetchNarrationTimeline } from "../lib/api";
+import { TimelinePart, activePart, markNarrating } from "../lib/narrationHighlight";
 import { NarrationPlayer } from "../hooks/narrationPlayer";
 
 export interface ReaderChapter {
@@ -308,7 +310,45 @@ export default function ReaderOverlay({
   const currentOrder = chapters[index]?.order;
   const currentNarrated =
     onListen !== undefined && currentOrder !== undefined && narratedOrders.includes(currentOrder);
-  const listeningHere = currentOrder !== undefined && !!player?.isPlaying(storyId, currentOrder);
+  // The mini player shows while the voice is on this story; the Listen button stays for
+  // the chapter open when the voice is elsewhere (or not loaded).
+  const miniActive = playingOrder !== null;
+  const showListen = currentNarrated && playingOrder !== currentOrder;
+
+  // Highlight the paragraph being read, while the voice is on the chapter open. The
+  // timeline is fetched once per chapter; the mark follows the player's clock.
+  const [timeline, setTimeline] = useState<{ order: number; parts: TimelinePart[] } | null>(null);
+  const voiceHere = playingOrder !== null && playingOrder === currentOrder;
+  useEffect(() => {
+    if (!voiceHere || currentOrder === undefined || timeline?.order === currentOrder) return;
+    let cancelled = false;
+    fetchNarrationTimeline(storyId, currentOrder)
+      .then((parts) => !cancelled && setTimeline({ order: currentOrder, parts }))
+      .catch(() => {
+        /* no highlight, the audio still plays */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [voiceHere, currentOrder, storyId, timeline?.order]);
+
+  // Only re-marked when the part changes, or when the frame reloaded (a preference change
+  // replaces its document, and the mark with it).
+  const marked = useRef<{ doc: Document | null; part: number }>({ doc: null, part: -2 });
+  // Bumped by every frame load, so the mark lands on a fresh page even while paused.
+  const [frameLoads, setFrameLoads] = useState(0);
+  const clock = player?.time ?? 0;
+  useEffect(() => {
+    const doc = frame.current?.contentDocument ?? null;
+    // Until the chapter has loaded the frame holds a blank page without a body.
+    if (!doc?.getElementById(CONTENT_ID)) return;
+    const parts = voiceHere && timeline?.order === currentOrder ? timeline.parts : null;
+    const part = parts ? activePart(parts, clock) : -1;
+    if (marked.current.doc === doc && marked.current.part === part) return;
+    const sameDoc = marked.current.doc === doc;
+    marked.current = { doc, part };
+    markNarrating(doc, parts && part >= 0 ? parts[part].block : null, sameDoc);
+  }, [clock, voiceHere, timeline, currentOrder, html, frameLoads]);
 
   function toggleFull() {
     // Either call rejects when the browser refuses full screen (an embedded frame, a
@@ -382,6 +422,7 @@ export default function ReaderOverlay({
     const win = frame.current?.contentWindow;
     const doc = frame.current?.contentDocument;
     if (!win || !doc) return;
+    setFrameLoads((n) => n + 1);
     chapterChars.current = doc.getElementById(CONTENT_ID)?.textContent?.length ?? 0;
     hl.paintAll(doc, highlightsRef.current.filter((h) => h.chapterOrder === chapterRef.current));
     if (scrollToOnLoad.current) {
@@ -509,16 +550,16 @@ export default function ReaderOverlay({
           <span>{t("Chapter {number} / {total}", { number: index + 1, total: chapters.length })}</span>
         </div>
         <div className="ml-auto flex items-center gap-1.5">
-          {currentNarrated && (
+          {miniActive && player && <MiniPlayer player={player} showChapter={playingOrder !== currentOrder} />}
+          {showListen && (
             <button
               type="button"
-              className={`btn btn-tiny${listeningHere ? " text-select-deep" : ""}`}
-              aria-pressed={!!listeningHere}
-              title={listeningHere ? t("Pause the narration") : t("Listen to this chapter")}
+              className="btn btn-tiny"
+              title={t("Listen to this chapter")}
               onClick={() => onListen!(currentOrder!)}
             >
-              <Icon name={listeningHere ? "pause" : "narration"} size={13} />
-              {listeningHere ? t("Pause") : t("Listen")}
+              <Icon name="narration" size={13} />
+              {t("Listen")}
             </button>
           )}
           <button
@@ -800,10 +841,6 @@ export default function ReaderOverlay({
           </aside>
         )}
       </div>
-
-      {player && (
-        <PlayerBar player={player} />
-      )}
 
       <div className="reader-foot">
         <div className="reader-progress" aria-hidden="true">

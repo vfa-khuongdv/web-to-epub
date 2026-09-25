@@ -1,5 +1,5 @@
 import { ReactNode, useEffect, useState } from "react";
-import { exportStoryAudio, fetchTtsStatus } from "../lib/api";
+import { deleteStoryAudio, exportStoryAudio, fetchTtsStatus } from "../lib/api";
 import { formatBytes } from "../lib/formatBytes";
 import { formatEta } from "../lib/formatEta";
 import { useLang } from "../i18n";
@@ -22,6 +22,7 @@ export default function NarrationPanel({
   onStop,
   onDismissOutcome,
   onOpenSettings,
+  onAudioDeleted,
   actions,
 }: {
   storyId: string;
@@ -32,10 +33,29 @@ export default function NarrationPanel({
   onStop: () => void;
   onDismissOutcome: () => void;
   onOpenSettings: () => void;
+  // After "Delete audio": the page refetches which chapters have narration.
+  onAudioDeleted: () => void;
   // Export buttons, placed with the others.
   actions?: ReactNode;
 }) {
   const audioExport = useAudioExport(storyId);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+
+  // Audio made with an earlier voice keeps playing; deleting it is how to re-voice a story.
+  async function handleDeleteAudio() {
+    if (!window.confirm(t("Delete this story's narration? Chapters can be narrated again afterwards."))) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteStoryAudio(storyId);
+      onAudioDeleted();
+    } catch (err) {
+      setDeleteError((err as Error).message);
+    } finally {
+      setDeleting(false);
+    }
+  }
   const { lang, t } = useLang();
   const [installed, setInstalled] = useState<boolean | null>(null);
   const [stopping, setStopping] = useState(false);
@@ -121,6 +141,12 @@ export default function NarrationPanel({
             <Icon name="download" size={12} />
             {audioExport.exporting ? t("Preparing audio…") : t("Export audio (.zip)")}
           </button>
+          {state.bytes > 0 && !running && (
+            <button type="button" className="btn btn-quiet btn-tiny" disabled={deleting} onClick={() => void handleDeleteAudio()}>
+              <Icon name="trash" size={12} />
+              {deleting ? t("Deleting…") : t("Delete audio")}
+            </button>
+          )}
           {actions}
         </span>
       </div>
@@ -172,10 +198,10 @@ export default function NarrationPanel({
         </p>
       )}
 
-      {(error || audioExport.error) && (
+      {(error || audioExport.error || deleteError) && (
         <p className="flex items-center gap-2 text-xs text-error" role="alert">
           <Icon name="alert" size={13} />
-          {error || audioExport.error}
+          {error || audioExport.error || deleteError}
         </p>
       )}
     </div>

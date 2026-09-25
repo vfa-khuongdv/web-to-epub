@@ -14,7 +14,8 @@ Responses:
   {"type": "ready"}                                         # once, at start
   {"type": "loaded", "variant": "...", "voices": [{"id", "label"}], "sampleRate": n}
   {"type": "progress", "id": "...", "part": i, "parts": n}  # after each part
-  {"type": "done", "id": "...", "seconds": s}
+  {"type": "done", "id": "...", "seconds": s, "timings": [[start, end], ...]}
+                                                            # seconds of each part, pauses excluded
   {"type": "cancelled", "id": "..."}
   {"type": "error", "id": "..." | null, "message": "..."}
 """
@@ -82,13 +83,17 @@ def synth(tts, variant, message):
     extra = {"steps": NANO_STEPS} if variant == "nano" else {}
     pause = np.zeros(int(tts.sample_rate * PAUSE_SECONDS), dtype=np.float32)
     chunks = []
+    timings = []
+    position = 0
     for index, text in enumerate(parts):
         if job_id in cancelled:
             cancelled.discard(job_id)
             send({"type": "cancelled", "id": job_id})
             return
-        audio = tts.infer(text, voice=message.get("voice") or None, **extra)
-        chunks.append(np.asarray(audio, dtype=np.float32).reshape(-1))
+        audio = np.asarray(tts.infer(text, voice=message.get("voice") or None, **extra), dtype=np.float32).reshape(-1)
+        timings.append([round(position / tts.sample_rate, 3), round((position + len(audio)) / tts.sample_rate, 3)])
+        position += len(audio) + len(pause)
+        chunks.append(audio)
         chunks.append(pause)
         send({"type": "progress", "id": job_id, "part": index + 1, "parts": len(parts)})
 
@@ -97,7 +102,7 @@ def synth(tts, variant, message):
     partial = out + ".part"
     sf.write(partial, samples, tts.sample_rate, format="MP3")
     os.replace(partial, out)
-    send({"type": "done", "id": job_id, "seconds": round(len(samples) / tts.sample_rate, 2)})
+    send({"type": "done", "id": job_id, "seconds": round(len(samples) / tts.sample_rate, 2), "timings": timings})
 
 
 def main():

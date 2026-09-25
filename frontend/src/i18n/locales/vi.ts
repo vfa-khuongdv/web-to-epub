@@ -460,11 +460,16 @@ export const vi: Record<string, string> = {
   "Pause chapter {order}": "Tạm dừng chương {order}",
   "Listen to chapter {order}": "Nghe chương {order}",
   "Listen": "Nghe",
-  "Pause the narration": "Tạm dừng giọng đọc",
   "Listen to this chapter": "Nghe chương này",
 
   // Crawl log dialog
   "Show the crawl log": "Xem nhật ký crawl",
   "Crawl log": "Nhật ký crawl",
   "Nothing logged yet.": "Chưa có nhật ký nào.",
+
+  // Narration (reader, delete)
+  "Could not delete the audio": "Không xoá được audio",
+  "Ch. {order}": "Chương {order}",
+  "Delete audio": "Xoá audio",
+  "Delete this story's narration? Chapters can be narrated again afterwards.": "Xoá giọng đọc của truyện này? Sau đó vẫn tạo lại được cho từng chương.",
 };

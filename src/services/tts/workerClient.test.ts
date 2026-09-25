@@ -32,7 +32,7 @@ describe("TTS worker client", () => {
     const out = path.join(dir, "1.mp3");
     const progress: [number, number][] = [];
     const result = await worker!.synth({ parts: ["a", "b"], voice: "A", out, onProgress: (p, n) => progress.push([p, n]) });
-    expect(result).toEqual({ seconds: 2 });
+    expect(result).toEqual({ seconds: 2, timings: [[0, 1], [1, 2]] });
     expect(progress).toEqual([[1, 2], [2, 2]]);
     expect(await fs.readFile(out, "utf8")).toBe("turbo:A:a|b");
   });
@@ -75,7 +75,7 @@ describe("TTS worker client", () => {
   it("turns a worker error into a rejection and keeps serving", async () => {
     await worker!.load("turbo");
     await expect(worker!.synth({ parts: ["FAIL"], voice: "A", out: path.join(dir, "f.mp3") })).rejects.toThrow("bad part");
-    await expect(worker!.synth({ parts: ["ok"], voice: "A", out: path.join(dir, "g.mp3") })).resolves.toEqual({ seconds: 1 });
+    await expect(worker!.synth({ parts: ["ok"], voice: "A", out: path.join(dir, "g.mp3") })).resolves.toEqual({ seconds: 1, timings: [[0, 1]] });
   });
 
   it("rejects the current and later requests when the process dies, with its last stderr", async () => {

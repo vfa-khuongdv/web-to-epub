@@ -555,6 +555,7 @@ export default function StoryDetail({
               onStop={() => void narration.stop()}
               onDismissOutcome={narration.dismissOutcome}
               onOpenSettings={onOpenSettings}
+              onAudioDeleted={() => void narration.refresh()}
             />
           )}
 
