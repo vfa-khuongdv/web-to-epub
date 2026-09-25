@@ -397,6 +397,37 @@ describe("embedMedia", () => {
     expect(result.media).toEqual([]);
   });
 
+  it("embeds a local file:// source only from inside an allowed folder", async () => {
+    const root = path.join(dir, "audio", "story");
+    fs.mkdirSync(root, { recursive: true });
+    const inside = path.join(root, "1.mp3");
+    const outside = path.join(dir, "secret.mp3");
+    fs.writeFileSync(inside, "narration");
+    fs.writeFileSync(outside, "not yours");
+    const chapters = [
+      { title: "C1", includeInBook: true, contentHtml: `<audio src="file://${inside}">N</audio><p>x</p>` },
+      { title: "C2", includeInBook: true, contentHtml: `<audio src="file://${outside}">N</audio><p>y</p>` },
+      // A sibling folder whose name merely starts with the root's name is still outside.
+      { title: "C3", includeInBook: true, contentHtml: `<audio src="file://${root}-evil/1.mp3">N</audio>` },
+    ];
+
+    const result = await embedMedia(chapters, dir, undefined, [root]);
+
+    expect(result.media).toHaveLength(1);
+    expect(result.media[0].mediaType).toBe("audio/mpeg");
+    expect(fs.readFileSync(result.media[0].filePath, "utf8")).toBe("narration");
+    expect(result.chapters[0].contentHtml).toContain(`<audio controls src="${result.media[0].href}">`);
+    expect(result.chapters[1].contentHtml).toBe("<p>y</p>");
+    expect(result.chapters[2].contentHtml).toBe("");
+  });
+
+  it("never reads file:// sources when no folder is allowed", async () => {
+    const file = path.join(dir, "1.mp3");
+    fs.writeFileSync(file, "x");
+    const result = await embedMedia([{ title: "C", includeInBook: true, contentHtml: `<audio src="file://${file}">N</audio>` }], dir);
+    expect(result.media).toEqual([]);
+  });
+
   it("saves media file to disk and points src to path in book", async () => {
     const { chapters, media } = await embedMedia(
       [{ title: "C1", includeInBook: true, contentHtml: `<audio controls src="${MP3_DATA_URI}">x</audio>` }],

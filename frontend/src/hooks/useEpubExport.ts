@@ -86,7 +86,8 @@ export function useEpubExport() {
     storyId: string,
     metadata: BookMetadata,
     chapters: StoryExportChapter[],
-    coverFile: File | null
+    coverFile: File | null,
+    includeNarration = false
   ): Promise<number | null> {
     // Checked and set before anything else — including before pickFolder — so a second
     // click racing the first (before React re-renders the disabled button) bails out
@@ -107,7 +108,7 @@ export function useEpubExport() {
       }
 
       const coverUrl = coverFile ? await uploadCover(coverFile) : metadata.coverUrl;
-      const files = await exportStoryEpub(storyId, { ...metadata, coverUrl }, chapters, setProgress);
+      const files = await exportStoryEpub(storyId, { ...metadata, coverUrl }, chapters, setProgress, includeNarration);
       if (folderPath !== null && electronExport) await saveToElectronFolder(electronExport, folderPath, files);
       else await downloadAll(files);
       return files.length;
