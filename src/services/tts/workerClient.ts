@@ -8,7 +8,8 @@ import readline from "readline";
  * CPU-bound and the worker is single-threaded — so they are queued here and the next
  * one is written only when the previous one has answered.
  */
-export type TtsVariant = "turbo" | "nano";
+export const TTS_VARIANTS = ["turbo", "nano"] as const;
+export type TtsVariant = (typeof TTS_VARIANTS)[number];
 
 export interface TtsVoice {
   id: string;

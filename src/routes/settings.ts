@@ -5,8 +5,10 @@ import {
   AppSettings,
   BOOK_LANGUAGES,
   MAX_DEFAULT_AUTHOR,
+  MAX_TTS_VOICE,
   settingsStore,
 } from "../services/settingsStore";
+import { TTS_VARIANTS, TtsVariant } from "../services/tts/workerClient";
 import { vault } from "../services/vault";
 import { libraryFor } from "./library";
 
@@ -57,6 +59,22 @@ settingsRouter.patch("/settings", (req, res) => {
       return;
     }
     patch.defaultAuthor = body.defaultAuthor.trim();
+  }
+
+  if ("ttsVariant" in body) {
+    if (!TTS_VARIANTS.includes(body.ttsVariant as TtsVariant)) {
+      res.status(400).json({ message: t("Unsupported narration variant") });
+      return;
+    }
+    patch.ttsVariant = body.ttsVariant as TtsVariant;
+  }
+
+  if ("ttsVoice" in body) {
+    if (typeof body.ttsVoice !== "string" || body.ttsVoice.length > MAX_TTS_VOICE) {
+      res.status(400).json({ message: t("Voice name is too long") });
+      return;
+    }
+    patch.ttsVoice = body.ttsVoice;
   }
 
   res.json({ settings: settingsStore.update(patch) });

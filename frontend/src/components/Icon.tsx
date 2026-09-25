@@ -8,6 +8,7 @@ import {
   Download,
   ExternalLink,
   FileText,
+  Headphones,
   Highlighter,
   Import,
   Info,
@@ -23,6 +24,7 @@ import {
   Play,
   RotateCw,
   Settings,
+  Square,
   Sun,
   TriangleAlert,
   Trash2,
@@ -58,7 +60,9 @@ export type IconName =
   | "expand"
   | "collapse"
   | "lock"
-  | "settings";
+  | "settings"
+  | "narration"
+  | "stop";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
 // as intent ("retry", "open") and swapping a glyph is a one-line change here.
@@ -91,6 +95,8 @@ const icons: Record<IconName, LucideIcon> = {
   collapse: Minimize,
   lock: Lock,
   settings: Settings,
+  narration: Headphones,
+  stop: Square,
 };
 
 // The dot is a state light (crawling, live), not an outline: it reads as a dot only

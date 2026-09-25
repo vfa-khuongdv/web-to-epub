@@ -13,6 +13,7 @@ import fs from "fs";
 import path from "path";
 import { DatabaseSync } from "node:sqlite";
 import { DATA_DIR } from "../config/paths";
+import { TTS_VARIANTS, TtsVariant } from "./tts/workerClient";
 
 export interface AppSettings {
   // Check watched stories for new chapters when the app opens. Off means the library
@@ -22,7 +23,13 @@ export interface AppSettings {
   // from then on.
   defaultBookLanguage: string;
   defaultAuthor: string;
+  // Narration: which VieNeu model reads ("turbo" = quality, "nano" = fast) and which of
+  // its preset voices; "" means the model's own default voice.
+  ttsVariant: TtsVariant;
+  ttsVoice: string;
 }
+
+export const MAX_TTS_VOICE = 100;
 
 // The languages epubBuilder writes into the book, and the two the story form offers.
 export const BOOK_LANGUAGES = ["vi", "en"] as const;
@@ -34,6 +41,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoScanOnOpen: true,
   defaultBookLanguage: "vi",
   defaultAuthor: "",
+  ttsVariant: "turbo",
+  ttsVoice: "",
 };
 
 export interface SettingsStore {
@@ -66,6 +75,10 @@ export function createSettingsStore(baseDir: string): SettingsStore {
       autoScanOnOpen: autoScan === undefined ? DEFAULT_SETTINGS.autoScanOnOpen : autoScan === "1",
       defaultBookLanguage: saved.get("defaultBookLanguage") ?? DEFAULT_SETTINGS.defaultBookLanguage,
       defaultAuthor: saved.get("defaultAuthor") ?? DEFAULT_SETTINGS.defaultAuthor,
+      ttsVariant: TTS_VARIANTS.includes(saved.get("ttsVariant") as TtsVariant)
+        ? (saved.get("ttsVariant") as TtsVariant)
+        : DEFAULT_SETTINGS.ttsVariant,
+      ttsVoice: saved.get("ttsVoice") ?? DEFAULT_SETTINGS.ttsVoice,
     };
   }
 
@@ -76,6 +89,8 @@ export function createSettingsStore(baseDir: string): SettingsStore {
       if (patch.autoScanOnOpen !== undefined) upsert.run("autoScanOnOpen", patch.autoScanOnOpen ? "1" : "0");
       if (patch.defaultBookLanguage !== undefined) upsert.run("defaultBookLanguage", patch.defaultBookLanguage);
       if (patch.defaultAuthor !== undefined) upsert.run("defaultAuthor", patch.defaultAuthor);
+      if (patch.ttsVariant !== undefined) upsert.run("ttsVariant", patch.ttsVariant);
+      if (patch.ttsVoice !== undefined) upsert.run("ttsVoice", patch.ttsVoice);
       return get();
     },
   };
