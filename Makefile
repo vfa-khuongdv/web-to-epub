@@ -3,11 +3,13 @@ IMAGE   ?= vfakhuongdv/web-to-epub
 VERSION := $(shell node -p "require('./package.json').version")
 PORT    ?= 3100
 PLATFORMS ?= linux/amd64,linux/arm64
+# Model giọng đọc cho các lệnh tts-*: turbo (chất lượng, mặc định) | nano (nhanh)
+TTS_VARIANT ?= turbo
 
 .DEFAULT_GOAL := help
 .PHONY: help install build dev test start clean \
         dev-frontend dev-all docker-build docker-run docker-stop docker-push \
-        app install-mac release-mac e2e
+        app install-mac release-mac e2e tts-install tts-smoke tts-uninstall
 
 help: ## In danh sách lệnh
 	@grep -hE '^[a-z0-9-]+:.*?## ' $(MAKEFILE_LIST) \
@@ -46,6 +48,19 @@ start: build ## Build rồi chạy server ở PORT (mặc định 3100)
 
 clean: ## Xoá thư mục sinh ra khi build (giữ nguyên data/)
 	rm -rf dist public release build/icon.iconset build/icon-1024.png
+
+## --- Giọng đọc (VieNeu-TTS) ---
+# Cùng runtime với Settings → Giọng đọc: cài vào $${DATA_DIR:-./data}/tts (uv + Python + model,
+# khoảng 1–1,3 GB). Đặt DATA_DIR để trỏ vào thư viện khác, TTS_VARIANT=nano cho model nhanh.
+
+tts-install: build ## Cài bộ giọng đọc (uv + Python + VieNeu + model) vào DATA_DIR/tts
+	node scripts/tts.js install $(TTS_VARIANT)
+
+tts-smoke: build ## Đọc thử một câu để kiểm tra bộ giọng đọc đã cài
+	node scripts/tts.js smoke $(TTS_VARIANT)
+
+tts-uninstall: build ## Gỡ bộ giọng đọc (xoá DATA_DIR/tts, giữ audio các chương)
+	node scripts/tts.js uninstall
 
 ## --- Docker ---
 
