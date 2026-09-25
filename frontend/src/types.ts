@@ -116,6 +116,24 @@ export interface TtsStatus {
   diskBytes?: number;
 }
 
+// A narration job's position, as the server reports it (routes/narration.ts).
+export interface NarrationRun {
+  done: number;
+  total: number;
+  etaMs?: number;
+  order?: number;
+  part?: number;
+  parts?: number;
+}
+
+export interface NarrationState {
+  narratable: boolean;
+  // Per readable chapter: audio matching its current text and voice, or not.
+  chapters: Record<number, "ready" | "missing">;
+  bytes: number;
+  running: NarrationRun | null;
+}
+
 export interface TtsVoice {
   id: string;
   label: string;

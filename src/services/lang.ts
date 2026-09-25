@@ -149,6 +149,8 @@ const vi: Record<string, string> = {
     "Chưa cài giọng đọc — hãy cài trong Cài đặt → Giọng đọc",
   "Narration is only available for Vietnamese stories": "Giọng đọc chỉ dùng được cho truyện tiếng Việt",
   "This story is already being narrated": "Truyện này đang được đọc",
+  "This story is not being narrated": "Truyện này không đang được đọc",
+  "Story is being narrated, cannot delete": "Truyện đang được đọc, không xoá được",
   "Chapter audio has not been generated yet — narrate the chapter first":
     "Chương này chưa có audio — hãy tạo giọng đọc cho chương trước",
   "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",

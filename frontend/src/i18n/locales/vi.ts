@@ -411,4 +411,19 @@ export const vi: Record<string, string> = {
   "Model default": "Mặc định của model",
   "Generating…": "Đang tạo…",
   "Preview": "Nghe thử",
+
+  // Narration (story page)
+  "Could not load narration": "Không tải được trạng thái giọng đọc",
+  "Could not start narration": "Không bắt đầu đọc được",
+  "Could not stop narration": "Không dừng đọc được",
+  "{ready}/{total} chapters narrated": "{ready}/{total} chương đã có giọng đọc",
+  "Stop narration": "Dừng đọc",
+  "Narrate ({count} chapters)": "Tạo giọng đọc ({count} chương)",
+  "Install narration in Settings → Narration first.": "Hãy cài giọng đọc trong Cài đặt → Giọng đọc trước.",
+  "Narration progress": "Tiến độ tạo giọng đọc",
+  "Reading chapter {order} — part {part}/{parts}": "Đang đọc chương {order} — đoạn {part}/{parts}",
+  "Loading the voice model…": "Đang nạp model giọng đọc…",
+  "Narration stopped: {done}/{total} chapters have audio.": "Đã dừng đọc: {done}/{total} chương có audio.",
+  "Narration finished: {done}/{total} chapters have audio.": "Đọc xong: {done}/{total} chương có audio.",
+  "{count} failed: {message}": "{count} chương lỗi: {message}",
 };

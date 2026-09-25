@@ -22,6 +22,23 @@ export interface Library {
   runningCrawls: Map<string, { cursor: number; total: number; startedAt: number; etaMs?: number; abort: AbortController }>;
   liveSubscribers: Map<string, Set<ExpressResponse>>;
   liveAllSubscribers: Set<ExpressResponse>;
+  // Narration jobs, the same way: in memory, per library, stopped between parts through
+  // `abort`. They have their own live channel (routes/narration.ts) — the crawl channel's
+  // listeners treat any event they get as crawl progress.
+  runningNarrations: Map<string, NarrationRun>;
+  narrationSubscribers: Set<ExpressResponse>;
+}
+
+export interface NarrationRun {
+  done: number;
+  total: number;
+  startedAt: number;
+  etaMs?: number;
+  // The chapter being read and how far into it.
+  order?: number;
+  part?: number;
+  parts?: number;
+  abort: AbortController;
 }
 
 function createLibrary(dataDir: string, stories: StoryStore): Library {
@@ -32,6 +49,8 @@ function createLibrary(dataDir: string, stories: StoryStore): Library {
     runningCrawls: new Map(),
     liveSubscribers: new Map(),
     liveAllSubscribers: new Set(),
+    runningNarrations: new Map(),
+    narrationSubscribers: new Set(),
   };
 }
 

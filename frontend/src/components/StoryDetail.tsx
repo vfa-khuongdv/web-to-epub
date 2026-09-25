@@ -6,6 +6,8 @@ import { Translate, useLang } from "../i18n";
 import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
+import { useNarration } from "../hooks/useNarration";
+import NarrationPanel from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
 import { vaultQuery } from "../vault/token";
@@ -99,6 +101,9 @@ export default function StoryDetail({
   const [loadingNew, setLoadingNew] = useState(false);
   const [reading, setReading] = useState(false);
   const { isExporting, progress, exportStoryBook } = useEpubExport();
+  // Vietnamese books only, by the language saved on the story (not the unsaved field).
+  const narratable = (story.language || "vi") === "vi";
+  const narration = useNarration(story.id, narratable, story.updatedAt);
 
   // Live chapter HTML by chapter id: kept for every chapter the user has
   // opened, so a collapsed chapter still exports its edited content.
@@ -473,6 +478,17 @@ export default function StoryDetail({
               {saving ? t("Saving…") : saved ? t("Saved") : t("Save metadata")}
             </button>
           </div>
+
+          {narratable && narration.state && (
+            <NarrationPanel
+              state={narration.state}
+              outcome={narration.outcome}
+              error={narration.error}
+              onStart={() => void narration.start()}
+              onStop={() => void narration.stop()}
+              onDismissOutcome={narration.dismissOutcome}
+            />
+          )}
 
         {error && (
           <div className="banner">

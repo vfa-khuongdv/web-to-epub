@@ -8,6 +8,7 @@ import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
+import { removeStoryAudio } from "../services/tts/audioCache";
 import { StoredStory } from "../types";
 import { Library, libraryFor } from "./library";
 
@@ -260,11 +261,16 @@ storiesRouter.delete("/stories/:id", async (req, res) => {
     res.status(409).json({ message: t("Story is currently crawling, cannot delete") });
     return;
   }
+  if (library.runningNarrations.has(req.params.id)) {
+    res.status(409).json({ message: t("Story is being narrated, cannot delete") });
+    return;
+  }
   const removed = await library.stories.remove(req.params.id);
   if (!removed) {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
   await library.covers.remove(req.params.id);
+  await removeStoryAudio(library.dataDir, req.params.id);
   res.json({ ok: true });
 });
