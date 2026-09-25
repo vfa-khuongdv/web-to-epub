@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { nextOrder, previousOrder, readPosition, readRate, writePosition } from "./useNarrationPlayer";
+import { nextOrder, previousOrder, readPosition, readRate, writePosition } from "./narrationPlayer";
 import { formatClock } from "../components/PlayerBar";
 
 describe("chapter order among narrated chapters", () => {

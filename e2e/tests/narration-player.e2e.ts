@@ -49,3 +49,39 @@ test("offers no player for a story without narration", async ({ page }) => {
   await expect(page.getByRole("button", { name: "Listen to chapter 1" })).toHaveCount(0);
   await expect(page.getByRole("region", { name: "Narration player" })).toHaveCount(0);
 });
+
+test("keeps playing while browsing to another story, and brings its reader back from the bar", async ({ page }) => {
+  const playing = await seedStory({
+    title: "Đang nghe",
+    language: "vi",
+    chapters: [
+      { title: "Hồi một", url: fixtureChapterUrl("dang-nghe", 1), status: "done", blocks: blocksFor("hồi") },
+    ],
+  });
+  await seedNarration(playing.id, 1);
+  await seedStory({
+    title: "Truyện khác",
+    language: "vi",
+    chapters: [{ title: "Chương khác", url: fixtureChapterUrl("truyen-khac", 1), status: "done", blocks: blocksFor("khác") }],
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Đang nghe", exact: true }).click();
+  await page.getByRole("button", { name: "Listen to chapter 1" }).click();
+  const bar = page.getByRole("region", { name: "Narration player" });
+  await expect(bar.getByRole("button", { name: "Pause" })).toBeVisible();
+
+  // Another story's page: the bar stays, still on the first story, still playing.
+  await page.getByRole("button", { name: "Truyện khác", exact: true }).click();
+  await expect(page.locator(".story-title")).toHaveText("Truyện khác");
+  await expect(bar).toContainText("Hồi một");
+  await expect(bar).toContainText("Đang nghe");
+  await expect(bar.getByRole("button", { name: "Pause" })).toBeVisible();
+
+  // Its chapter title goes back to the playing story, straight into the reader.
+  await bar.getByRole("button", { name: "Hồi một" }).click();
+  const reader = page.getByRole("dialog", { name: /Reading Đang nghe/ });
+  await expect(reader.locator(".reader-now")).toContainText("Hồi một");
+  // The same player is inside the reader (the 2.5 s fixture may have ended by now).
+  await expect(reader.getByRole("region", { name: "Narration player" })).toContainText("Hồi một");
+});

@@ -25,7 +25,7 @@ import {
 } from "../lib/readerPreview";
 import { Icon } from "./Icon";
 import PlayerBar from "./PlayerBar";
-import { NarrationPlayer } from "../hooks/useNarrationPlayer";
+import { NarrationPlayer } from "../hooks/narrationPlayer";
 
 export interface ReaderChapter {
   order: number;
@@ -85,6 +85,7 @@ export default function ReaderOverlay({
   startOrder,
   player,
   narratedOrders = [],
+  onListen,
 }: {
   storyId: string;
   storyTitle: string;
@@ -100,9 +101,11 @@ export default function ReaderOverlay({
   isPrivate: boolean;
   // Open on this chapter instead of the saved reading position (from the player).
   startOrder?: number;
-  // The story page's narration player, shared so reading does not interrupt listening.
+  // The app's narration player, shared so reading does not interrupt listening.
   player?: NarrationPlayer;
   narratedOrders?: number[];
+  // Play (or pause) a chapter of this story in that player.
+  onListen?: (order: number) => void;
 }) {
   const { t } = useLang();
   const [resume] = useState(() => {
@@ -288,8 +291,9 @@ export default function ReaderOverlay({
   // Listening while reading: when the player moves on to the next chapter, the reader
   // follows — but only if it was showing the chapter being played, so a reader who
   // browsed elsewhere is not yanked back.
-  const followed = useRef<number | null>(player?.order ?? null);
-  const playingOrder = player?.order ?? null;
+  // Only this story's chapters: the player may be playing another story.
+  const playingOrder = player?.storyId === storyId ? player.order : null;
+  const followed = useRef<number | null>(playingOrder);
   useEffect(() => {
     const before = followed.current;
     followed.current = playingOrder;
@@ -302,8 +306,9 @@ export default function ReaderOverlay({
   }, [playingOrder]);
 
   const currentOrder = chapters[index]?.order;
-  const currentNarrated = player !== undefined && currentOrder !== undefined && narratedOrders.includes(currentOrder);
-  const listeningHere = player?.order === currentOrder && player?.playing;
+  const currentNarrated =
+    onListen !== undefined && currentOrder !== undefined && narratedOrders.includes(currentOrder);
+  const listeningHere = currentOrder !== undefined && !!player?.isPlaying(storyId, currentOrder);
 
   function toggleFull() {
     // Either call rejects when the browser refuses full screen (an embedded frame, a
@@ -510,9 +515,7 @@ export default function ReaderOverlay({
               className={`btn btn-tiny${listeningHere ? " text-select-deep" : ""}`}
               aria-pressed={!!listeningHere}
               title={listeningHere ? t("Pause the narration") : t("Listen to this chapter")}
-              onClick={() =>
-                player!.order === currentOrder ? player!.toggle() : player!.play(currentOrder!)
-              }
+              onClick={() => onListen!(currentOrder!)}
             >
               <Icon name={listeningHere ? "pause" : "narration"} size={13} />
               {listeningHere ? t("Pause") : t("Listen")}
@@ -799,10 +802,7 @@ export default function ReaderOverlay({
       </div>
 
       {player && (
-        <PlayerBar
-          player={player}
-          titleOf={(order) => chapters.find((c) => c.order === order)?.title || t("Chapter {order}", { order })}
-        />
+        <PlayerBar player={player} />
       )}
 
       <div className="reader-foot">

@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 import LibraryView from "./components/LibraryView";
+import PlayerBar from "./components/PlayerBar";
+import { NarrationPlayerProvider, useNarrationPlayer } from "./hooks/narrationPlayer";
 import SettingsOverlay from "./components/SettingsOverlay";
 import { CrawlLogButton, CrawlLogDialog } from "./components/CrawlLog";
 import { NoticeStack } from "./components/NoticeStack";
@@ -82,6 +84,7 @@ export default function App() {
     t("Click to switch to {theme}", { theme: t(THEME_LABEL[nextTheme]) });
 
   return (
+    <NarrationPlayerProvider>
     <div className="app">
       <header className="cmdbar">
         <span className="flex items-baseline gap-1.5 whitespace-nowrap">
@@ -225,6 +228,8 @@ export default function App() {
         />
       </div>
 
+      <AppPlayerBar />
+
       {crawlLogOpen && <CrawlLogDialog job={job} onClose={() => setCrawlLogOpen(false)} />}
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
 
@@ -237,5 +242,13 @@ export default function App() {
         />
       )}
     </div>
+    </NarrationPlayerProvider>
   );
+}
+
+// Along the bottom of the app, whatever story is open: narration keeps playing while
+// the reader browses. Its chapter title opens that story's reader at the chapter.
+function AppPlayerBar() {
+  const player = useNarrationPlayer();
+  return <PlayerBar player={player} onShowChapter={player.requestOpen} />;
 }
