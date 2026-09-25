@@ -101,6 +101,10 @@ const vi: Record<string, string> = {
     "Không tìm thấy nội dung chương tại {url} — trang có thể đã đổi cấu trúc hoặc chương bị khoá",
   "Cloudflare verification did not finish — try again in a moment ({url})":
     "Cloudflare chưa xác minh xong — thử lại sau một lát ({url})",
+  "Saved session is no longer accepted by Cloudflare — open the page in your browser, then re-import the session in Settings → Site sessions: {url}":
+    "Cloudflare không còn chấp nhận phiên đã lưu — mở trang bằng trình duyệt rồi nhập lại phiên trong Cài đặt → Phiên theo trang: {url}",
+  "This site is behind a Cloudflare check the app cannot pass on its own — open the page in your browser, then import a session in Settings → Site sessions and retry: {url}":
+    "Trang này đang bị Cloudflare chặn mà app không tự qua được — mở trang bằng trình duyệt rồi nhập phiên trong Cài đặt → Phiên theo trang và thử lại: {url}",
   "Page blanked before content could be read (temporary error, can retry): {url}":
     "Trang bị xoá trắng trước khi kịp đọc nội dung (lỗi tạm thời, thử lại được): {url}",
   "Failed to connect to {host} ({code}) — connection dropped before getting a response. If your network is blocking this site or the site is blocking your IP, try a VPN/proxy and run again. URL: {url}":
@@ -133,12 +137,12 @@ const vi: Record<string, string> = {
     "Không đọc được phiên đăng nhập đã lưu — hãy xoá {file} rồi đăng nhập lại",
   "Paste the cURL copy from your browser first": "Hãy dán nội dung cURL đã copy từ trình duyệt trước",
   "Could not find a URL in the pasted cURL": "Không tìm thấy URL trong nội dung cURL đã dán",
-  "That cURL is not for {domain} — copy a request from the site while logged in":
-    "cURL này không phải của {domain} — hãy copy một request từ chính trang đó khi đã đăng nhập",
+  "That cURL is not for {domain} — copy a request from the site itself":
+    "cURL này không phải của {domain} — hãy copy một request từ chính trang đó",
   "No cookies found in that cURL — copy a request from the site while logged in":
     "Không thấy cookie trong cURL này — hãy copy một request từ chính trang đó khi đã đăng nhập",
   "Saved Asianfanfics session has expired — log in again in your browser, then re-import it in Settings → Site sessions: {url}":
-    "Phiên đăng nhập Asianfanfics đã hết hạn — đăng nhập lại bằng trình duyệt rồi nhập lại phiên trong Cài đặt → Phiên đăng nhập theo trang: {url}",
+    "Phiên đăng nhập Asianfanfics đã hết hạn — đăng nhập lại bằng trình duyệt rồi nhập lại phiên trong Cài đặt → Phiên theo trang: {url}",
 
   // Narration (text-to-speech)
   "Narration is not supported on this platform": "Giọng đọc chưa hỗ trợ nền tảng này",

@@ -10,19 +10,33 @@ import {
 
 export const siteSessionsRouter = Router();
 
-// The one site that needs a saved login: Cloudflare-protected, with rated-M and
-// subscribers-only stories behind an account. Kept as fixed paths rather than a
-// :domain parameter so no request can name a file to write.
-const SITE_DOMAIN = "asianfanfics.com";
+// The sites whose crawls need a session saved from the reader's own browser: Asianfanfics
+// for its rated-M / subscribers-only stories, truyenfull.live for the Cloudflare check its
+// story pages sit behind. Kept as a slug allowlist rather than a :domain parameter so no
+// request can name a file to write.
+const SESSION_SITES: Record<string, string> = {
+  asianfanfics: "asianfanfics.com",
+  truyenfull: "truyenfull.live",
+};
 
-siteSessionsRouter.get("/site-sessions/asianfanfics", (_req, res) => {
-  res.json(siteSessionStatus(SITE_DOMAIN));
+siteSessionsRouter.get("/site-sessions/:site", (req, res) => {
+  const domain = SESSION_SITES[req.params.site];
+  if (!domain) {
+    res.status(404).json({ message: t("Unknown site session") });
+    return;
+  }
+  res.json(siteSessionStatus(domain));
 });
 
-// The body is a cURL copy of a request from the user's own logged-in browser. It carries
+// The body is a cURL copy of a request from the user's own browser. It carries
 // the account's cookies, so nothing here logs or echoes it back — the response reports
 // only how many cookies were kept.
-siteSessionsRouter.post("/site-sessions/asianfanfics", (req, res) => {
+siteSessionsRouter.post("/site-sessions/:site", (req, res) => {
+  const domain = SESSION_SITES[req.params.site];
+  if (!domain) {
+    res.status(404).json({ message: t("Unknown site session") });
+    return;
+  }
   const curl = (req.body as { curl?: unknown } | undefined)?.curl;
   if (typeof curl !== "string" || curl.trim().length === 0) {
     res.status(400).json({ message: t("Paste the cURL copy from your browser first") });
@@ -31,7 +45,7 @@ siteSessionsRouter.post("/site-sessions/asianfanfics", (req, res) => {
 
   let parsed;
   try {
-    parsed = parseSessionCurl(curl, SITE_DOMAIN);
+    parsed = parseSessionCurl(curl, domain);
   } catch (err) {
     res.status(400).json({ message: err instanceof Error ? err.message : String(err) });
     return;
@@ -39,7 +53,7 @@ siteSessionsRouter.post("/site-sessions/asianfanfics", (req, res) => {
 
   try {
     const session = { userAgent: parsed.userAgent, cookies: parsed.cookies, origins: [] };
-    saveSiteSession(SITE_DOMAIN, session);
+    saveSiteSession(domain, session);
     // Report the account the token belongs to, so the UI can show whose login this is.
     res.json({ cookieCount: parsed.cookies.length, username: sessionAccountName(session) });
     return;
@@ -49,6 +63,11 @@ siteSessionsRouter.post("/site-sessions/asianfanfics", (req, res) => {
   }
 });
 
-siteSessionsRouter.delete("/site-sessions/asianfanfics", (_req, res) => {
-  res.json({ removed: removeSiteSession(SITE_DOMAIN) });
+siteSessionsRouter.delete("/site-sessions/:site", (req, res) => {
+  const domain = SESSION_SITES[req.params.site];
+  if (!domain) {
+    res.status(404).json({ message: t("Unknown site session") });
+    return;
+  }
+  res.json({ removed: removeSiteSession(domain) });
 });

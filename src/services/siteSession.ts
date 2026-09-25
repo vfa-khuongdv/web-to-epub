@@ -6,9 +6,10 @@ import { t } from "./lang";
 
 // Saved browser sessions, one JSON file per site (Playwright storageState plus the user
 // agent the session was captured with). The user creates one from a cURL copy of a
-// request made in their own logged-in browser (the dialog in the UI, or scripts/); the
-// app never handles the password and never solves a bot check. The file is as powerful as
-// the account's cookies, so it lives next to the library with owner-only permissions.
+// request made in their own browser (the dialog in the UI, or scripts/) — a login for
+// Asianfanfics, the Cloudflare pass for truyenfull.live; the app never handles the
+// password and never solves a bot check. The file is as powerful as the account's
+// cookies, so it lives next to the library with owner-only permissions.
 export const SESSIONS_DIR = path.join(DATA_DIR, "sessions");
 
 type StorageState = Exclude<BrowserContextOptions["storageState"], string | undefined>;
@@ -59,6 +60,31 @@ export function loadSiteSession(url: string): SiteSession | undefined {
   const hostname = sessionHostname(url);
   if (!hostname) return undefined;
   return loadSessionByHostname(hostname);
+}
+
+function cookieAppliesToHost(domain: string | undefined, hostname: string): boolean {
+  const bare = domain?.replace(/^\./, "").toLowerCase();
+  if (!bare) return false;
+  return hostname === bare || hostname.endsWith(`.${bare}`);
+}
+
+/**
+ * Headers that make a plain HTTP request to `url` look like the session's own browser:
+ * its user agent (Cloudflare binds the cookies it issues to it) and the cookies that
+ * belong to that host. Empty without a session — callers keep their own defaults then.
+ * Used by the sites whose pages are served in the raw HTML (truyenfull.live), so they
+ * can skip the browser when the saved session is enough.
+ */
+export function sessionRequestHeaders(url: string): Record<string, string> {
+  const hostname = sessionHostname(url);
+  if (!hostname) return {};
+  const session = loadSiteSession(url);
+  if (!session) return {};
+  const headers: Record<string, string> = {};
+  if (session.userAgent) headers["User-Agent"] = session.userAgent;
+  const cookies = (session.cookies ?? []).filter((cookie) => cookieAppliesToHost(cookie.domain, hostname));
+  if (cookies.length > 0) headers.Cookie = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
+  return headers;
 }
 
 // The payload of a JWT cookie, or undefined for anything that is not one — the session

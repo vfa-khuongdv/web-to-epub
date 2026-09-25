@@ -1,11 +1,15 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { renderPageHtml } from "../renderer";
+import { loadSiteSession, sessionRequestHeaders } from "../siteSession";
 import { normalizeStoryUrl } from "./normalizeUrl";
 import { fetchText } from "./http";
 import { fetchToc, parseChapterLinks, parseStoryMeta, parseTotalPages } from "./truyenfullTemplate";
 
 vi.mock("./http", () => ({ fetchText: vi.fn() }));
+vi.mock("../renderer", () => ({ renderPageHtml: vi.fn() }));
+vi.mock("../siteSession", () => ({ loadSiteSession: vi.fn(), sessionRequestHeaders: vi.fn() }));
 
 // JSDOM construction dominates the long pagination test (~10ms per page), so identical
 // HTML reuses one parsed document. Every distinct fixture/page shape still goes through
@@ -27,6 +31,9 @@ vi.mock("jsdom", async () => {
 });
 
 const mockedFetchText = vi.mocked(fetchText);
+const mockedRender = vi.mocked(renderPageHtml);
+const mockedSessionHeaders = vi.mocked(sessionRequestHeaders);
+const mockedLoadSession = vi.mocked(loadSiteSession);
 
 const readFixture = (name: string) => readFileSync(fileURLToPath(new URL(`./__fixtures__/${name}`, import.meta.url)), "utf8");
 const nfc = (s: string) => s.normalize("NFC");
@@ -36,8 +43,17 @@ const chapterPage = (hrefs: string[]) =>
     .map((href) => `<li><a href="${href}">${href}</a></li>`)
     .join("")}</ul></div></body></html>`;
 
+// No pagination markers: fetchToc reads one page and stops.
+const oneChapterStory = (url: string) =>
+  `<html><body><div id="list-chapter"><ul class="list-chapter"><li><a href="${url}chuong-1/">Chương 1</a></li></ul></div></body></html>`;
+
+const challengePage = `<html><head><title>Chờ một chút...</title></head><body><p>Trang này hiển thị trong khi trang web xác minh bạn không phải là bot.</p></body></html>`;
+
 beforeEach(() => {
   mockedFetchText.mockReset();
+  mockedRender.mockReset();
+  mockedSessionHeaders.mockReset().mockReturnValue({});
+  mockedLoadSession.mockReset().mockReturnValue(undefined);
 });
 
 describe("parseStoryMeta (template truyenfull)", () => {
@@ -174,6 +190,64 @@ describe("fetchToc (template truyenfull)", () => {
 
     await expect(fetchToc("https://truyenfull.live/khong-co-chuong/")).rejects.toThrow(/No chapter list found/);
     expect(mockedFetchText).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetch bị Cloudflare chặn (403) thì render bằng phiên đã lưu", async () => {
+    const base = "https://truyenfull.live/dau-xuan-tuoi-sang/";
+    mockedFetchText
+      .mockRejectedValueOnce(new Error("Failed to fetch ... (HTTP 403)"))
+      .mockResolvedValueOnce(chapterPage([`${base}chuong-51/`]))
+      .mockResolvedValueOnce(chapterPage([`${base}chuong-51/`]));
+    mockedRender.mockResolvedValue(readFixture("truyenfull-story.html"));
+
+    const toc = await fetchToc(base);
+
+    expect(mockedRender).toHaveBeenCalledWith(base);
+    expect(toc.chapters).toHaveLength(51);
+    // Trang 2 trở đi vẫn đi đường fetch nhanh, không render lại.
+    expect(mockedRender).toHaveBeenCalledTimes(1);
+  });
+
+  it("fetch trả về trang challenge thì render thay vì coi là trang truyện", async () => {
+    const base = "https://truyenfull.live/a/";
+    mockedFetchText.mockResolvedValue(challengePage);
+    mockedRender.mockResolvedValue(oneChapterStory(base));
+
+    const toc = await fetchToc(base);
+
+    expect(mockedRender).toHaveBeenCalledWith(base);
+    expect(toc.chapters).toHaveLength(1);
+  });
+
+  it("render cũng bị challenge, chưa có phiên → lỗi nói rõ cần nhập phiên", async () => {
+    mockedFetchText.mockRejectedValue(new Error("Failed to fetch ... (HTTP 403)"));
+    mockedRender.mockResolvedValue(challengePage);
+
+    await expect(fetchToc("https://truyenfull.live/a/")).rejects.toThrow(
+      /Cloudflare check the app cannot pass on its own/
+    );
+  });
+
+  it("render vẫn challenge khi đã có phiên → lỗi nói phiên không còn được chấp nhận", async () => {
+    mockedFetchText.mockRejectedValue(new Error("Failed to fetch ... (HTTP 403)"));
+    mockedRender.mockResolvedValue(challengePage);
+    mockedLoadSession.mockReturnValue({ cookies: [], origins: [] });
+
+    await expect(fetchToc("https://truyenfull.live/a/")).rejects.toThrow(
+      /Saved session is no longer accepted by Cloudflare/
+    );
+  });
+
+  it("gửi User-Agent và cookie của phiên kèm request nhanh", async () => {
+    const base = "https://truyenfull.live/a/";
+    mockedSessionHeaders.mockReturnValue({ "User-Agent": "UA-MAC", Cookie: "cf_clearance=abc" });
+    mockedFetchText.mockResolvedValue(oneChapterStory(base));
+
+    await fetchToc(base);
+
+    expect(mockedFetchText).toHaveBeenCalledWith(base, {
+      headers: { "User-Agent": "UA-MAC", Cookie: "cf_clearance=abc" },
+    });
   });
 });
 

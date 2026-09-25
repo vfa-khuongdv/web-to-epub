@@ -593,16 +593,17 @@ export interface SiteSessionStatus {
   username?: string;
 }
 
-export async function fetchSiteSession(): Promise<SiteSessionStatus> {
-  const res = await apiFetch("/api/site-sessions/asianfanfics", { headers: langHeaders() });
+// `site` is a slug from lib/siteSessions.ts; the server maps it to the site's domain.
+export async function fetchSiteSession(site: string): Promise<SiteSessionStatus> {
+  const res = await apiFetch(`/api/site-sessions/${encodeURIComponent(site)}`, { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not check the saved session")));
   return (await res.json()) as SiteSessionStatus;
 }
 
-// The body is a cURL copy of a request from the user's own logged-in browser; the server
+// The body is a cURL copy of a request from the user's own browser; the server
 // keeps the cookies and answers only how many it saved.
-export async function importSiteSession(curl: string): Promise<{ cookieCount: number; username?: string }> {
-  const res = await apiFetch("/api/site-sessions/asianfanfics", {
+export async function importSiteSession(site: string, curl: string): Promise<{ cookieCount: number; username?: string }> {
+  const res = await apiFetch(`/api/site-sessions/${encodeURIComponent(site)}`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
     body: JSON.stringify({ curl }),
@@ -611,8 +612,8 @@ export async function importSiteSession(curl: string): Promise<{ cookieCount: nu
   return (await res.json()) as { cookieCount: number; username?: string };
 }
 
-export async function removeSiteSession(): Promise<void> {
-  const res = await apiFetch("/api/site-sessions/asianfanfics", {
+export async function removeSiteSession(site: string): Promise<void> {
+  const res = await apiFetch(`/api/site-sessions/${encodeURIComponent(site)}`, {
     method: "DELETE",
     headers: langHeaders(),
   });

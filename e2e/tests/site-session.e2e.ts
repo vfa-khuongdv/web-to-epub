@@ -1,23 +1,36 @@
 import fs from "fs";
 import path from "path";
+import type { Locator } from "@playwright/test";
 import { test, expect } from "../helpers/fixtures";
 import { DATA_DIR } from "../helpers/env";
 import { fixtureChapterUrl, seedStory } from "../helpers/seed";
 
-// The saved session is one file, shared by both tests here: each starts from no session
-// and the import test leaves one behind only for itself.
+// The saved sessions are per-site files: each test starts from none and the import tests
+// leave one behind only for themselves.
 test.describe.configure({ mode: "serial" });
 
 const SESSION_FILE = path.join(DATA_DIR, "sessions", "asianfanfics.com.json");
+const TRUYENFULL_SESSION_FILE = path.join(DATA_DIR, "sessions", "truyenfull.live.json");
 const STORY_URL = "https://www.asianfanfics.com/story/view/1143593";
 // The shape a browser's "Copy as cURL" produces: cookies in a header, UA included.
 const NAMED_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjQxMDI0NDQ4MDAsIm5hbWUiOiJraHVvbmdkdiJ9.sig";
 const CURL =
   "curl 'https://www.asianfanfics.com/story/view/1143593' " +
   `-H 'cookie: atokun=${NAMED_TOKEN}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
+// TruyenFull's session is only the Cloudflare pass — no account, no login token.
+const TRUYENFULL_CURL =
+  "curl 'https://truyenfull.live/huyet-mach-khong-the-danh-trao-free/' " +
+  "-H 'cookie: cf_clearance=tf-clearance' -H 'user-agent: UA-MAC'";
+
+// One site's row in Settings → Site sessions. Both rows carry the same button names, so
+// tests scope to the row by its label (the hint and controls sit in the same wrapper).
+function sessionRow(panel: Locator, label: string): Locator {
+  return panel.getByText(label, { exact: true }).locator("..").locator("..");
+}
 
 test.beforeEach(async ({ request }) => {
   await request.delete("/api/site-sessions/asianfanfics");
+  await request.delete("/api/site-sessions/truyenfull");
 });
 
 test("asks for a session before loading an Asianfanfics URL, then continues with it", async ({ page, request }) => {
@@ -125,18 +138,36 @@ test("settings shows the saved session and removes it", async ({ page, request }
   await page.goto("/");
   await page.getByRole("button", { name: "Settings" }).click();
   const panel = page.getByRole("dialog", { name: "Settings" });
-  await expect(panel.getByText("A saved login is in use for rated-M and subscribers-only stories.")).toBeVisible();
+  const row = sessionRow(panel, "Asianfanfics");
+  await expect(row.getByText("A saved login is in use for rated-M and subscribers-only stories.")).toBeVisible();
 
-  await expect(panel.getByRole("link", { name: "khuongdv" })).toHaveAttribute(
+  await expect(row.getByRole("link", { name: "khuongdv" })).toHaveAttribute(
     "href",
     "https://www.asianfanfics.com/profile/u/khuongdv"
   );
 
-  await panel.getByRole("button", { name: "Remove" }).click();
+  await row.getByRole("button", { name: "Remove" }).click();
   await expect(
-    panel.getByText("Rated-M and subscribers-only stories need a login saved from your own browser.")
+    row.getByText("Rated-M and subscribers-only stories need a login saved from your own browser.")
   ).toBeVisible();
   expect(fs.existsSync(SESSION_FILE)).toBe(false);
+});
+
+test("settings imports and removes a TruyenFull Cloudflare session", async ({ page, request }) => {
+  await request.post("/api/site-sessions/truyenfull", { data: { curl: TRUYENFULL_CURL } });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Settings" }).click();
+  const panel = page.getByRole("dialog", { name: "Settings" });
+  const row = sessionRow(panel, "TruyenFull");
+  await expect(row.getByText("A saved browser session is in use to pass TruyenFull's Cloudflare check.")).toBeVisible();
+  // cf_clearance carries no readable expiry, so the row shows when it was saved instead.
+  await expect(row.getByText(/Saved /)).toBeVisible();
+  expect(fs.existsSync(TRUYENFULL_SESSION_FILE)).toBe(true);
+
+  await row.getByRole("button", { name: "Remove" }).click();
+  await expect(row.getByText("TruyenFull needs a saved browser session to pass its Cloudflare check.")).toBeVisible();
+  expect(fs.existsSync(TRUYENFULL_SESSION_FILE)).toBe(false);
 });
 
 // A token whose `exp` is long past: the app must treat it as needing a fresh import.
@@ -159,6 +190,7 @@ test("settings shows the saved login as expired", async ({ page, request }) => {
   await page.goto("/");
   await page.getByRole("button", { name: "Settings" }).click();
   const panel = page.getByRole("dialog", { name: "Settings" });
-  await expect(panel.getByText("Session has expired — import a fresh one.")).toBeVisible();
-  await expect(panel.getByRole("button", { name: "Import session" })).toBeVisible();
+  const row = sessionRow(panel, "Asianfanfics");
+  await expect(row.getByText("Session has expired — import a fresh one.")).toBeVisible();
+  await expect(row.getByRole("button", { name: "Import session" })).toBeVisible();
 });

@@ -18,6 +18,9 @@ process.env.DATA_DIR = DATA_DIR;
 const JWT_FUTURE = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJleHAiOjQxMDI0NDQ4MDAsIm5hbWUiOiJraHVvbmdkdiJ9.sig";
 const VALID_CURL =
   `curl 'https://www.asianfanfics.com/story/view/1191193' -H 'cookie: atokun=${JWT_FUTURE}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
+// The Cloudflare pass truyenfull.live needs: no login token, just the clearance cookie.
+const TRUYENFULL_CURL =
+  `curl 'https://truyenfull.live/huyet-mach-khong-the-danh-trao-free/' -H 'cookie: cf_clearance=tf-clearance; _ga=GA1.1.123' -H 'user-agent: UA-MAC'`;
 
 describe("site session routes", () => {
   let server: Server;
@@ -94,7 +97,12 @@ describe("site session routes", () => {
 
   it("báo đã cấu hình sau khi nhập", async () => {
     const res = await fetch(`${base}/api/site-sessions/asianfanfics`);
-    const status = (await res.json()) as { configured: boolean; savedAt?: string; username?: string };
+    const status = (await res.json()) as {
+      configured: boolean;
+      savedAt?: string;
+      expiresAt?: string;
+      username?: string;
+    };
     expect(status.configured).toBe(true);
     expect(status.username).toBe("khuongdv");
     expect(typeof status.savedAt).toBe("string");
@@ -108,5 +116,56 @@ describe("site session routes", () => {
     expect(existsSync(path.join(DATA_DIR, "sessions", "asianfanfics.com.json"))).toBe(false);
     const status = await fetch(`${base}/api/site-sessions/asianfanfics`);
     expect(await status.json()).toEqual({ configured: false });
+  });
+
+  it("truyenfull dùng file phiên riêng, không lưu giá trị cookie", async () => {
+    const empty = await fetch(`${base}/api/site-sessions/truyenfull`);
+    expect(await empty.json()).toEqual({ configured: false });
+
+    const res = await fetch(`${base}/api/site-sessions/truyenfull`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curl: TRUYENFULL_CURL }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cookieCount: number; username?: string };
+    expect(body.cookieCount).toBe(2);
+    expect(body.username).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain("tf-clearance");
+    expect(existsSync(path.join(DATA_DIR, "sessions", "truyenfull.live.json"))).toBe(true);
+
+    const status = (await (await fetch(`${base}/api/site-sessions/truyenfull`)).json()) as {
+      configured: boolean;
+      savedAt?: string;
+      // cf_clearance is not a JWT, so there is no readable expiry to report.
+      expiresAt?: string;
+    };
+    expect(status.configured).toBe(true);
+    expect(status.expiresAt).toBeUndefined();
+    expect(typeof status.savedAt).toBe("string");
+  });
+
+  it("từ chối cURL không phải của site được hỏi", async () => {
+    const res = await fetch(`${base}/api/site-sessions/truyenfull`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curl: VALID_CURL }),
+    });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toMatch(/not for truyenfull\.live/);
+  });
+
+  it("slug lạ trả 404 và không tạo file nào", async () => {
+    for (const method of ["GET", "DELETE"]) {
+      const res = await fetch(`${base}/api/site-sessions/example`, { method });
+      expect(res.status).toBe(404);
+    }
+    const post = await fetch(`${base}/api/site-sessions/example`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curl: TRUYENFULL_CURL }),
+    });
+    expect(post.status).toBe(404);
+    expect(existsSync(path.join(DATA_DIR, "sessions", "example.json"))).toBe(false);
   });
 });

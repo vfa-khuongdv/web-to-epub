@@ -336,16 +336,16 @@ export const vi: Record<string, string> = {
   "{stories} stories, {chapters} chapters": "{stories} truyện, {chapters} chương",
   "Could not load settings": "Không tải được cài đặt",
   "Could not save settings": "Không lưu được cài đặt",
-  "Site sessions": "Phiên đăng nhập theo trang",
-  "Import session": "Nhập phiên đăng nhập",
-  "Replace session": "Thay phiên đăng nhập",
+  "Site sessions": "Phiên theo trang",
+  "Import session": "Nhập phiên trình duyệt",
+  "Replace session": "Thay phiên trình duyệt",
   "Remove": "Xoá",
   "A saved login is in use for rated-M and subscribers-only stories.":
     "Đang dùng phiên đăng nhập đã lưu cho truyện rated M và truyện của tác giả bạn đăng ký.",
   "Saved {ago}.": "Đã lưu {ago}.",
   "Account:": "Tài khoản:",
   "Saved login for {username}": "Đã lưu phiên đăng nhập của {username}",
-  "Saved login session": "Đã lưu phiên đăng nhập",
+  "Saved site session": "Đã lưu phiên trình duyệt",
   "Expires in about {minutes} min.": "Còn hiệu lực khoảng {minutes} phút.",
   "Session has expired — import a fresh one.": "Phiên đã hết hạn — nhập lại phiên mới.",
   "The saved login lasts about an hour; import a fresh one when it expires.":
@@ -377,6 +377,23 @@ export const vi: Record<string, string> = {
   "Could not check the saved session": "Không kiểm tra được phiên đã lưu",
   "Could not save the session": "Không lưu được phiên",
   "Could not remove the session": "Không xoá được phiên",
+  "TruyenFull session": "Phiên TruyenFull",
+  "TruyenFull checks every browser with Cloudflare before showing a story, and the app cannot pass that check on its own — it reuses the pass your browser already has. No password is involved.":
+    "TruyenFull kiểm tra mọi trình duyệt bằng Cloudflare trước khi cho xem truyện, và app không tự qua được bước đó — nó dùng lại \"vé qua cổng\" mà trình duyệt của bạn đã có. Không liên quan mật khẩu.",
+  "Open truyenfull.live in your browser and let the security check finish.":
+    "Mở truyenfull.live bằng trình duyệt của bạn và để bước kiểm tra bảo mật chạy xong.",
+  'Right-click the first request (the truyenfull.live page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Chuột phải vào request đầu tiên (trang truyenfull.live) → Copy → Copy as cURL. Nếu chỉ có "Copy as cURL (bash)" thì bản đó cũng dùng được.',
+  "The pass is tied to this browser and network and usually lasts about half an hour — import a fresh one when crawls start getting blocked again.":
+    "Vé qua cổng gắn với trình duyệt và mạng này, thường dùng được khoảng nửa tiếng — khi crawl bắt đầu bị chặn lại thì nhập phiên mới.",
+  "Copy the request from a story or chapter page that already loaded — a blocked page carries no pass.":
+    "Hãy copy request từ trang truyện hoặc chương đã tải được — trang bị chặn thì không có \"vé\".",
+  "A saved browser session is in use to pass TruyenFull's Cloudflare check.":
+    "Đang dùng phiên trình duyệt đã lưu để qua bước kiểm tra Cloudflare của TruyenFull.",
+  "TruyenFull needs a saved browser session to pass its Cloudflare check.":
+    "TruyenFull cần phiên trình duyệt đã lưu để qua bước kiểm tra Cloudflare.",
+  "Skipping means adding a TruyenFull story will fail while the site blocks the app.":
+    "Bỏ qua thì việc thêm truyện TruyenFull sẽ thất bại khi site còn chặn app.",
 
   // Narration (Settings)
   "Narration": "Giọng đọc",
