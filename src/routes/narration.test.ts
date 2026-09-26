@@ -21,8 +21,10 @@ const fake = vi.hoisted(() => ({
 }));
 
 vi.mock("../services/tts/runtime", () => ({
-  ttsRuntime: {
+  runtimeFor: () => ({
     status: async () => ({ supported: true, state: fake.installed ? "installed" : "not-installed" }),
+  }),
+  ttsEngines: {
     withModel: async (_variant: string, fn: (worker: unknown) => Promise<unknown>) =>
       fn({
         synth: async (request: { parts: string[]; out: string; signal?: AbortSignal }) => {

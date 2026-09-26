@@ -11,7 +11,8 @@ import {
   narrateChapters,
   narrationStates,
 } from "../services/tts/narrate";
-import { ttsRuntime } from "../services/tts/runtime";
+import { customVoices } from "../services/tts/customVoices";
+import { runtimeFor, ttsEngines } from "../services/tts/runtime";
 import { Library, NarrationRun, libraryFor } from "./library";
 import { writeSse } from "./live";
 
@@ -109,8 +110,16 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
     res.status(400).json({ message: t("Narration is only available for Vietnamese stories") });
     return;
   }
-  if ((await ttsRuntime.status()).state !== "installed") {
+  const settings = narrationSettings();
+  if ((await runtimeFor(settings.variant).status()).state !== "installed") {
     res.status(409).json({ message: t("Narration is not installed — install it in Settings → Narration") });
+    return;
+  }
+  // Fail here rather than once per chapter (e.g. OmniVoice with no voice picked).
+  try {
+    await customVoices.synthVoice(settings.voice, settings.variant);
+  } catch (err) {
+    res.status(409).json({ message: err instanceof Error ? err.message : String(err) });
     return;
   }
   if (library.runningNarrations.has(id)) {
@@ -141,7 +150,7 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
         dataDir: library.dataDir,
         storyId: id,
         settings: narrationSettings,
-        runtime: ttsRuntime,
+        runtime: ttsEngines,
         signal: abort.signal,
         onEvent: (event) => {
           run.done = event.done;

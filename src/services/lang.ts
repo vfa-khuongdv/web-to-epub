@@ -152,6 +152,12 @@ const vi: Record<string, string> = {
   "Narration is not installed — install it in Settings → Narration":
     "Chưa cài giọng đọc — hãy cài trong Cài đặt → Giọng đọc",
   "Narration is only available for Vietnamese stories": "Giọng đọc chỉ dùng được cho truyện tiếng Việt",
+  "Give the voice a name": "Hãy đặt tên cho giọng",
+  "The voice clip is too large (10 MB at most)": "File giọng mẫu quá lớn (tối đa 10 MB)",
+  "Unsupported audio file — use MP3, WAV, FLAC or OGG": "File audio không hỗ trợ — hãy dùng MP3, WAV, FLAC hoặc OGG",
+  "This custom voice no longer exists — pick another in Settings → Narration":
+    "Giọng tự tải lên này không còn nữa — hãy chọn giọng khác trong Cài đặt → Giọng đọc",
+  "Voice not found": "Không tìm thấy giọng",
   "This story is already being narrated": "Truyện này đang được đọc",
   "This story is not being narrated": "Truyện này không đang được đọc",
   "Story is being narrated, cannot delete": "Truyện đang được đọc, không xoá được",
@@ -159,6 +165,12 @@ const vi: Record<string, string> = {
     "Chương này chưa có audio — hãy tạo giọng đọc cho chương trước",
   "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",
   "Unsupported narration variant": "Kiểu giọng đọc không hợp lệ",
+  "Unsupported narration engine": "Bộ đọc không hợp lệ",
+  "The transcript is too long (1000 characters at most)": "Lời thoại quá dài (tối đa 1000 ký tự)",
+  "OmniVoice has no default voice — pick one in Settings → Narration":
+    "OmniVoice không có giọng mặc định — hãy chọn một giọng trong Cài đặt → Giọng đọc",
+  "This voice is no longer available — pick another in Settings → Narration":
+    "Giọng này không còn nữa — hãy chọn giọng khác trong Cài đặt → Giọng đọc",
   "Voice name is too long": "Tên giọng quá dài",
   Narration: "Giọng đọc",
 };

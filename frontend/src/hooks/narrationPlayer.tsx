@@ -3,7 +3,10 @@ import { chapterAudioUrl } from "../lib/api";
 import { useVault } from "../vault";
 
 export const PLAYBACK_RATES = [0.8, 1, 1.25, 1.5, 1.75, 2] as const;
+// Seconds the player jumps with the ±15 buttons and the arrow keys.
+export const SKIP_S = 15;
 const RATE_KEY = "narration-rate";
+const VOLUME_KEY = "narration-volume";
 // Position is saved this often while playing, and on every pause.
 const SAVE_EVERY_S = 5;
 // Closer than this to the end counts as finished: resuming there would play a second of silence.
@@ -21,6 +24,20 @@ export function nextOrder(ready: number[], order: number): number | undefined {
 
 export function previousOrder(ready: number[], order: number): number | undefined {
   return [...ready].reverse().find((o) => o < order);
+}
+
+// What the queue popover lists: the chapter playing now and the narrated ones after it.
+export function upNextOrders(orders: number[], order: number): number[] {
+  return orders.filter((o) => o >= order);
+}
+
+// Keys the focused element already handles itself (typing, native controls, a button's
+// own space/enter activation): the player's shortcuts stay out of their way.
+export function handlesOwnKeys(target: { tagName?: string; isContentEditable?: boolean } | null): boolean {
+  if (!target) return false;
+  if (target.isContentEditable) return true;
+  const tag = target.tagName?.toLowerCase();
+  return tag === "input" || tag === "textarea" || tag === "select" || tag === "button" || tag === "a";
 }
 
 // One saved position per story and library, like the reader's (a story id is a hash of
@@ -62,6 +79,18 @@ export function readRate(): number {
   }
 }
 
+// Volume persists like speed; anything outside 0..1 is treated as unset.
+export function readVolume(): number {
+  try {
+    const raw = localStorage.getItem(VOLUME_KEY);
+    if (raw === null) return 1;
+    const saved = Number(raw);
+    return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 1;
+  } catch {
+    return 1;
+  }
+}
+
 // What the player plays through: one story's chapters that have narration, in reading
 // order, with their titles for the bar.
 export interface PlayerQueue {
@@ -69,20 +98,27 @@ export interface PlayerQueue {
   storyTitle: string;
   orders: number[];
   titles: Record<number, string>;
+  // The story's cover as saved in the DB (internal path or the original URL), for the bar.
+  coverUrl?: string;
 }
 
 export interface NarrationPlayer {
   // The story and chapter loaded in the player, or null when nothing is.
   storyId: string | null;
   storyTitle: string;
+  // The loaded story's cover, as-is; the bar resolves it to a URL.
+  coverUrl: string | null;
   order: number | null;
   playing: boolean;
   time: number;
   duration: number;
   rate: number;
+  volume: number;
   error: string | null;
   hasNext: boolean;
   hasPrevious: boolean;
+  // The chapter playing and the narrated ones after it — the queue popover.
+  upNext: number[];
   titleOf: (order: number) => string;
   // Whether this chapter of this story is the one playing right now.
   isPlaying: (storyId: string, order: number) => boolean;
@@ -91,12 +127,15 @@ export interface NarrationPlayer {
   // A story page refreshes its own queue (a chapter got narrated, one went stale); only
   // applied when that story is the one loaded.
   updateQueue: (queue: PlayerQueue) => void;
+  // Jump to a chapter of the loaded queue (the queue popover); starts from the top.
+  jumpTo: (order: number) => void;
   toggle: () => void;
   seek: (time: number) => void;
   skip: (seconds: number) => void;
   next: () => void;
   previous: () => void;
   setRate: (rate: number) => void;
+  setVolume: (volume: number) => void;
   close: () => void;
   // "Show me what is playing": the library opens that story and its reader at the chapter.
   openRequest: { storyId: string; order: number } | null;
@@ -132,17 +171,21 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
   const [time, setTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [rate, setRateState] = useState(readRate);
+  const [volume, setVolumeState] = useState(readVolume);
   const [error, setError] = useState<string | null>(null);
   const [openRequest, setOpenRequest] = useState<{ storyId: string; order: number } | null>(null);
   const requestOpen = useCallback((storyId: string, o: number) => setOpenRequest({ storyId, order: o }), []);
   const clearOpenRequest = useCallback(() => setOpenRequest(null), []);
   const rateRef = useRef(rate);
   rateRef.current = rate;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
 
   const audio = useCallback(() => {
     if (!audioRef.current) {
       audioRef.current = new Audio();
       audioRef.current.preload = "metadata";
+      audioRef.current.volume = volumeRef.current;
     }
     return audioRef.current;
   }, []);
@@ -306,24 +349,95 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     [audio]
   );
 
+  const setVolume = useCallback(
+    (next: number) => {
+      const clamped = Math.max(0, Math.min(1, next));
+      setVolumeState(clamped);
+      audio().volume = clamped;
+      try {
+        localStorage.setItem(VOLUME_KEY, String(clamped));
+      } catch {
+        /* not remembered */
+      }
+    },
+    [audio]
+  );
+
+  // A chapter of the loaded queue, from its top (the queue popover).
+  const jumpTo = useCallback(
+    (next: number) => {
+      const current = queueRef.current;
+      if (current && current.orders.includes(next)) load(next, 0);
+    },
+    [load]
+  );
+
+  // Global keys while a chapter is loaded: space toggles, arrows seek, J/K change
+  // chapter. Left alone while the focused element uses the key itself (typing, a focused
+  // button) or a modifier is held, so shortcuts elsewhere keep working.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
+      const current = orderRef.current;
+      if (current === null) return;
+      if (event.target instanceof HTMLElement && handlesOwnKeys(event.target)) return;
+      const el = audioRef.current;
+      if (!el) return;
+      const orders = queueRef.current?.orders ?? [];
+      const clampTo = (to: number) => Math.max(0, Math.min(to, Number.isFinite(el.duration) ? el.duration : to));
+      switch (event.key) {
+        case " ":
+          event.preventDefault();
+          if (el.paused) void el.play();
+          else el.pause();
+          return;
+        case "ArrowLeft":
+          event.preventDefault();
+          el.currentTime = clampTo(el.currentTime - SKIP_S);
+          return;
+        case "ArrowRight":
+          event.preventDefault();
+          el.currentTime = clampTo(el.currentTime + SKIP_S);
+          return;
+        case "j":
+        case "J": {
+          const before = previousOrder(orders, current);
+          if (before !== undefined) load(before, 0);
+          return;
+        }
+        case "k":
+        case "K": {
+          const following = nextOrder(orders, current);
+          if (following !== undefined) load(following, 0);
+        }
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [load]);
+
   const value = useMemo<NarrationPlayer>(() => {
     const orders = queue?.orders ?? [];
     const current = order ?? -1;
     return {
       storyId: queue?.storyId ?? null,
       storyTitle: queue?.storyTitle ?? "",
+      coverUrl: queue?.coverUrl ?? null,
       order,
       playing,
       time,
       duration,
       rate,
+      volume,
       error,
       hasNext: order !== null && nextOrder(orders, current) !== undefined,
       hasPrevious: order !== null && previousOrder(orders, current) !== undefined,
+      upNext: order === null ? [] : upNextOrders(orders, order),
       titleOf: (o) => queue?.titles[o] ?? "",
       isPlaying: (storyId, o) => playing && queue?.storyId === storyId && order === o,
       play,
       updateQueue,
+      jumpTo,
       toggle: () => {
         const el = audio();
         if (orderRef.current === null) return;
@@ -347,6 +461,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
         if (before !== undefined) load(before, 0);
       },
       setRate,
+      setVolume,
       close,
       openRequest,
       requestOpen,
@@ -359,11 +474,14 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     time,
     duration,
     rate,
+    volume,
     error,
     openRequest,
     play,
     updateQueue,
+    jumpTo,
     setRate,
+    setVolume,
     close,
     audio,
     load,

@@ -5,7 +5,19 @@ import fs from "fs/promises";
 import path from "path";
 import { Readable } from "stream";
 import { pipeline } from "stream/promises";
-import { CONSTRAINTS_FILE, PYTHON_VERSION, TTS_DIR, VIENEU_VERSION, WORKER_SCRIPT, uvDownloadUrl } from "../../config/tts";
+import {
+  CONSTRAINTS_FILE,
+  OMNIVOICE_CONSTRAINTS_FILE,
+  OMNIVOICE_TTS_DIR,
+  OMNIVOICE_VERSION,
+  OMNIVOICE_WORKER_SCRIPT,
+  PYTHON_VERSION,
+  TTS_DIR,
+  VIENEU_VERSION,
+  WORKER_SCRIPT,
+  omnivoiceUvDownloadUrl,
+  uvDownloadUrl,
+} from "../../config/tts";
 import { t } from "../lang";
 import { LoadedModel, TtsVariant, TtsWorker, WorkerCommand, startTtsWorker } from "./workerClient";
 
@@ -14,18 +26,28 @@ import { LoadedModel, TtsVariant, TtsWorker, WorkerCommand, startTtsWorker } fro
  *
  *   <TTS_DIR>/bin/uv          standalone uv, downloaded from its GitHub release
  *   <TTS_DIR>/python/         the CPython uv fetches (UV_PYTHON_INSTALL_DIR)
- *   <TTS_DIR>/venv/           virtualenv with `vieneu` pinned to VIENEU_VERSION
+ *   <TTS_DIR>/venv/           virtualenv with the engine's package (`vieneu`, `omnivoice`)
  *   <TTS_DIR>/hf/             model files (HF_HOME), stamped with the constraints hash that
  *                             downloaded them: huggingface_hub versions lay the cache out
  *                             differently, and onnxruntime rejects a model whose external
  *                             data file resolves outside the model's own blob folder
  *   <TTS_DIR>/installed.json  written last: its presence is what "installed" means — and it
- *                             records the VieNeu version and a hash of the constraints, so
- *                             changing either makes the app ask to install again
+ *                             records the engine version (under the engine's name) and a
+ *                             hash of the constraints, so changing either makes the app ask
+ *                             to install again
  *
  * One worker process at most, started on first use and closed after a quiet spell, so
  * the ~1 GB model is not held in RAM by an app that is only crawling.
+ *
+ * Each engine is one such runtime with its own TTS_DIR (see ttsRuntimes below).
  */
+export const TTS_ENGINES = ["vieneu", "omnivoice"] as const;
+export type TtsEngine = (typeof TTS_ENGINES)[number];
+
+export function engineOf(variant: TtsVariant): TtsEngine {
+  return variant === "omnivoice" ? "omnivoice" : "vieneu";
+}
+
 export type TtsInstallPhase = "uv" | "python" | "packages" | "model";
 
 export interface TtsStatus {
@@ -42,6 +64,12 @@ export interface TtsStatus {
 }
 
 export interface TtsRuntimeDeps {
+  engine: TtsEngine;
+  version: string;
+  // What `uv pip install` gets, besides the constraints.
+  packages: string[];
+  // Extra environment for every tool and the worker.
+  env?: NodeJS.ProcessEnv;
   ttsDir: string;
   workerScript: string;
   constraintsFile: string;
@@ -63,6 +91,8 @@ export interface TtsRuntime {
   withModel<T>(variant: TtsVariant, fn: (worker: TtsWorker, model: LoadedModel) => Promise<T>): Promise<T>;
   diskBytes(): Promise<number>;
   shutdown(): void;
+  // Close the worker now unless something is using it (frees its model's memory).
+  release(): void;
 }
 
 export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
@@ -81,6 +111,7 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     UV_PYTHON_PREFERENCE: "only-managed",
     HF_HOME: hfDir,
     HF_HUB_DISABLE_TELEMETRY: "1",
+    ...deps.env,
   };
 
   let installing: Promise<void> | undefined;
@@ -99,8 +130,8 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
 
   async function isInstalled(): Promise<boolean> {
     try {
-      const saved = JSON.parse(await fs.readFile(marker, "utf8")) as { vieneu?: string; constraints?: string };
-      return saved.vieneu === VIENEU_VERSION && saved.constraints === (await constraintsHash());
+      const saved = JSON.parse(await fs.readFile(marker, "utf8")) as Record<string, string | undefined>;
+      return saved[deps.engine] === deps.version && saved.constraints === (await constraintsHash());
     } catch {
       return false;
     }
@@ -163,7 +194,7 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     // the packaged app lives in "/Applications/Web to EPUB.app".
     await deps.exec(
       uvBin,
-      ["pip", "install", "--python", python, "-c", path.basename(deps.constraintsFile), `vieneu==${VIENEU_VERSION}`],
+      ["pip", "install", "--python", python, "-c", path.basename(deps.constraintsFile), ...deps.packages],
       env,
       path.dirname(deps.constraintsFile)
     );
@@ -184,7 +215,7 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
 
     await fs.writeFile(
       marker,
-      JSON.stringify({ vieneu: VIENEU_VERSION, constraints: await constraintsHash(), installedAt: new Date().toISOString() })
+      JSON.stringify({ [deps.engine]: deps.version, constraints: await constraintsHash(), installedAt: new Date().toISOString() })
     );
   }
 
@@ -203,7 +234,7 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
         state,
         ...(installing ? progress : {}),
         ...(state === "error" ? { error: lastError } : {}),
-        version: VIENEU_VERSION,
+        version: deps.version,
         running: worker !== undefined && !worker.closed,
         busy: pending > 0,
       };
@@ -274,6 +305,10 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     shutdown() {
       closeWorker();
     },
+
+    release() {
+      if (pending === 0) closeWorker();
+    },
   };
 
   return runtime;
@@ -319,14 +354,52 @@ function execLogged(log: (line: string) => void) {
 
 const log = (line: string) => console.log(`[tts] ${line}`);
 
-export const ttsRuntime = createTtsRuntime({
-  ttsDir: TTS_DIR,
-  workerScript: WORKER_SCRIPT,
-  constraintsFile: CONSTRAINTS_FILE,
-  uvUrl: uvDownloadUrl(),
-  download: downloadToFile,
-  exec: execLogged(log),
-  startWorker: startTtsWorker,
-  idleMs: 10 * 60_000,
-  log,
-});
+const shared = { download: downloadToFile, exec: execLogged(log), startWorker: startTtsWorker, idleMs: 10 * 60_000, log };
+
+export const ttsRuntimes: Record<TtsEngine, TtsRuntime> = {
+  vieneu: createTtsRuntime({
+    ...shared,
+    engine: "vieneu",
+    version: VIENEU_VERSION,
+    packages: [`vieneu==${VIENEU_VERSION}`],
+    ttsDir: TTS_DIR,
+    workerScript: WORKER_SCRIPT,
+    constraintsFile: CONSTRAINTS_FILE,
+    uvUrl: uvDownloadUrl(),
+  }),
+  omnivoice: createTtsRuntime({
+    ...shared,
+    engine: "omnivoice",
+    version: OMNIVOICE_VERSION,
+    packages: [`omnivoice==${OMNIVOICE_VERSION}`],
+    // A few ops have no MPS kernel yet; let torch run those on the CPU instead of failing.
+    env: { PYTORCH_ENABLE_MPS_FALLBACK: "1" },
+    ttsDir: OMNIVOICE_TTS_DIR,
+    workerScript: OMNIVOICE_WORKER_SCRIPT,
+    constraintsFile: OMNIVOICE_CONSTRAINTS_FILE,
+    uvUrl: omnivoiceUvDownloadUrl(),
+  }),
+};
+
+export function runtimeFor(variant: TtsVariant): TtsRuntime {
+  return ttsRuntimes[engineOf(variant)];
+}
+
+/**
+ * The runtime of whichever engine reads `variant`. Before using one engine the other's
+ * idle worker is closed: both models together do not fit next to the app on an 8 GB Mac.
+ */
+export function createTtsEngines(runtimes: Record<TtsEngine, TtsRuntime>): Pick<TtsRuntime, "withModel" | "shutdown"> {
+  return {
+    withModel(variant, fn) {
+      const engine = engineOf(variant);
+      for (const other of TTS_ENGINES) if (other !== engine) runtimes[other].release();
+      return runtimes[engine].withModel(variant, fn);
+    },
+    shutdown() {
+      for (const engine of TTS_ENGINES) runtimes[engine].shutdown();
+    },
+  };
+}
+
+export const ttsEngines = createTtsEngines(ttsRuntimes);

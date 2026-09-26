@@ -1,4 +1,4 @@
-import { VIENEU_VERSION } from "../../config/tts";
+import { OMNIVOICE_VERSION, VIENEU_VERSION } from "../../config/tts";
 import { StoredChapter, StoredStory } from "../../types";
 import { StoryStore } from "../storyStore";
 import {
@@ -9,6 +9,7 @@ import {
   writeAudioMeta,
 } from "./audioCache";
 import { chapterParts, chapterPartsWithBlocks } from "./chapterText";
+import { customVoices } from "./customVoices";
 import { TtsRuntime } from "./runtime";
 import { NarrationCancelled, TtsVariant } from "./workerClient";
 
@@ -34,9 +35,14 @@ function readable(chapter: Pick<StoredChapter, "status">): boolean {
   return chapter.status === "done";
 }
 
+// Recorded with each chapter's audio. VieNeu's is its bare version, as it always was.
+export function engineVersion(variant: TtsVariant): string {
+  return variant === "omnivoice" ? `omnivoice-${OMNIVOICE_VERSION}` : VIENEU_VERSION;
+}
+
 // The current voice, so audio saved before text-only freshness is still recognised.
 function legacy(settings: NarrationSettings) {
-  return { voice: narrationVoice(settings), engineVersion: VIENEU_VERSION };
+  return { voice: narrationVoice(settings), engineVersion: engineVersion(settings.variant) };
 }
 
 // The audio file of one chapter, if it matches the chapter's current text. The voice in
@@ -185,10 +191,11 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
     }
 
     try {
+      const voice = await customVoices.synthVoice(settings.voice, settings.variant);
       const { seconds, timings } = await job.runtime.withModel(settings.variant, (worker) =>
         worker.synth({
           parts,
-          voice: settings.voice,
+          ...voice,
           out: chapterAudioPath(job.dataDir, job.storyId, order),
           signal: job.signal,
           onProgress: (part, count) =>
@@ -198,7 +205,7 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
       await writeAudioMeta(job.dataDir, job.storyId, order, parts, {
         seconds,
         voice: narrationVoice(settings),
-        engineVersion: VIENEU_VERSION,
+        engineVersion: engineVersion(settings.variant),
         timings,
       });
       done++;

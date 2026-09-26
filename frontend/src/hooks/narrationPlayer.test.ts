@@ -1,5 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { nextOrder, previousOrder, readPosition, readRate, writePosition } from "./narrationPlayer";
+import {
+  handlesOwnKeys,
+  nextOrder,
+  previousOrder,
+  readPosition,
+  readRate,
+  readVolume,
+  upNextOrders,
+  writePosition,
+} from "./narrationPlayer";
 import { formatClock } from "../components/PlayerBar";
 
 describe("chapter order among narrated chapters", () => {
@@ -71,5 +80,70 @@ describe("formatClock", () => {
     [3725, "1:02:05"],
   ])("%d → %s", (seconds, text) => {
     expect(formatClock(seconds)).toBe(text);
+  });
+});
+
+describe("playback volume", () => {
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    };
+  });
+  afterEach(() => {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+
+  it("defaults to full volume and ignores values outside 0..1", () => {
+    expect(readVolume()).toBe(1);
+    store.set("narration-volume", "0.4");
+    expect(readVolume()).toBe(0.4);
+    store.set("narration-volume", "0");
+    expect(readVolume()).toBe(0);
+    store.set("narration-volume", "7");
+    expect(readVolume()).toBe(1);
+    store.set("narration-volume", "not a number");
+    expect(readVolume()).toBe(1);
+  });
+
+  it("never throws when storage is blocked", () => {
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+      setItem: () => {
+        throw new Error("blocked");
+      },
+      removeItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(readVolume()).toBe(1);
+  });
+});
+
+describe("next up", () => {
+  it("is the current chapter and the narrated ones after it, in order", () => {
+    expect(upNextOrders([1, 2, 5, 9], 2)).toEqual([2, 5, 9]);
+    // A current chapter without audio itself: still everything from there on.
+    expect(upNextOrders([1, 2, 5, 9], 3)).toEqual([5, 9]);
+    expect(upNextOrders([1, 2, 5, 9], 9)).toEqual([9]);
+    expect(upNextOrders([], 1)).toEqual([]);
+  });
+});
+
+describe("shortcut guard", () => {
+  it("leaves the key to the element that already uses it", () => {
+    expect(handlesOwnKeys({ tagName: "INPUT" })).toBe(true);
+    expect(handlesOwnKeys({ tagName: "textarea" })).toBe(true);
+    expect(handlesOwnKeys({ tagName: "select" })).toBe(true);
+    expect(handlesOwnKeys({ tagName: "BUTTON" })).toBe(true);
+    expect(handlesOwnKeys({ tagName: "A" })).toBe(true);
+    expect(handlesOwnKeys({ isContentEditable: true })).toBe(true);
+    expect(handlesOwnKeys({ tagName: "DIV" })).toBe(false);
+    expect(handlesOwnKeys(null)).toBe(false);
   });
 });
