@@ -45,7 +45,7 @@ describe("voice catalog", () => {
     expect(await catalog.builtin("an")).toEqual({
       refAudio: path.join(bundled, "clips", "an.mp3"),
       refText: "Xin chào",
-      refPrompt: path.join(cache, "builtin", "an.omnivoice.pt"),
+      refPrompt: path.join(cache, "builtin", "an.omnivoice-v2.pt"),
     });
     expect(await catalog.builtin("nope")).toBeUndefined();
   });

@@ -72,7 +72,7 @@ export function createVoiceCatalog(bundledDir: string, cacheDir: string) {
       return {
         refAudio: path.join(bundledDir, "clips", voice.clip),
         ...(voice.transcript ? { refText: voice.transcript } : {}),
-        refPrompt: path.join(cacheDir, "builtin", `${sampleName(id)}.omnivoice.pt`),
+        refPrompt: path.join(cacheDir, "builtin", `${sampleName(id)}.omnivoice-v2.pt`),
       };
     },
 

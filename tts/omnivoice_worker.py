@@ -6,7 +6,7 @@ Same protocol as vieneu_worker.py (see there), with two differences:
   Without one the model picks a new random voice for every part.
 - Cloning wants the clip's transcript. "refText" carries the one the user typed; without
   it Whisper transcribes the clip once. Either way the resulting voice prompt is saved
-  next to the clip (<clip>.omnivoice.pt), or at "refPrompt" when the clip's folder is not
+  next to the clip (<clip>.omnivoice-v2.pt), or at "refPrompt" when the clip's folder is not
   writable (a clip bundled with the app), so a voice is prepared only once.
 
 Requests:
@@ -49,6 +49,12 @@ NUM_STEPS = 32
 # OmniVoice clones best from 3–10 s. Only a clip Whisper transcribes is cut: a typed
 # transcript describes the whole clip, and cutting the audio would make them disagree.
 MAX_REF_SECONDS = 15
+# A cut clip ends at its last pause of at least this long, never mid-word: OmniVoice
+# carries the cut-off syllable into its output and says it again at the end of every
+# sentence (its transcript ends with "." there).
+MIN_PAUSE_SECONDS = 0.15
+# Bumped when the way a prompt is made changes, so prompts saved before are made again.
+PROMPT_SUFFIX = ".omnivoice-v2.pt"
 
 commands = queue.Queue()
 cancelled = set()
@@ -94,7 +100,7 @@ def voice_prompt(model, ref_audio, ref_text, ref_prompt, prompts):
 
     if ref_audio in prompts:
         return prompts[ref_audio]
-    saved = ref_prompt or ref_audio + ".omnivoice.pt"
+    saved = ref_prompt or ref_audio + PROMPT_SUFFIX
     if os.path.exists(saved):
         prompt = VoiceClonePrompt.load(saved)
     else:
@@ -123,7 +129,20 @@ def load_clip(path, rate, trim):
     import torch
 
     samples, _ = librosa.load(path, sr=rate, mono=True, duration=MAX_REF_SECONDS if trim else None)
+    if trim and len(samples) >= int(MAX_REF_SECONDS * rate) - 1:
+        samples = samples[: last_pause(samples, rate)]
     return (torch.from_numpy(samples), rate)
+
+
+def last_pause(samples, rate):
+    """Where the last pause before the end of a cut-off clip starts (the whole clip if none)."""
+    import librosa
+
+    spans = librosa.effects.split(samples, top_db=35)
+    pauses = [end for (_, end), (start, _) in zip(spans[:-1], spans[1:]) if start - end >= MIN_PAUSE_SECONDS * rate]
+    # Too short a clip clones badly; better the cut-off word than a 2 s voice.
+    pauses = [end for end in pauses if end >= 3 * rate]
+    return pauses[-1] if pauses else len(samples)
 
 
 def synth(model, message, prompts):
