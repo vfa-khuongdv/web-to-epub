@@ -129,8 +129,9 @@ export default function StoryDetail({
       storyTitle: bookTitle || story.title,
       orders: narratedOrders,
       titles: Object.fromEntries(story.chapters.map((c) => [c.order, c.title || t("Chapter {order}", { order: c.order })])),
+      coverUrl,
     }),
-    [story.id, story.title, story.chapters, bookTitle, narratedOrders, t]
+    [story.id, story.title, story.chapters, bookTitle, narratedOrders, t, coverUrl]
   );
   const { updateQueue } = player;
   const narrationLoaded = narration.state !== null;

@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { OMNIVOICE_VERSION, VIENEU_VERSION } from "../../config/tts";
 import { StoredStory } from "../../types";
 import { StoryStore, createStoryStore, storyId } from "../storyStore";
 import { chapterAudioPath } from "./audioCache";
@@ -10,6 +11,7 @@ import {
   NarrationSettings,
   chapterNarrationTimeline,
   chaptersToNarrate,
+  engineVersion,
   estimateTimeline,
   isNarratable,
   narrateChapters,
@@ -186,6 +188,16 @@ describe("narration job", () => {
     expect(runtime.calls.map((c) => c.variant)).toEqual(["turbo", "nano"]);
   });
 
+  it("reports a deleted custom voice per chapter instead of reading with some other voice", async () => {
+    settings = { variant: "turbo", voice: "custom:00000000-0000-0000-0000-000000000000" };
+    const runtime = fakeRuntime();
+    const result = await narrateChapters(job(runtime), [1]);
+
+    expect(result).toEqual({ done: 0, failed: 1 });
+    expect(runtime.calls).toEqual([]);
+    expect(events.find((e) => e.type === "narrate-error")).toMatchObject({ order: 1, message: expect.stringContaining("no longer exists") });
+  });
+
   it("stops on cancel without reporting an error", async () => {
     const abort = new AbortController();
     const runtime = fakeRuntime();
@@ -211,3 +223,10 @@ describe("estimateTimeline", () => {
   });
 });
 
+describe("engineVersion", () => {
+  it("names OmniVoice audio apart from VieNeu's, which keeps its bare version", () => {
+    expect(engineVersion("turbo")).toBe(VIENEU_VERSION);
+    expect(engineVersion("nano")).toBe(VIENEU_VERSION);
+    expect(engineVersion("omnivoice")).toBe(`omnivoice-${OMNIVOICE_VERSION}`);
+  });
+});

@@ -2,7 +2,7 @@ import express from "express";
 import path from "path";
 import apiRouter from "./routes";
 import { closeBrowser } from "./services/renderer";
-import { ttsRuntime } from "./services/tts/runtime";
+import { ttsEngines } from "./services/tts/runtime";
 
 const app = express();
 const PORT = process.env.PORT || 3100;
@@ -16,7 +16,7 @@ const server = app.listen(PORT, () => {
 });
 
 async function shutdown() {
-  ttsRuntime.shutdown();
+  ttsEngines.shutdown();
   await closeBrowser();
   server.close(() => process.exit(0));
 }

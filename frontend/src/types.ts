@@ -95,15 +95,20 @@ export interface AppSettings {
   autoScanOnOpen: boolean;
   defaultBookLanguage: string;
   defaultAuthor: string;
-  // Narration model ("turbo" = quality, "nano" = fast) and preset voice; "" = model default.
+  // Narration model: VieNeu's "turbo" (quality) or "nano" (fast), or "omnivoice" (the
+  // other engine, which only reads with a custom voice). Preset voice; "" = model default.
   ttsVariant: TtsVariant;
   ttsVoice: string;
 }
 
-export type TtsVariant = "turbo" | "nano";
+export type TtsVariant = "turbo" | "nano" | "omnivoice";
+
+// Each engine is a separate install (src/services/tts/runtime.ts ttsRuntimes).
+export type TtsEngine = "vieneu" | "omnivoice";
 
 // Mirrors TtsStatus in src/services/tts/runtime.ts.
 export interface TtsStatus {
+  engine: TtsEngine;
   supported: boolean;
   state: "not-installed" | "installing" | "installed" | "error";
   phase?: "uv" | "python" | "packages" | "model";
@@ -137,6 +142,8 @@ export interface NarrationState {
 export interface TtsVoice {
   id: string;
   label: string;
+  // Cloned from a clip the user uploaded (id `custom:<id>`), usable with every model.
+  custom?: boolean;
 }
 
 // Read-only facts about this installation, shown beside the settings.

@@ -14,6 +14,7 @@ import {
   Info,
   Languages,
   Library,
+  ListMusic,
   Lock,
   LucideIcon,
   Maximize,
@@ -30,6 +31,7 @@ import {
   TriangleAlert,
   Trash2,
   Upload,
+  Volume2,
   X,
 } from "lucide-react";
 
@@ -64,6 +66,8 @@ export type IconName =
   | "settings"
   | "narration"
   | "pause"
+  | "volume"
+  | "queue"
   | "stop";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
@@ -99,6 +103,8 @@ const icons: Record<IconName, LucideIcon> = {
   settings: Settings,
   narration: Headphones,
   pause: Pause,
+  volume: Volume2,
+  queue: ListMusic,
   stop: Square,
 };
 
