@@ -1,5 +1,5 @@
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { chapterAudioUrl } from "../lib/api";
+import { chapterAudioUrl, musicAudioUrl } from "../lib/api";
 import { useVault } from "../vault";
 
 export const PLAYBACK_RATES = [0.8, 1, 1.25, 1.5, 1.75, 2] as const;
@@ -7,6 +7,14 @@ export const PLAYBACK_RATES = [0.8, 1, 1.25, 1.5, 1.75, 2] as const;
 export const SKIP_S = 15;
 const RATE_KEY = "narration-rate";
 const VOLUME_KEY = "narration-volume";
+const MUSIC_KEY = "narration-music";
+const MUSIC_VOLUME_KEY = "narration-music-volume";
+// Whether the picked track plays at all. Off until the user turns it on, so a track in the
+// list does not mean music under every chapter. Kept here, beside the track and its volume,
+// because all three are one preference in this browser.
+const MUSIC_ENABLED_KEY = "narration-music-enabled";
+// Background music starts well under the voice.
+const DEFAULT_MUSIC_VOLUME = 0.3;
 // Position is saved this often while playing, and on every pause.
 const SAVE_EVERY_S = 5;
 // Closer than this to the end counts as finished: resuming there would play a second of silence.
@@ -80,14 +88,48 @@ export function readRate(): number {
 }
 
 // Volume persists like speed; anything outside 0..1 is treated as unset.
-export function readVolume(): number {
+function readFraction(key: string, fallback: number): number {
   try {
-    const raw = localStorage.getItem(VOLUME_KEY);
-    if (raw === null) return 1;
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
     const saved = Number(raw);
-    return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : 1;
+    return Number.isFinite(saved) && saved >= 0 && saved <= 1 ? saved : fallback;
   } catch {
-    return 1;
+    return fallback;
+  }
+}
+
+export function readVolume(): number {
+  return readFraction(VOLUME_KEY, 1);
+}
+
+export function readMusicVolume(): number {
+  return readFraction(MUSIC_VOLUME_KEY, DEFAULT_MUSIC_VOLUME);
+}
+
+// The background track picked in this browser, or null for none.
+export function readMusicTrack(): string | null {
+  try {
+    return localStorage.getItem(MUSIC_KEY) || null;
+  } catch {
+    return null;
+  }
+}
+
+export function readMusicEnabled(): boolean {
+  try {
+    return localStorage.getItem(MUSIC_ENABLED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function remember(key: string, value: string | null): void {
+  try {
+    if (value === null) localStorage.removeItem(key);
+    else localStorage.setItem(key, value);
+  } catch {
+    /* not remembered */
   }
 }
 
@@ -136,6 +178,13 @@ export interface NarrationPlayer {
   previous: () => void;
   setRate: (rate: number) => void;
   setVolume: (volume: number) => void;
+  // Background music: one uploaded track, looped under the voice while it plays.
+  musicEnabled: boolean;
+  musicTrack: string | null;
+  musicVolume: number;
+  setMusicEnabled: (enabled: boolean) => void;
+  setMusicTrack: (id: string | null) => void;
+  setMusicVolume: (volume: number) => void;
   close: () => void;
   // "Show me what is playing": the library opens that story and its reader at the chapter.
   openRequest: { storyId: string; order: number } | null;
@@ -157,10 +206,12 @@ export function useNarrationPlayer(): NarrationPlayer {
  * is playing. Plays a story's narrated chapters in reading order, moving on by itself
  * when one ends, and remembers the position per story in this browser. Mounted inside
  * App, which is remounted when switching library — locking private mode stops it.
+ * A second, looping <audio> plays the chosen background track whenever the voice plays.
  */
 export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
   const isPrivate = useVault().active;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const musicRef = useRef<HTMLAudioElement | null>(null);
   const queueRef = useRef<PlayerQueue | null>(null);
   const orderRef = useRef<number | null>(null);
   const lastSaved = useRef(0);
@@ -172,6 +223,9 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
   const [duration, setDuration] = useState(0);
   const [rate, setRateState] = useState(readRate);
   const [volume, setVolumeState] = useState(readVolume);
+  const [musicTrack, setMusicTrackState] = useState(readMusicTrack);
+  const [musicEnabled, setMusicEnabledState] = useState(readMusicEnabled);
+  const [musicVolume, setMusicVolumeState] = useState(readMusicVolume);
   const [error, setError] = useState<string | null>(null);
   const [openRequest, setOpenRequest] = useState<{ storyId: string; order: number } | null>(null);
   const requestOpen = useCallback((storyId: string, o: number) => setOpenRequest({ storyId, order: o }), []);
@@ -188,6 +242,40 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       audioRef.current.volume = volumeRef.current;
     }
     return audioRef.current;
+  }, []);
+
+  const musicTrackRef = useRef(musicTrack);
+  musicTrackRef.current = musicTrack;
+  const musicEnabledRef = useRef(musicEnabled);
+  musicEnabledRef.current = musicEnabled;
+  const musicVolumeRef = useRef(musicVolume);
+  musicVolumeRef.current = musicVolume;
+
+  const music = useCallback(() => {
+    if (!musicRef.current) {
+      musicRef.current = new Audio();
+      musicRef.current.loop = true;
+      musicRef.current.volume = musicVolumeRef.current;
+    }
+    return musicRef.current;
+  }, []);
+
+  // Follows the voice: plays the chosen track while it plays, pauses when it stops. Only
+  // when the user has turned background music on — the list is there either way.
+  const startMusic = useCallback(() => {
+    if (!musicEnabledRef.current) return;
+    const track = musicTrackRef.current;
+    if (!track) return;
+    const el = music();
+    const src = musicAudioUrl(track);
+    if (el.getAttribute("src") !== src) el.src = src;
+    el.play().catch(() => {
+      /* a missing or unplayable track just stays silent */
+    });
+  }, [music]);
+
+  const stopMusic = useCallback(() => {
+    musicRef.current?.pause();
   }, []);
 
   const save = useCallback(
@@ -234,6 +322,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
   const close = useCallback(() => {
     const el = audio();
     el.pause();
+    stopMusic();
     el.removeAttribute("src");
     el.load();
     orderRef.current = null;
@@ -243,7 +332,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     setTime(0);
     setDuration(0);
     setError(null);
-  }, [audio, setQueueBoth]);
+  }, [audio, setQueueBoth, stopMusic]);
 
   // Element events → state. Attached once; handlers read refs, not stale state.
   useEffect(() => {
@@ -257,9 +346,14 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       }
     };
     const onMeta = () => setDuration(Number.isFinite(el.duration) ? el.duration : 0);
-    const onPlay = () => setPlaying(true);
+    const onPlay = () => {
+      setPlaying(true);
+      startMusic();
+    };
     const onPause = () => {
       setPlaying(false);
+      // A chapter that ends pauses too; the music keeps going unless nothing follows.
+      if (!el.ended) stopMusic();
       const current = orderRef.current;
       if (current === null) return;
       const finished = el.duration > 0 && el.duration - el.currentTime < FINISHED_MARGIN_S;
@@ -275,6 +369,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       } else {
         save(undefined);
         setPlaying(false);
+        stopMusic();
       }
     };
     const onError = () => {
@@ -296,16 +391,17 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       el.removeEventListener("ended", onEnded);
       el.removeEventListener("error", onError);
     };
-  }, [audio, load, save]);
+  }, [audio, load, save, startMusic, stopMusic]);
 
   // Unmounting App (switching library) stops the audio: it belongs to that library.
   useEffect(
     () => () => {
-      const el = audioRef.current;
-      if (!el) return;
-      el.pause();
-      el.removeAttribute("src");
-      el.load();
+      for (const el of [audioRef.current, musicRef.current]) {
+        if (!el) continue;
+        el.pause();
+        el.removeAttribute("src");
+        el.load();
+      }
     },
     []
   );
@@ -361,6 +457,45 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       }
     },
     [audio]
+  );
+
+  // Turning it on with no track picked starts the first one, so the switch is enough on
+  // its own; turning it off silences the music but leaves the track picked.
+  const setMusicEnabled = useCallback(
+    (enabled: boolean) => {
+      musicEnabledRef.current = enabled;
+      setMusicEnabledState(enabled);
+      remember(MUSIC_ENABLED_KEY, enabled ? "1" : null);
+      if (!enabled) stopMusic();
+      // startMusic() on its own would start the music with the voice still silent.
+      else if (audioRef.current && !audioRef.current.paused) startMusic();
+    },
+    [startMusic, stopMusic]
+  );
+
+  const setMusicTrack = useCallback(
+    (next: string | null) => {
+      musicTrackRef.current = next;
+      setMusicTrackState(next);
+      remember(MUSIC_KEY, next);
+      if (next && audioRef.current && !audioRef.current.paused) startMusic();
+      else if (!next && musicRef.current) {
+        musicRef.current.pause();
+        musicRef.current.removeAttribute("src");
+        musicRef.current.load();
+      }
+    },
+    [startMusic]
+  );
+
+  const setMusicVolume = useCallback(
+    (next: number) => {
+      const clamped = Math.max(0, Math.min(1, next));
+      setMusicVolumeState(clamped);
+      music().volume = clamped;
+      remember(MUSIC_VOLUME_KEY, String(clamped));
+    },
+    [music]
   );
 
   // A chapter of the loaded queue, from its top (the queue popover).
@@ -462,6 +597,12 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       },
       setRate,
       setVolume,
+      musicEnabled,
+      musicTrack,
+      musicVolume,
+      setMusicEnabled,
+      setMusicTrack,
+      setMusicVolume,
       close,
       openRequest,
       requestOpen,
@@ -482,6 +623,12 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     jumpTo,
     setRate,
     setVolume,
+    musicEnabled,
+    musicTrack,
+    musicVolume,
+    setMusicEnabled,
+    setMusicTrack,
+    setMusicVolume,
     close,
     audio,
     load,

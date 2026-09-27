@@ -9,3 +9,11 @@ export const DATA_DIR = path.resolve(process.env.DATA_DIR || "data");
 // library cannot return a hidden story even if it forgets to filter. Created on the
 // first time the user sets a code, not at startup.
 export const PRIVATE_DIR = path.join(DATA_DIR, "private");
+
+// Music that ships with the app (tts/music/tracks.json and the MP3s it names). It lives
+// under tts/ because that is the one directory package.json and the Dockerfile already
+// copy, and asarUnpack it — media cannot be read from inside an asar. The asar path is
+// rewritten for the same reason as BUNDLED_VOICES_DIR.
+export const BUNDLED_MUSIC_DIR = path
+  .join(__dirname, "..", "..", "tts", "music")
+  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);

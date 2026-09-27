@@ -146,6 +146,12 @@ export interface TtsVoice {
   custom?: boolean;
 }
 
+// A music file the user uploaded to play under the narration (in-app player only).
+export interface MusicTrack {
+  id: string;
+  name: string;
+}
+
 // Read-only facts about this installation, shown beside the settings.
 export interface AppInfo {
   version: string;

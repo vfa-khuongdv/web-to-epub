@@ -182,8 +182,10 @@ app.on("before-quit", (event) => {
   if (closing) return;
   const { closeBrowser } = require(path.join(__dirname, "..", "dist", "services", "renderer.js"));
   // The narration worker is a child Python process holding the model in RAM; it must
-  // not outlive the app.
-  require(path.join(__dirname, "..", "dist", "services", "tts", "runtime.js")).ttsRuntime.shutdown();
+  // not outlive the app. ttsEngines, not a single runtime: there is one per engine
+  // (VieNeu and OmniVoice) since 044ec73, and this used to name a `ttsRuntime` that no
+  // longer exists, so closing the app threw here and left both workers running.
+  require(path.join(__dirname, "..", "dist", "services", "tts", "runtime.js")).ttsEngines.shutdown();
   closing = true;
   event.preventDefault();
   closeBrowser().catch(() => {}).then(() => app.quit());

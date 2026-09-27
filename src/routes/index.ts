@@ -8,6 +8,7 @@ import { crawlRouter } from "./crawl";
 import { exportsRouter } from "./exports";
 import { highlightsRouter } from "./highlights";
 import { liveRouter } from "./live";
+import { musicRouter } from "./music";
 import { narrationRouter } from "./narration";
 import { settingsRouter } from "./settings";
 import { siteSessionsRouter } from "./siteSessions";
@@ -32,6 +33,7 @@ router.use(vaultRouter);
 router.use(settingsRouter);
 router.use(appUpdateRouter);
 router.use(ttsRouter);
+router.use(musicRouter);
 router.use(siteSessionsRouter);
 router.use(exportsRouter);
 // Mounted before storiesRouter: GET /stories/live would otherwise match GET /stories/:id

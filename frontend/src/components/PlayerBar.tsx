@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useLang } from "../i18n";
+import { RANGE_CLASS, playedStyle } from "../lib/range";
 import { NarrationPlayer, PLAYBACK_RATES, SKIP_S } from "../hooks/narrationPlayer";
 import { vaultQuery } from "../vault/token";
 import { Icon } from "./Icon";
+import MusicPicker from "./MusicPicker";
 
 // m:ss, or h:mm:ss for the rare chapter past an hour.
 export function formatClock(seconds: number): string {
@@ -11,25 +13,6 @@ export function formatClock(seconds: number): string {
   const m = Math.floor((total % 3600) / 60);
   const s = String(total % 60).padStart(2, "0");
   return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
-}
-
-// The seek and volume bars: a 4px track that thickens on hover, and a square knob that
-// only shows while the pointer or keyboard is on it.
-const RANGE_CLASS = [
-  "cursor-pointer appearance-none rounded-[2px] bg-sunken disabled:cursor-default disabled:opacity-40",
-  "h-1 transition-[height] duration-150 hover:h-1.5",
-  "[&::-webkit-slider-thumb]:h-2.5 [&::-webkit-slider-thumb]:w-2.5 [&::-webkit-slider-thumb]:appearance-none",
-  "[&::-webkit-slider-thumb]:rounded-[2px] [&::-webkit-slider-thumb]:bg-select [&::-webkit-slider-thumb]:opacity-0",
-  "[&:hover::-webkit-slider-thumb]:opacity-100 [&:focus-visible::-webkit-slider-thumb]:opacity-100",
-  "[&::-moz-range-thumb]:h-2.5 [&::-moz-range-thumb]:w-2.5 [&::-moz-range-thumb]:rounded-[2px]",
-  "[&::-moz-range-thumb]:border-0 [&::-moz-range-thumb]:bg-select [&::-moz-range-thumb]:opacity-0",
-  "[&:hover::-moz-range-thumb]:opacity-100 [&:focus-visible::-moz-range-thumb]:opacity-100",
-].join(" ");
-
-// The played part in Instrument Blue, the rest in the sunken track.
-function playedStyle(value: number, max: number) {
-  const pct = max > 0 ? Math.min(100, (Math.max(0, value) / max) * 100) : 0;
-  return { backgroundImage: `linear-gradient(to right, var(--color-select) ${pct}%, var(--color-sunken) ${pct}%)` };
 }
 
 function Cover({ src }: { src: string | undefined }) {
@@ -44,6 +27,59 @@ function Cover({ src }: { src: string | undefined }) {
   ) : (
     <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[2px] border border-rule-2 bg-sunken text-ink-3">
       <Icon name="book" size={16} />
+    </span>
+  );
+}
+
+/**
+ * The music button in the bar. The picker it opens is the same one Settings shows, so the
+ * tracks it lists are whatever the app ships with plus what the user added.
+ */
+function BackgroundMusicMenu({ player }: { player: NarrationPlayer }) {
+  const { t } = useLang();
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [open]);
+
+  return (
+    <span className="relative flex items-center">
+      <button
+        type="button"
+        className={`btn btn-quiet btn-tiny ${player.musicTrack ? "text-select" : ""}`}
+        aria-expanded={open}
+        aria-controls="player-music"
+        title={t("Background music")}
+        aria-label={t("Background music")}
+        onClick={() => setOpen((value) => !value)}
+      >
+        <Icon name="music" size={14} />
+      </button>
+      {open && (
+        <>
+          <button
+            type="button"
+            className="fixed inset-0 z-20 cursor-default"
+            aria-label={t("Close")}
+            onClick={() => setOpen(false)}
+          />
+          <div
+            id="player-music"
+            className="absolute bottom-full right-0 z-30 mb-1.5 w-72 rounded-tool border border-rule-2 bg-raised p-1.5 shadow-lg"
+          >
+            <h3 className="px-1.5 pb-1 pt-0.5 text-[10.5px] font-[650] uppercase tracking-[0.07em] text-ink-2">
+              {t("Background music")}
+            </h3>
+            <MusicPicker player={player} />
+          </div>
+        </>
+      )}
     </span>
   );
 }
@@ -205,6 +241,7 @@ export default function PlayerBar({
             aria-label={t("Volume")}
           />
         </span>
+        <BackgroundMusicMenu player={player} />
         <span className="relative flex items-center">
           <button
             type="button"
