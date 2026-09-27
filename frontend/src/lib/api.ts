@@ -511,10 +511,13 @@ export async function deleteTtsVoice(id: string): Promise<void> {
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not remove the voice")));
 }
 
-export async function fetchMusicTracks(): Promise<MusicTrack[]> {
+// `defaultId` is the track the app plays by default (marked in the shipped manifest), or
+// null when there is none or the user removed it.
+export async function fetchMusicTracks(): Promise<{ tracks: MusicTrack[]; defaultId: string | null }> {
   const res = await apiFetch("/api/music", { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load background music")));
-  return ((await res.json()) as { tracks: MusicTrack[] }).tracks;
+  const body = (await res.json()) as { tracks: MusicTrack[]; defaultId?: string | null };
+  return { tracks: body.tracks, defaultId: body.defaultId ?? null };
 }
 
 export async function uploadMusicTrack(name: string, file: File): Promise<MusicTrack> {

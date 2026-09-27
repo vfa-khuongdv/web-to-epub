@@ -3,6 +3,8 @@ import {
   handlesOwnKeys,
   nextOrder,
   previousOrder,
+  readMusicEnabled,
+  readMusicTrack,
   readPosition,
   readRate,
   readVolume,
@@ -122,6 +124,50 @@ describe("playback volume", () => {
       },
     };
     expect(readVolume()).toBe(1);
+  });
+});
+
+describe("background music defaults", () => {
+  const store = new Map<string, string>();
+  beforeEach(() => {
+    store.clear();
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: (key: string) => store.get(key) ?? null,
+      setItem: (key: string, value: string) => void store.set(key, value),
+      removeItem: (key: string) => void store.delete(key),
+    };
+  });
+  afterEach(() => {
+    delete (globalThis as { localStorage?: unknown }).localStorage;
+  });
+
+  // The app ships tracks to play, so music is on until the user says otherwise — and
+  // "otherwise" has to be what is stored for it to stay off.
+  it("plays by default, and only an explicit off turns it off", () => {
+    expect(readMusicEnabled()).toBe(true);
+    store.set("narration-music-enabled", "0");
+    expect(readMusicEnabled()).toBe(false);
+    store.set("narration-music-enabled", "1");
+    expect(readMusicEnabled()).toBe(true);
+  });
+
+  it("has no track until one is picked, and remembers None as a pick", () => {
+    expect(readMusicTrack()).toBeNull();
+    store.set("narration-music", "abc");
+    expect(readMusicTrack()).toBe("abc");
+    // How "None" is stored: not null, or the app's default would come back every load.
+    store.set("narration-music", "none");
+    expect(readMusicTrack()).toBeNull();
+  });
+
+  it("never throws when storage is blocked", () => {
+    (globalThis as { localStorage?: unknown }).localStorage = {
+      getItem: () => {
+        throw new Error("blocked");
+      },
+    };
+    expect(readMusicEnabled()).toBe(true);
+    expect(readMusicTrack()).toBeNull();
   });
 });
 

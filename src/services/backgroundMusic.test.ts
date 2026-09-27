@@ -6,6 +6,7 @@ import { BUNDLED_MUSIC_DIR } from "../config/paths";
 import {
   MAX_MUSIC_BYTES,
   createBackgroundMusic,
+  defaultMusicId,
   musicFormat,
   musicMime,
   seedBundledMusic,
@@ -221,6 +222,58 @@ describe("seedBundledMusic", () => {
 
     await manifest([{ slug: "rain", name: "mưa", file: "gone.mp3" }]);
     await expect(seedBundledMusic(music, bundled, target)).rejects.toThrow();
+  });
+});
+
+describe("defaultMusicId", () => {
+  let dir: string;
+  let bundled: string;
+  let target: string;
+  let music: ReturnType<typeof createBackgroundMusic>;
+
+  const manifest = (entries: { slug: string; name: string; file: string; default?: boolean }[]) =>
+    fs.writeFile(path.join(bundled, "tracks.json"), JSON.stringify(entries));
+
+  beforeEach(async () => {
+    dir = await fs.mkdtemp(path.join(os.tmpdir(), "music-default-"));
+    bundled = path.join(dir, "bundle");
+    target = path.join(dir, "library", "music");
+    await fs.mkdir(bundled, { recursive: true });
+    music = createBackgroundMusic(target);
+  });
+
+  afterEach(async () => {
+    await fs.rm(dir, { recursive: true, force: true });
+  });
+
+  it("is the id the marked track was seeded as, not its slug", async () => {
+    await manifest([
+      { slug: "rain", name: "mưa", file: "rain.mp3" },
+      { slug: "sun", name: "nắng", file: "sun.mp3", default: true },
+    ]);
+    await fs.writeFile(path.join(bundled, "rain.mp3"), MP3);
+    await fs.writeFile(path.join(bundled, "sun.mp3"), M4A);
+    await seedBundledMusic(music, bundled, target);
+
+    const sun = (await music.list()).find((track) => track.name === "nắng")!;
+    expect(await defaultMusicId(music, target, bundled)).toBe(sun.id);
+    // Not the first entry: the manifest marks which one, so order cannot change it.
+    expect(await defaultMusicId(music, target, bundled)).not.toBe((await music.list())[0].id);
+  });
+
+  it("is null when nothing is marked, and when the user removed the marked track", async () => {
+    await manifest([{ slug: "rain", name: "mưa", file: "rain.mp3" }]);
+    await fs.writeFile(path.join(bundled, "rain.mp3"), MP3);
+    await seedBundledMusic(music, bundled, target);
+    expect(await defaultMusicId(music, target, bundled)).toBeNull();
+
+    await manifest([{ slug: "rain", name: "mưa", file: "rain.mp3", default: true }]);
+    await seedBundledMusic(music, bundled, target);
+    const [seeded] = await music.list();
+    expect(await defaultMusicId(music, target, bundled)).toBe(seeded.id);
+
+    await music.remove(seeded.id);
+    expect(await defaultMusicId(music, target, bundled)).toBeNull();
   });
 });
 

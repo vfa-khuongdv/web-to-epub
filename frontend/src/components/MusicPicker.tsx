@@ -26,7 +26,7 @@ export default function MusicPicker({ player }: { player: NarrationPlayer }) {
   useEffect(() => {
     let cancelled = false;
     fetchMusicTracks()
-      .then((list) => !cancelled && setTracks(list))
+      .then(({ tracks: list }) => !cancelled && setTracks(list))
       .catch((err: Error) => !cancelled && setError(err.message));
     return () => {
       cancelled = true;

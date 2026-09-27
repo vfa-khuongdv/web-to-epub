@@ -50,6 +50,10 @@ export interface BundledTrack {
   slug: string;
   name: string;
   file: string;
+  // The track the app plays by default. Exactly one entry should carry it; marked in the
+  // manifest rather than taken from the order, so inserting a track above it cannot
+  // silently change what the app plays out of the box.
+  default?: boolean;
 }
 
 const SEED_FILE = ".bundled";
@@ -182,6 +186,26 @@ export async function seedBundledMusic(
     await music.remove(typeof was === "string" ? was : was.id);
   }
   await fs.writeFile(path.join(targetDir, SEED_FILE), JSON.stringify(done));
+}
+
+/**
+ * The track the app plays by default, as the id it has in this library — the manifest
+ * names a slug, but only the marker knows which id that slug was seeded as. Null when no
+ * entry is marked, when the bundle is unreadable, or when the user removed that track:
+ * the player falls back to silence rather than to a made-up id.
+ */
+export async function defaultMusicId(
+  music: Pick<BackgroundMusic, "get">,
+  targetDir: string = MUSIC_DIR,
+  bundledDir: string = BUNDLED_MUSIC_DIR
+): Promise<string | null> {
+  const manifest = await readJson<BundledTrack[]>(path.join(bundledDir, "tracks.json"));
+  const slug = manifest?.find((track) => track.default)?.slug;
+  if (!slug) return null;
+  const seeded = await readJson<Record<string, Seeded | string>>(path.join(targetDir, SEED_FILE));
+  const was = seeded?.[slug];
+  const id = typeof was === "string" ? was : was?.id;
+  return id && (await music.get(id)) ? id : null;
 }
 
 export const backgroundMusic = createBackgroundMusic(MUSIC_DIR);

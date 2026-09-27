@@ -1,5 +1,5 @@
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { chapterAudioUrl, musicAudioUrl } from "../lib/api";
+import { chapterAudioUrl, fetchMusicTracks, musicAudioUrl } from "../lib/api";
 import { useVault } from "../vault";
 
 export const PLAYBACK_RATES = [0.8, 1, 1.25, 1.5, 1.75, 2] as const;
@@ -107,20 +107,37 @@ export function readMusicVolume(): number {
   return readFraction(MUSIC_VOLUME_KEY, DEFAULT_MUSIC_VOLUME);
 }
 
+// Stored in MUSIC_KEY when the user picks None. Keeping the key (rather than removing it)
+// is what tells "the user wants no music" apart from "the user has not chosen yet" — only
+// the second one gets the track the app ships as its default, once.
+const MUSIC_NONE = "none";
+
 // The background track picked in this browser, or null for none.
 export function readMusicTrack(): string | null {
   try {
-    return localStorage.getItem(MUSIC_KEY) || null;
+    const stored = localStorage.getItem(MUSIC_KEY);
+    return stored && stored !== MUSIC_NONE ? stored : null;
   } catch {
     return null;
   }
 }
 
-export function readMusicEnabled(): boolean {
+// Whether the user has made a choice at all (a track, or None).
+function readMusicChosen(): boolean {
   try {
-    return localStorage.getItem(MUSIC_ENABLED_KEY) === "1";
+    return localStorage.getItem(MUSIC_KEY) !== null;
   } catch {
     return false;
+  }
+}
+
+// Music is on unless the user turned it off: the app ships tracks to play, and "off" has
+// to be the thing that is remembered for it to stay off.
+export function readMusicEnabled(): boolean {
+  try {
+    return localStorage.getItem(MUSIC_ENABLED_KEY) !== "0";
+  } catch {
+    return true;
   }
 }
 
@@ -393,6 +410,27 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     };
   }, [audio, load, save, startMusic, stopMusic]);
 
+  // The app ships a track to play by default (marked in tts/music/tracks.json), so apply
+  // it once when the user has not chosen anything yet. Deliberately not written to
+  // storage: it is the app's default, not the user's choice, so a later version changing
+  // the marked track still reaches them.
+  useEffect(() => {
+    if (!musicEnabledRef.current || readMusicChosen()) return;
+    let cancelled = false;
+    fetchMusicTracks()
+      .then(({ defaultId }) => {
+        if (cancelled || !defaultId) return;
+        musicTrackRef.current = defaultId;
+        setMusicTrackState(defaultId);
+      })
+      .catch(() => {
+        /* without a default there is simply no music until one is picked */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Unmounting App (switching library) stops the audio: it belongs to that library.
   useEffect(
     () => () => {
@@ -465,7 +503,8 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     (enabled: boolean) => {
       musicEnabledRef.current = enabled;
       setMusicEnabledState(enabled);
-      remember(MUSIC_ENABLED_KEY, enabled ? "1" : null);
+      // "0", not the absence of the key: absent means on, which is the shipped default.
+      remember(MUSIC_ENABLED_KEY, enabled ? null : "0");
       if (!enabled) stopMusic();
       // startMusic() on its own would start the music with the voice still silent.
       else if (audioRef.current && !audioRef.current.paused) startMusic();
@@ -477,7 +516,8 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     (next: string | null) => {
       musicTrackRef.current = next;
       setMusicTrackState(next);
-      remember(MUSIC_KEY, next);
+      // None is remembered as a choice, so the app's default does not come back.
+      remember(MUSIC_KEY, next ?? MUSIC_NONE);
       if (next && audioRef.current && !audioRef.current.paused) startMusic();
       else if (!next && musicRef.current) {
         musicRef.current.pause();
