@@ -3,13 +3,15 @@ import { loadSiteSession } from "./siteSession";
 
 // Cloudflare's interstitial, in the languages the sites in this app serve it in ("Chờ
 // một chút..." on Vietnamese sites, "Just a moment..." elsewhere). It replaces the
-// requested page while the check runs, so its markers are what tells a failed fetch
-// apart from a real page.
+// requested page while the check runs, so its title is what tells a failed fetch apart
+// from a real page. Only the title: chapter text says "Chờ một chút" all the time, and
+// matching the whole page turned every such chapter into a "Cloudflare blocked" error.
 const CHALLENGE_RE =
   /just a moment|chờ một chút|performing security verification|xác minh bảo mật|security service to protect|enable javascript and cookies to continue/i;
 
 export function isCloudflareChallenge(html: string): boolean {
-  return CHALLENGE_RE.test(html);
+  const title = html.match(/<title[^>]*>([^<]*)<\/title>/i)?.[1] ?? "";
+  return CHALLENGE_RE.test(title);
 }
 
 /**

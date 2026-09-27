@@ -8,7 +8,9 @@ import readline from "readline";
  * CPU-bound and the worker is single-threaded — so they are queued here and the next
  * one is written only when the previous one has answered.
  */
-export const TTS_VARIANTS = ["turbo", "nano"] as const;
+// "turbo" and "nano" are VieNeu's two models; "omnivoice" is the other engine
+// (tts/omnivoice_worker.py), which speaks the same protocol.
+export const TTS_VARIANTS = ["turbo", "nano", "omnivoice"] as const;
 export type TtsVariant = (typeof TTS_VARIANTS)[number];
 
 export interface TtsVoice {
@@ -25,6 +27,12 @@ export interface LoadedModel {
 export interface SynthRequest {
   parts: string[];
   voice: string;
+  // A custom voice's reference clip (see customVoices.ts); the worker enrolls it once.
+  refAudio?: string;
+  // What is said in refAudio, when the user typed it (OmniVoice clones from both).
+  refText?: string;
+  // Where OmniVoice keeps the prompt it derives from refAudio (default: next to the clip).
+  refPrompt?: string;
   out: string;
   onProgress?: (part: number, parts: number) => void;
   signal?: AbortSignal;
@@ -168,12 +176,12 @@ export function startTtsWorker(cmd: WorkerCommand, log: (line: string) => void =
         }
       });
     },
-    synth({ parts, voice, out, onProgress, signal }) {
+    synth({ parts, voice, refAudio, refText, refPrompt, out, onProgress, signal }) {
       if (signal?.aborted) return Promise.reject(new NarrationCancelled());
       const id = randomUUID();
       let onAbort: (() => void) | undefined;
       const promise = request<{ seconds: number; timings: [number, number][] }>(
-        { cmd: "synth", id, parts, voice, out },
+        { cmd: "synth", id, parts, voice, refAudio, refText, refPrompt, out },
         (message, resolve, reject) => {
           if (message.id !== id) return;
           if (message.type === "progress") onProgress?.(message.part ?? 0, message.parts ?? parts.length);

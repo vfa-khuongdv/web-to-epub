@@ -6,7 +6,8 @@ which the server logs.
 
 Requests:
   {"cmd": "load", "variant": "turbo" | "nano"}
-  {"cmd": "synth", "id": "...", "parts": ["...", ...], "voice": "...", "out": "/abs/file.mp3"}
+  {"cmd": "synth", "id": "...", "parts": ["...", ...], "voice": "...", "out": "/abs/file.mp3",
+   "refAudio": "/abs/clip.mp3"}         # optional: clone `voice` from this clip
   {"cmd": "cancel", "id": "..."}        # stops a synth after its current part
   {"cmd": "quit"}
 
@@ -42,6 +43,8 @@ def send(message):
 # without a pause sound rushed.
 PAUSE_SECONDS = 0.35
 NANO_STEPS = 8
+# Longer reference clips only slow enrollment down; the start of the clip is plenty.
+MAX_REF_SECONDS = 30
 
 commands = queue.Queue()
 cancelled = set()
@@ -69,18 +72,48 @@ def load(variant):
     from vieneu import Vieneu
 
     tts = Vieneu(mode="v3nano") if variant == "nano" else Vieneu(mode="v3turbo")
-    voices = [{"label": label, "id": voice_id} for label, voice_id in tts.list_preset_voices()]
-    send({"type": "loaded", "variant": variant, "voices": voices, "sampleRate": tts.sample_rate})
+    send({"type": "loaded", "variant": variant, "voices": preset_voices(tts), "sampleRate": tts.sample_rate})
     return tts
 
 
-def synth(tts, variant, message):
+def preset_voices(tts):
+    # Enrolled custom voices join the model's presets; the server lists those itself.
+    return [{"label": label, "id": v} for label, v in tts.list_preset_voices() if not v.startswith("custom:")]
+
+
+def enroll(tts, name, ref_audio, enrolled):
+    """Register a custom voice from its clip once per loaded model."""
+    import tempfile
+    import soundfile as sf
+
+    if enrolled.get(name) == ref_audio:
+        return
+    clip = ref_audio
+    trimmed = None
+    info = sf.info(ref_audio)
+    if info.duration > MAX_REF_SECONDS:
+        samples, rate = sf.read(ref_audio, frames=int(MAX_REF_SECONDS * info.samplerate), dtype="float32")
+        fd, trimmed = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        sf.write(trimmed, samples, rate)
+        clip = trimmed
+    try:
+        tts.add_voice(name, clip)
+    finally:
+        if trimmed:
+            os.remove(trimmed)
+    enrolled[name] = ref_audio
+
+
+def synth(tts, variant, message, enrolled):
     import numpy as np
     import soundfile as sf
 
     job_id = message["id"]
     parts = message["parts"]
     extra = {"steps": NANO_STEPS} if variant == "nano" else {}
+    if message.get("refAudio"):
+        enroll(tts, message["voice"], message["refAudio"], enrolled)
     pause = np.zeros(int(tts.sample_rate * PAUSE_SECONDS), dtype=np.float32)
     chunks = []
     timings = []
@@ -110,6 +143,7 @@ def main():
     send({"type": "ready"})
     tts = None
     variant = None
+    enrolled = {}  # custom voice id -> clip path, for the loaded model
     while True:
         message = commands.get()
         cmd = message.get("cmd")
@@ -121,15 +155,15 @@ def main():
                 wanted = message.get("variant", "turbo")
                 if tts is None or wanted != variant:
                     tts = None
+                    enrolled = {}
                     tts = load(wanted)
                     variant = wanted
                 else:
-                    voices = [{"label": l, "id": v} for l, v in tts.list_preset_voices()]
-                    send({"type": "loaded", "variant": variant, "voices": voices, "sampleRate": tts.sample_rate})
+                    send({"type": "loaded", "variant": variant, "voices": preset_voices(tts), "sampleRate": tts.sample_rate})
             elif cmd == "synth":
                 if tts is None:
                     raise RuntimeError("model not loaded")
-                synth(tts, variant, message)
+                synth(tts, variant, message, enrolled)
             else:
                 raise ValueError(f"unknown command: {cmd}")
         except Exception as exc:  # keep serving after a bad request

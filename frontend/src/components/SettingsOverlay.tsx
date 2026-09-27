@@ -12,6 +12,7 @@ import { Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "../lib/theme";
 import { timeAgo } from "../lib/timeAgo";
 import { AppInfo, AppSettings } from "../types";
 import { Icon } from "./Icon";
+import { MusicSettings } from "./MusicPicker";
 import NarrationSettings from "./NarrationSettings";
 import SiteSessionDialog from "./SiteSessionDialog";
 import { SkeletonBar } from "./Skeleton";
@@ -275,6 +276,10 @@ function SettingsBody({
 
       <Section title={t("Narration")}>
         <NarrationSettings settings={settings} onSave={save} Row={Row} />
+      </Section>
+
+      <Section title={t("Background music")}>
+        <MusicSettings />
       </Section>
 
       <Section title={t("Private mode")}>
