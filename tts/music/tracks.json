@@ -2,7 +2,8 @@
   {
     "slug": "endless-love",
     "name": "Endless Love",
-    "file": "endless-love.mp3"
+    "file": "endless-love.mp3",
+    "default": true
   },
   {
     "slug": "mua-thang-sau",

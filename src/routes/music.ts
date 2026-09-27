@@ -1,13 +1,15 @@
 import express, { Router } from "express";
-import { MAX_MUSIC_BYTES, backgroundMusic, musicMime } from "../services/backgroundMusic";
+import { MAX_MUSIC_BYTES, backgroundMusic, defaultMusicId, musicMime } from "../services/backgroundMusic";
 import { t } from "../services/lang";
 
 export const musicRouter = Router();
 
 const wire = ({ id, name }: { id: string; name: string }) => ({ id, name });
 
+// `defaultId` is the track the player starts on; it is null when the app ships none, or
+// when the user removed that one.
 musicRouter.get("/music", async (_req, res) => {
-  res.json({ tracks: (await backgroundMusic.list()).map(wire) });
+  res.json({ tracks: (await backgroundMusic.list()).map(wire), defaultId: await defaultMusicId(backgroundMusic) });
 });
 
 // The file is the request body as is, its name in `?name=`, like a custom voice. The
