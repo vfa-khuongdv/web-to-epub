@@ -63,6 +63,16 @@ describe("fetchTruyenfullChapter", () => {
     });
   });
 
+  it("keeps a chapter whose text says 'Chờ một chút' — only the page title marks a Cloudflare check", async () => {
+    const texts = [...LONG, "“Chờ một chút, để em nói hết.”"];
+    vi.mocked(fetchText).mockResolvedValue(page(texts));
+
+    const chapter = await fetchTruyenfullChapter(CHAPTER_URL);
+
+    expect(renderPageHtml).not.toHaveBeenCalled();
+    expect(chapter.blocks).toEqual(paragraphBlocks(texts));
+  });
+
   it("removes ad overlay inside #chapter-c so content does not mix with ad prompts", async () => {
     vi.mocked(fetchText).mockResolvedValue(page(LONG));
 

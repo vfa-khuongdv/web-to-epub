@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { VIENEU_VERSION } from "../../config/tts";
-import { TtsRuntime, TtsRuntimeDeps, createTtsRuntime } from "./runtime";
+import { TtsRuntime, TtsRuntimeDeps, createTtsEngines, createTtsRuntime, engineOf } from "./runtime";
 import { startTtsWorker } from "./workerClient";
 
 const FAKE_WORKER = path.join(__dirname, "__fixtures__", "fakeWorker.js");
@@ -18,6 +18,9 @@ describe("TTS runtime", () => {
     ttsDir = path.join(await fs.mkdtemp(path.join(os.tmpdir(), "tts-rt-")), "tts");
     commands = [];
     deps = {
+      engine: "vieneu",
+      version: VIENEU_VERSION,
+      packages: [`vieneu==${VIENEU_VERSION}`],
       ttsDir,
       workerScript: FAKE_WORKER,
       constraintsFile: path.join(path.dirname(ttsDir), "constraints.txt"),
@@ -80,6 +83,17 @@ describe("TTS runtime", () => {
     const [cmd] = vi.mocked(deps.startWorker).mock.calls[0];
     expect(cmd.env?.HF_HOME).toBe(path.join(ttsDir, "hf"));
     expect(cmd.args).toEqual([FAKE_WORKER]);
+  });
+
+  it("installs another engine's package and records its version under its own name", async () => {
+    runtime = createTtsRuntime({ ...deps, engine: "omnivoice", version: "0.2.1", packages: ["omnivoice==0.2.1"] });
+    await runtime.install("omnivoice");
+    const pip = vi.mocked(deps.exec).mock.calls.find(([, args]) => args[0] === "pip")!;
+    expect(pip[1].at(-1)).toBe("omnivoice==0.2.1");
+    const marker = JSON.parse(await fs.readFile(path.join(ttsDir, "installed.json"), "utf8"));
+    expect(marker.omnivoice).toBe("0.2.1");
+    expect(marker.vieneu).toBeUndefined();
+    expect((await runtime.status())).toMatchObject({ state: "installed", version: "0.2.1" });
   });
 
   it("installs with the constraints file and asks to install again when it changes", async () => {
@@ -158,6 +172,19 @@ describe("TTS runtime", () => {
     expect(deps.startWorker).toHaveBeenCalledTimes(2);
   });
 
+  it("release closes an idle worker but never one in use", async () => {
+    await runtime.install("turbo");
+    let release!: () => void;
+    const busy = runtime.withModel("turbo", () => new Promise<void>((r) => (release = r)));
+    await new Promise((r) => setTimeout(r, 20));
+    runtime.release();
+    expect((await runtime.status()).running).toBe(true);
+    release();
+    await busy;
+    runtime.release();
+    expect((await runtime.status()).running).toBe(false);
+  });
+
   it("restarts a worker that died", async () => {
     await runtime.install("turbo");
     await expect(
@@ -181,5 +208,39 @@ describe("TTS runtime", () => {
     await runtime.uninstall();
     await expect(fs.access(ttsDir)).rejects.toThrow();
     expect(await runtime.status()).toMatchObject({ state: "not-installed", running: false });
+  });
+});
+
+describe("TTS engines", () => {
+  function fakeRuntime() {
+    return {
+      withModel: vi.fn(async (_variant: string, fn: (w: never, m: never) => Promise<unknown>) => fn(undefined as never, undefined as never)),
+      release: vi.fn(),
+      shutdown: vi.fn(),
+    } as unknown as TtsRuntime;
+  }
+
+  it("maps variants to engines", () => {
+    expect(engineOf("turbo")).toBe("vieneu");
+    expect(engineOf("nano")).toBe("vieneu");
+    expect(engineOf("omnivoice")).toBe("omnivoice");
+  });
+
+  it("runs on the variant's engine and frees the other one's model first", async () => {
+    const runtimes = { vieneu: fakeRuntime(), omnivoice: fakeRuntime() };
+    const engines = createTtsEngines(runtimes);
+
+    expect(await engines.withModel("omnivoice", async () => "read")).toBe("read");
+    expect(runtimes.omnivoice.withModel).toHaveBeenCalledWith("omnivoice", expect.any(Function));
+    expect(runtimes.vieneu.release).toHaveBeenCalledTimes(1);
+    expect(runtimes.omnivoice.release).not.toHaveBeenCalled();
+
+    await engines.withModel("nano", async () => undefined);
+    expect(runtimes.vieneu.withModel).toHaveBeenCalledWith("nano", expect.any(Function));
+    expect(runtimes.omnivoice.release).toHaveBeenCalledTimes(1);
+
+    engines.shutdown();
+    expect(runtimes.vieneu.shutdown).toHaveBeenCalled();
+    expect(runtimes.omnivoice.shutdown).toHaveBeenCalled();
   });
 });
