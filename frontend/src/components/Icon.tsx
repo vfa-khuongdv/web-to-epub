@@ -21,6 +21,7 @@ import {
   Minimize,
   Monitor,
   Moon,
+  Music,
   Pause,
   Pencil,
   Play,
@@ -68,6 +69,7 @@ export type IconName =
   | "pause"
   | "volume"
   | "queue"
+  | "music"
   | "stop";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
@@ -105,6 +107,7 @@ const icons: Record<IconName, LucideIcon> = {
   pause: Pause,
   volume: Volume2,
   queue: ListMusic,
+  music: Music,
   stop: Square,
 };
 

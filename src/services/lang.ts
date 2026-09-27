@@ -173,6 +173,10 @@ const vi: Record<string, string> = {
     "Giọng này không còn nữa — hãy chọn giọng khác trong Cài đặt → Giọng đọc",
   "Voice name is too long": "Tên giọng quá dài",
   Narration: "Giọng đọc",
+  "Give the track a name": "Hãy đặt tên cho bản nhạc",
+  "The music file is too large (50 MB at most)": "File nhạc quá lớn (tối đa 50 MB)",
+  "Unsupported audio file — use MP3, M4A, WAV, FLAC or OGG": "File audio không hỗ trợ — hãy dùng MP3, M4A, WAV, FLAC hoặc OGG",
+  "Track not found": "Không tìm thấy bản nhạc",
 };
 
 let current: Lang = DEFAULT_LANG;

@@ -14,6 +14,7 @@ import {
   TtsEngine,
   TtsVariant,
   TtsVoice,
+  MusicTrack,
 } from "../types";
 
 export async function fetchSupportedSites(): Promise<SupportedSite[]> {
@@ -508,6 +509,32 @@ export async function uploadTtsVoice(name: string, file: File, transcript = ""):
 export async function deleteTtsVoice(id: string): Promise<void> {
   const res = await apiFetch(`/api/tts/voices/${encodeURIComponent(id)}`, { method: "DELETE", headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not remove the voice")));
+}
+
+export async function fetchMusicTracks(): Promise<MusicTrack[]> {
+  const res = await apiFetch("/api/music", { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load background music")));
+  return ((await res.json()) as { tracks: MusicTrack[] }).tracks;
+}
+
+export async function uploadMusicTrack(name: string, file: File): Promise<MusicTrack> {
+  const res = await apiFetch(`/api/music?${new URLSearchParams({ name })}`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/octet-stream" }),
+    body: file,
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not add the music")));
+  return (await res.json()) as MusicTrack;
+}
+
+export async function deleteMusicTrack(id: string): Promise<void> {
+  const res = await apiFetch(`/api/music/${encodeURIComponent(id)}`, { method: "DELETE", headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not remove the music")));
+}
+
+// Shared by both libraries, so no vault token.
+export function musicAudioUrl(id: string): string {
+  return `/api/music/${encodeURIComponent(id)}/audio`;
 }
 
 export async function previewTts(variant: TtsVariant, voice: string): Promise<Blob> {
