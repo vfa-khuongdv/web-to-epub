@@ -48,6 +48,10 @@ export interface CoverStore {
   save(storyId: string, coverUrl: string | undefined, referer?: string): Promise<string | undefined>;
   // Save the image the user picked (multer temp file) as the story cover, replacing the old one.
   saveUpload(storyId: string, tmpPath: string): Promise<string | undefined>;
+  // Save bytes that came out of an imported book (no fetch, no temp file), replacing
+  // the old cover. Returns the path for the DB, or undefined when the bytes aren't a
+  // known image / are too large.
+  saveBytes(storyId: string, bytes: Buffer): string | undefined;
   find(storyId: string): StoredCover | undefined;
   remove(storyId: string): Promise<void>;
 }
@@ -100,6 +104,20 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
     return path.join("covers", `${storyId}.${extension}`);
   }
 
+  function saveBytes(storyId: string, bytes: Buffer): string | undefined {
+    if (!STORY_ID_RE.test(storyId)) return undefined;
+    const extension = sniffImageExtension(bytes);
+    if (!extension || bytes.length === 0 || bytes.length > MAX_COVER_BYTES) return undefined;
+
+    fs.mkdirSync(coversDir, { recursive: true });
+    const filePath = path.join(coversDir, `${storyId}.${extension}`);
+    const existing = find(storyId);
+    if (existing && existing.filePath !== filePath) fs.rmSync(existing.filePath, { force: true });
+    fs.writeFileSync(`${filePath}.tmp`, bytes);
+    fs.renameSync(`${filePath}.tmp`, filePath);
+    return path.join("covers", `${storyId}.${extension}`);
+  }
+
   async function saveUpload(storyId: string, tmpPath: string): Promise<string | undefined> {
     if (!STORY_ID_RE.test(storyId)) return undefined;
     let bytes: Buffer;
@@ -108,21 +126,9 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
     } catch {
       return undefined;
     }
-
-    const extension = sniffImageExtension(bytes);
-    if (!extension || bytes.length === 0 || bytes.length > MAX_COVER_BYTES) {
-      await fs.promises.rm(tmpPath, { force: true });
-      return undefined;
-    }
-
-    fs.mkdirSync(coversDir, { recursive: true });
-    const filePath = path.join(coversDir, `${storyId}.${extension}`);
-    const existing = find(storyId);
-    if (existing && existing.filePath !== filePath) await fs.promises.rm(existing.filePath, { force: true });
-    fs.writeFileSync(`${filePath}.tmp`, bytes);
-    fs.renameSync(`${filePath}.tmp`, filePath);
+    const saved = saveBytes(storyId, bytes);
     await fs.promises.rm(tmpPath, { force: true });
-    return path.join("covers", `${storyId}.${extension}`);
+    return saved;
   }
 
   async function remove(storyId: string): Promise<void> {
@@ -132,7 +138,7 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
     }
   }
 
-  return { save, saveUpload, find, remove };
+  return { save, saveUpload, saveBytes, find, remove };
 }
 
 // epub-gen reads local files directly (path stored in DB) and fetches external URLs itself,

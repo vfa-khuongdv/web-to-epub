@@ -422,3 +422,33 @@ describe("coverPathForExport", () => {
     expect(coverPathForExport("/tmp/upload-123.jpg")).toBe("/tmp/upload-123.jpg");
   });
 });
+
+describe("saveBytes", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "cover-store-bytes-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("writes sniffed bytes as the story cover", async () => {
+    const store = createCoverStore(dir);
+    const png = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+      "base64"
+    );
+
+    const saved = store.saveBytes(STORY_ID, png);
+
+    expect(saved).toBe(`covers/${STORY_ID}.png`);
+    expect(existsSync(path.join(dir, saved!))).toBe(true);
+  });
+
+  it("rejects bytes that are not a known image", () => {
+    const store = createCoverStore(dir);
+    expect(store.saveBytes(STORY_ID, Buffer.from("not an image"))).toBeUndefined();
+  });
+});

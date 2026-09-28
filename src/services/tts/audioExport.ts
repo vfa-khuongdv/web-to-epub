@@ -9,11 +9,12 @@ export interface AudioZipEntry {
   filePath: string;
 }
 
-// "007 - Chương 7.mp3": the number keeps players and file browsers in reading order, and
-// is padded to the widest order in the export (at least 3 digits) so 10 sorts after 9.
-export function chapterAudioFileName(order: number, title: string, width: number): string {
+// "Truyện - 007 - Chương 7.mp3": the story's name, so a file on its own still says which
+// book it is from, then the number, which keeps players and file browsers in reading order
+// and is padded to the widest order in the export (at least 3 digits) so 10 sorts after 9.
+export function chapterAudioFileName(storyTitle: string, order: number, title: string, width: number): string {
   const number = String(order).padStart(Math.max(3, width), "0");
-  return `${number} - ${fileStem(title, `Chapter ${order}`)}.mp3`;
+  return `${fileStem(storyTitle, "book")} - ${number} - ${fileStem(title, `Chapter ${order}`)}.mp3`;
 }
 
 // Names are unique within the zip even when two chapters share a title; the order

@@ -100,7 +100,8 @@ export type NoticeInput =
   | { kind: "crawl-done"; done: number; total: number; errors: number }
   | { kind: "toc-loaded"; count: number }
   | { kind: "session-saved"; username?: string }
-  | { kind: "export-done"; fileCount: number };
+  | { kind: "export-done"; fileCount: number }
+  | { kind: "epub-imported"; title: string };
 
 export type Notice = NoticeInput & { id: number };
 

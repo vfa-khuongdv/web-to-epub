@@ -38,6 +38,7 @@ const vi: Record<string, string> = {
   "Chapter URL is required": "URL chương là bắt buộc",
   "Chapter URL is not a valid URL": "URL chương không hợp lệ",
   "Invalid chapter order": "Số thứ tự chương không hợp lệ",
+  "Invalid spell-check flag": "Trạng thái sửa chính tả không hợp lệ",
   "Cover file is required": "Thiếu file cover",
   "Invalid cover file — only JPG, PNG, WebP, or GIF accepted":
     "File bìa không hợp lệ — chỉ nhận JPG, PNG, WebP hoặc GIF",
@@ -163,6 +164,10 @@ const vi: Record<string, string> = {
   "Story is being narrated, cannot delete": "Truyện đang được đọc, không xoá được",
   "Chapter audio has not been generated yet — narrate the chapter first":
     "Chương này chưa có audio — hãy tạo giọng đọc cho chương trước",
+  "This story's audio is already being joined": "Audio của truyện này đang được ghép",
+  "Every chapter needs audio before the story can be joined into one file — {count} chapters have none yet": "Mọi chương cần có audio trước khi ghép thành một file — còn {count} chương chưa có",
+  "Background music track not found": "Không tìm thấy bài nhạc nền",
+  "Could not join the audio: {message}": "Không ghép được audio: {message}",
   "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",
   "Unsupported narration variant": "Kiểu giọng đọc không hợp lệ",
   "Unsupported narration engine": "Bộ đọc không hợp lệ",
@@ -177,6 +182,18 @@ const vi: Record<string, string> = {
   "The music file is too large (50 MB at most)": "File nhạc quá lớn (tối đa 50 MB)",
   "Unsupported audio file — use MP3, M4A, WAV, FLAC or OGG": "File audio không hỗ trợ — hãy dùng MP3, M4A, WAV, FLAC hoặc OGG",
   "Track not found": "Không tìm thấy bản nhạc",
+
+  // EPUB import
+  "This file is not an EPUB book": "File này không phải là sách EPUB",
+  "This EPUB file is too large to import": "File EPUB quá lớn để nhập",
+  "This EPUB file is locked with DRM and cannot be imported": "File EPUB này bị khoá DRM, không thể nhập",
+  "Please choose an EPUB file": "Hãy chọn một file EPUB",
+  "The EPUB file is too large (maximum {size} MB)": "File EPUB quá lớn (tối đa {size} MB)",
+  "This book is already in the library": "Truyện này đã có trong thư viện",
+  "Could not import the EPUB file": "Không nhập được file EPUB",
+  "Book image not found": "Không tìm thấy ảnh của sách",
+  "Imported books cannot be crawled": "Truyện nhập từ file không crawl được",
+  "Imported books have no chapter list to watch": "Truyện nhập từ file không có danh sách chương để theo dõi",
 };
 
 let current: Lang = DEFAULT_LANG;

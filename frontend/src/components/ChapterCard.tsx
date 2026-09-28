@@ -121,7 +121,7 @@ export function PendingChapterRow({
       <td className="w-32">
         <StatusChip state={state} />
       </td>
-      <td className="w-36">
+      <td className="w-44">
         {confirmDelete ? (
           <span className="flex items-center justify-end gap-1.5">
             <button type="button" className="btn btn-tiny btn-danger" disabled={deleting} onClick={handleDelete}>
@@ -175,6 +175,8 @@ interface ChapterCardProps {
   onRetry: () => void;
   retrying: boolean;
   retriedOnce: boolean;
+  // Imported books have no source page to open, retry or re-crawl.
+  imported?: boolean;
   onBodyChange: (html: string) => void;
   // Chapter content no longer pairs with chapter list: open a chapter, load it.
   loadBody?: () => Promise<string>;
@@ -192,6 +194,17 @@ interface ChapterCardProps {
   // Play / pause this chapter in the story's player (with audioUrl).
   onPlayAudio?: () => void;
   audioPlaying?: boolean;
+  // Narrate this chapter again, replacing its audio (with audioUrl). Disabled while the
+  // story is being narrated; `regenerating` while this very chapter is being read.
+  onRegenerateAudio?: () => void;
+  // Narrate just this chapter, for one that has no audio yet (without audioUrl); shares
+  // regenerateDisabled / regenerating with the button above.
+  onCreateAudio?: () => void;
+  regenerateDisabled?: boolean;
+  regenerating?: boolean;
+  // The reader marked the chapter's typos as fixed; missing when it cannot be marked here.
+  spellChecked?: boolean;
+  onToggleSpellChecked?: () => Promise<void>;
 }
 
 // Playwright's failure text arrives with time annotations from Call log still
@@ -223,6 +236,7 @@ export default function ChapterCard({
   onRetry,
   retrying,
   retriedOnce,
+  imported,
   onBodyChange,
   loadBody,
   onSave,
@@ -232,6 +246,12 @@ export default function ChapterCard({
   audioUrl,
   onPlayAudio,
   audioPlaying,
+  onRegenerateAudio,
+  onCreateAudio,
+  regenerateDisabled,
+  regenerating,
+  spellChecked,
+  onToggleSpellChecked,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
   const [html, setHtml] = useState(initialHtml);
@@ -261,6 +281,7 @@ export default function ChapterCard({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [markingSpell, setMarkingSpell] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadedBody = useRef(false);
@@ -405,6 +426,25 @@ export default function ChapterCard({
     if (window.confirm(t("Re-crawling will overwrite this chapter's saved content. Continue?"))) onRetry();
   }
 
+  async function handleToggleSpellChecked() {
+    if (!onToggleSpellChecked) return;
+    setMarkingSpell(true);
+    try {
+      await onToggleSpellChecked();
+    } catch {
+      // The detail pane's banner reports the failure; the mark stays as it was.
+    } finally {
+      setMarkingSpell(false);
+    }
+  }
+
+  // Regenerating replaces audio that may have been listened to already, so confirm first.
+  function handleRegenerateAudio() {
+    if (window.confirm(t("Regenerate this chapter's audio from its current text? The current audio will be replaced."))) {
+      onRegenerateAudio?.();
+    }
+  }
+
   async function handleDelete() {
     if (!onDelete) return;
     setDeleting(true);
@@ -450,7 +490,7 @@ export default function ChapterCard({
             </span>
           )}
         </td>
-        <td className="w-36">
+        <td className="w-44">
           {confirmDelete ? (
             <span className="flex items-center justify-end gap-1.5">
               <button type="button" className="btn btn-tiny btn-danger" disabled={deleting} onClick={handleDelete}>
@@ -466,11 +506,11 @@ export default function ChapterCard({
               </button>
             </span>
           ) : (
-            <span className="flex items-center justify-end gap-1">
+            <span className="flex items-center justify-end gap-0.5">
               {audioUrl && onPlayAudio && (
                 <button
                   type="button"
-                  className={`btn btn-quiet btn-tiny${audioPlaying ? " text-select-deep" : ""}`}
+                  className={`btn btn-quiet btn-tiny px-1${audioPlaying ? " text-select-deep" : ""}`}
                   onClick={onPlayAudio}
                   aria-label={
                     audioPlaying ? t("Pause chapter {order}", { order }) : t("Listen to chapter {order}", { order })
@@ -482,7 +522,7 @@ export default function ChapterCard({
               )}
               {audioUrl && (
                 <a
-                  className="btn btn-quiet btn-tiny"
+                  className="btn btn-quiet btn-tiny px-1"
                   href={audioUrl}
                   download
                   title={t("Download this chapter's narration (.mp3)")}
@@ -491,16 +531,53 @@ export default function ChapterCard({
                   <Icon name="narration" size={13} />
                 </a>
               )}
-              {failed && (
+              {audioUrl && onRegenerateAudio && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-tiny px-1"
+                  title={regenerating ? t("Regenerating audio…") : t("Regenerate audio")}
+                  aria-label={t("Regenerate audio of chapter {order}", { order })}
+                  disabled={regenerateDisabled}
+                  onClick={handleRegenerateAudio}
+                >
+                  <Icon name="regenerate" size={13} className={regenerating ? "animate-pulse" : undefined} />
+                </button>
+              )}
+              {!audioUrl && onCreateAudio && chip === "done" && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-tiny px-1"
+                  title={regenerating ? t("Creating audio…") : t("Create audio for this chapter")}
+                  aria-label={t("Create audio for chapter {order}", { order })}
+                  disabled={regenerateDisabled}
+                  onClick={onCreateAudio}
+                >
+                  <Icon name="regenerate" size={13} className={regenerating ? "animate-pulse" : undefined} />
+                </button>
+              )}
+              {onToggleSpellChecked && chip === "done" && (
+                <button
+                  type="button"
+                  className={`btn btn-quiet btn-tiny px-1${spellChecked ? " text-select-deep" : ""}`}
+                  title={spellChecked ? t("Spelling fixed — click to unmark") : t("Mark spelling as fixed")}
+                  aria-label={t("Spelling fixed in chapter {order}", { order })}
+                  aria-pressed={!!spellChecked}
+                  disabled={markingSpell}
+                  onClick={handleToggleSpellChecked}
+                >
+                  <Icon name="spellcheck" size={13} />
+                </button>
+              )}
+              {failed && !imported && (
                 <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
                   <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
                   {retrying ? t("Retrying…") : t("Retry")}
                 </button>
               )}
-              {chip === "done" && (
+              {chip === "done" && !imported && (
                 <button
                   type="button"
-                  className="btn btn-quiet btn-tiny"
+                  className="btn btn-quiet btn-tiny px-1"
                   title={retrying ? t("Retrying…") : t("Re-crawl")}
                   disabled={retrying}
                   onClick={handleRecrawl}
@@ -512,7 +589,7 @@ export default function ChapterCard({
               {onDelete && (
                 <button
                   type="button"
-                  className="btn btn-quiet btn-tiny"
+                  className="btn btn-quiet btn-tiny px-1"
                   title={deleteDisabled ? t("Crawling, cannot delete") : t("Delete chapter")}
                   aria-label={t("Delete chapter {order}", { order })}
                   disabled={deleteDisabled}
@@ -529,50 +606,51 @@ export default function ChapterCard({
       {open && (
         <tr className="chapter-open" id={panelId}>
           <td colSpan={4}>
-            {urlEditing ? (
-              <form
-                className="flex flex-wrap items-center gap-1.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void handleSaveUrl();
-                }}
-              >
-                <label className="visually-hidden" htmlFor={`chapter-url-${order}`}>
-                  {t("Source URL for chapter {order}", { order })}
-                </label>
-                <input
-                  id={`chapter-url-${order}`}
-                  type="text"
-                  className="input min-w-[16rem] flex-1 text-xs"
-                  value={urlDraft}
-                  onChange={(e) => setUrlDraft(e.target.value)}
-                  disabled={urlSaving}
-                  autoFocus
-                />
-                <button type="submit" className="btn btn-tiny" disabled={urlSaving || !urlDraft.trim()}>
-                  <Icon name="check" size={13} />
-                  {urlSaving ? t("Saving…") : t("Save URL")}
-                </button>
-                <button type="button" className="btn btn-quiet btn-tiny" disabled={urlSaving} onClick={cancelEditUrl}>
-                  {t("Cancel")}
-                </button>
-              </form>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
-                <span className="break-all">
-                  {t("Source:")}{" "}
-                  <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
-                    {chapter.sourceUrl}
-                  </a>
-                </span>
-                {onSaveUrl && (
-                  <button type="button" className="btn btn-quiet btn-tiny" onClick={startEditUrl}>
-                    <Icon name="edit" size={12} />
-                    {t("Edit URL")}
+            {!imported &&
+              (urlEditing ? (
+                <form
+                  className="flex flex-wrap items-center gap-1.5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleSaveUrl();
+                  }}
+                >
+                  <label className="visually-hidden" htmlFor={`chapter-url-${order}`}>
+                    {t("Source URL for chapter {order}", { order })}
+                  </label>
+                  <input
+                    id={`chapter-url-${order}`}
+                    type="text"
+                    className="input min-w-[16rem] flex-1 text-xs"
+                    value={urlDraft}
+                    onChange={(e) => setUrlDraft(e.target.value)}
+                    disabled={urlSaving}
+                    autoFocus
+                  />
+                  <button type="submit" className="btn btn-tiny" disabled={urlSaving || !urlDraft.trim()}>
+                    <Icon name="check" size={13} />
+                    {urlSaving ? t("Saving…") : t("Save URL")}
                   </button>
-                )}
-              </div>
-            )}
+                  <button type="button" className="btn btn-quiet btn-tiny" disabled={urlSaving} onClick={cancelEditUrl}>
+                    {t("Cancel")}
+                  </button>
+                </form>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+                  <span className="break-all">
+                    {t("Source:")}{" "}
+                    <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
+                      {chapter.sourceUrl}
+                    </a>
+                  </span>
+                  {onSaveUrl && (
+                    <button type="button" className="btn btn-quiet btn-tiny" onClick={startEditUrl}>
+                      <Icon name="edit" size={12} />
+                      {t("Edit URL")}
+                    </button>
+                  )}
+                </div>
+              ))}
             {urlError && (
               <div className="banner mt-2">
                 <Icon name="alert" size={14} />

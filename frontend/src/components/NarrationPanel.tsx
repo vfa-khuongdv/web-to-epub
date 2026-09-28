@@ -1,8 +1,9 @@
 import { ReactNode, useEffect, useState } from "react";
-import { deleteStoryAudio, exportStoryAudio, fetchTtsStatus } from "../lib/api";
+import { deleteStoryAudio, exportStoryAudio, fetchAudioMix, fetchTtsStatus, startAudioMix } from "../lib/api";
 import { formatBytes } from "../lib/formatBytes";
 import { formatEta } from "../lib/formatEta";
 import { useLang } from "../i18n";
+import { NarrationPlayer, useNarrationPlayer } from "../hooks/narrationPlayer";
 import { NarrationOutcome } from "../hooks/useNarration";
 import { NarrationState } from "../types";
 import { Icon } from "./Icon";
@@ -39,6 +40,7 @@ export default function NarrationPanel({
   actions?: ReactNode;
 }) {
   const audioExport = useAudioExport(storyId);
+  const audioMix = useAudioMix(storyId);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -139,7 +141,27 @@ export default function NarrationPanel({
             onClick={() => void audioExport.run()}
           >
             <Icon name="download" size={12} />
-            {audioExport.exporting ? t("Preparing audio…") : t("Export audio (.zip)")}
+            {audioExport.progress
+              ? t("Mixing audio… {done}/{total}", audioExport.progress)
+              : audioExport.exporting
+                ? t("Preparing audio…")
+                : t("Export audio (.zip)")}
+          </button>
+          <button
+            type="button"
+            className="btn btn-tiny"
+            disabled={ready === 0 || missing > 0 || audioMix.progress !== null}
+            title={
+              missing > 0
+                ? t("Narrate every chapter first — the whole story is joined into one file")
+                : t("One MP3 of the whole story, with the player's background music under it")
+            }
+            onClick={() => void audioMix.run()}
+          >
+            <Icon name="music" size={12} />
+            {audioMix.progress
+              ? t("Joining audio… {done}/{total}", audioMix.progress)
+              : t("Export audio + music (.mp3)")}
           </button>
           {state.bytes > 0 && !running && (
             <button type="button" className="btn btn-quiet btn-tiny" disabled={deleting} onClick={() => void handleDeleteAudio()}>
@@ -192,20 +214,66 @@ export default function NarrationPanel({
         </p>
       )}
 
+      {audioMix.message && (
+        <p className="text-xs text-ink-2" role="status">
+          {audioMix.message}
+        </p>
+      )}
+
       {audioExport.message && (
         <p className="text-xs text-ink-2" role="status">
           {audioExport.message}
         </p>
       )}
 
-      {(error || audioExport.error || deleteError) && (
+      {(error || audioExport.error || audioMix.error || deleteError) && (
         <p className="flex items-center gap-2 text-xs text-error" role="alert">
           <Icon name="alert" size={13} />
-          {error || audioExport.error || deleteError}
+          {error || audioExport.error || audioMix.error || deleteError}
         </p>
       )}
     </div>
   );
+}
+
+// The packaged app streams the file into the folder the reader picked (electron/main.js);
+// a browser downloads it from a link.
+async function saveExport(folder: string | null, url: string, fileName: string) {
+  const bridge = window.electronExport;
+  if (bridge && folder !== null) {
+    await bridge.saveUrl(folder, fileName, `${window.location.origin}${url}`);
+    return;
+  }
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = fileName;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+// The background music the player is set to, as an export sends it: the track, and its
+// volume over the voice's so the file keeps the balance heard in the app. Empty when the
+// player's music is off.
+export function playerMusic(player: NarrationPlayer): { musicId?: string; musicVolume?: number } {
+  return player.musicEnabled && player.musicTrack
+    ? { musicId: player.musicTrack, musicVolume: player.musicVolume / Math.max(player.volume, 0.05) }
+    : {};
+}
+
+// Wait for a mix job, reporting its progress; resolves with the finished job.
+async function waitForMix(
+  jobId: string,
+  fallbackError: string,
+  onProgress: (progress: { done: number; total: number }) => void
+) {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const job = await fetchAudioMix(jobId);
+    if (job.state === "error") throw new Error(job.message ?? fallbackError);
+    onProgress({ done: job.done, total: job.total });
+    if (job.state === "done" && job.url && job.fileName) return { ...job, url: job.url, fileName: job.fileName };
+  }
 }
 
 /**
@@ -215,7 +283,9 @@ export default function NarrationPanel({
  */
 function useAudioExport(storyId: string) {
   const { t } = useLang();
+  const player = useNarrationPlayer();
   const [exporting, setExporting] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -228,17 +298,19 @@ function useAudioExport(storyId: string) {
       const bridge = window.electronExport;
       const folder = bridge ? await bridge.pickFolder() : null;
       if (bridge && folder === null) return;
-      const created = await exportStoryAudio(storyId);
-      if (bridge && folder !== null) {
-        await bridge.saveUrl(folder, created.fileName, `${window.location.origin}${created.url}`);
+      // With the player's music on, every chapter is mixed first — a job, like the
+      // one-file export; without it the server only zips the files, which is quick.
+      const music = playerMusic(player);
+      let created: { url: string; fileName: string; count: number; missing: number[] };
+      if (music.musicId) {
+        const { jobId, total } = await startAudioMix(storyId, { ...music, format: "zip" });
+        setProgress({ done: 0, total });
+        const job = await waitForMix(jobId, t("Could not export audio"), setProgress);
+        created = { url: job.url, fileName: job.fileName, count: job.count ?? 0, missing: job.missing ?? [] };
       } else {
-        const a = document.createElement("a");
-        a.href = created.url;
-        a.download = created.fileName;
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
+        created = await exportStoryAudio(storyId);
       }
+      await saveExport(folder, created.url, created.fileName);
       setMessage(
         created.missing.length > 0
           ? t("Exported {count} chapters. {missing} chapters have no audio yet and were left out.", {
@@ -251,8 +323,49 @@ function useAudioExport(storyId: string) {
       setError((err as Error).message);
     } finally {
       setExporting(false);
+      setProgress(null);
     }
   }
 
-  return { exporting, error, message, run };
+  return { exporting, progress, error, message, run };
+}
+
+/**
+ * "Export audio + music": the server joins every chapter into one MP3 with the music the
+ * player is set to (track and its volume; none when the player's music is off). It takes
+ * minutes on a long story, so the page polls the job, then saves the file like the zip.
+ */
+function useAudioMix(storyId: string) {
+  const { t } = useLang();
+  const player = useNarrationPlayer();
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function run() {
+    if (progress) return;
+    setError(null);
+    setMessage(null);
+    try {
+      const bridge = window.electronExport;
+      const folder = bridge ? await bridge.pickFolder() : null;
+      if (bridge && folder === null) return;
+      const music = playerMusic(player);
+      const { jobId, total } = await startAudioMix(storyId, music);
+      setProgress({ done: 0, total });
+      const job = await waitForMix(jobId, t("Could not export audio"), setProgress);
+      await saveExport(folder, job.url, job.fileName);
+      setMessage(
+        job.musicName
+          ? t("Exported the whole story as one file, with the background music “{name}”.", { name: job.musicName })
+          : t("Exported the whole story as one file. Background music is off in the player, so it has none.")
+      );
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setProgress(null);
+    }
+  }
+
+  return { progress, error, message, run };
 }

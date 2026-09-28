@@ -8,6 +8,7 @@ import {
   fetchSiteSession,
   fetchStories,
   fetchStory,
+  importEpub,
   setStoryWatch,
 } from "../lib/api";
 import { Translate, useLang } from "../i18n";
@@ -162,6 +163,10 @@ export default function LibraryView({
   const [stories, setStories] = useState<StorySummary[]>([]);
   const [storyUrl, setStoryUrl] = useState("");
   const [busy, setBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const fileInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<StoredStory | null>(null);
   // A story's outline is a few hundred KB on a long story, so opening one shows the
@@ -326,6 +331,35 @@ export default function LibraryView({
     }
   }
 
+  // Import one .epub file. A 409 comes back as code "exists" — ask before overwriting
+  // (the file hash is the story id, so it is the same book), then retry with the flag.
+  async function handleImport(file: File, overwrite = false) {
+    setImportBusy(true);
+    setError(null);
+    try {
+      const imported = await importEpub(file, { overwrite });
+      setPendingImport(null);
+      await loadStories();
+      setSelected(imported);
+      pushNotice({ kind: "epub-imported", title: imported.title });
+    } catch (err) {
+      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport(file);
+      else setError((err as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  function handleImportFiles(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    if (!/\.epub$/i.test(file.name)) {
+      setError(t("Please choose an .epub file."));
+      return;
+    }
+    void handleImport(file);
+  }
+
   async function handleDelete(id: string) {
     try {
       await deleteStory(id);
@@ -480,7 +514,19 @@ export default function LibraryView({
           </span>
         </div>
 
-        <div className="border-b border-rule p-3">
+        <div
+          className={`border-b border-rule p-3${dragging ? " bg-sunken" : ""}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragging(false);
+            handleImportFiles(event.dataTransfer.files);
+          }}
+        >
           <div className="flex gap-2">
             <label className="visually-hidden" htmlFor="story-url">
               {t("Story page URL")}
@@ -499,11 +545,53 @@ export default function LibraryView({
             <button type="button" className="btn btn-primary" disabled={busy} onClick={handleCreate}>
               {busy ? t("Loading…") : t("Load chapters")}
             </button>
+            <button type="button" className="btn" disabled={importBusy} onClick={() => fileInput.current?.click()}>
+              <Icon name="upload" size={13} />
+              {importBusy ? t("Importing…") : t("Import EPUB")}
+            </button>
+            <input
+              ref={fileInput}
+              type="file"
+              accept=".epub,application/epub+zip"
+              className="hidden"
+              onChange={(event) => {
+                handleImportFiles(event.target.files);
+                event.target.value = "";
+              }}
+            />
           </div>
-          <p className="mt-1.5 text-xs text-ink-3">
-            {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
-            {[...new Set(supportedSites.map((s) => s.name))].join(", ") || t("loading…")}
-          </p>
+          {pendingImport ? (
+            <div className="banner banner-new mt-2">
+              <Icon name="alert" size={14} />
+              <p className="min-w-0">
+                {t("This book is already in the library. Overwrite it with “{name}”?", { name: pendingImport.name })}
+              </p>
+              <span className="ml-auto flex gap-1.5">
+                <button
+                  type="button"
+                  className="btn btn-tiny btn-danger"
+                  disabled={importBusy}
+                  onClick={() => void handleImport(pendingImport, true)}
+                >
+                  {t("Overwrite")}
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-tiny btn-quiet"
+                  disabled={importBusy}
+                  onClick={() => setPendingImport(null)}
+                >
+                  {t("Cancel")}
+                </button>
+              </span>
+            </div>
+          ) : (
+            <p className="mt-1.5 text-xs text-ink-3">
+              {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
+              {[...new Set(supportedSites.map((s) => s.name))].join(", ") || t("loading…")}
+              <span className="block">{t("Or drop an .epub file here to import it.")}</span>
+            </p>
+          )}
         </div>
 
         {!loading && stories.length > 0 && (
@@ -660,7 +748,7 @@ export default function LibraryView({
                         </span>
                       </button>
                     </td>
-                    <td className="dim">{s.site}</td>
+                    <td className="dim">{s.site === "epub" ? t("EPUB file") : s.site}</td>
                     <td className="num">{s.chapterCount}</td>
                     <td className="num">
                       <b>{s.done}</b>
@@ -698,16 +786,18 @@ export default function LibraryView({
                         </span>
                       ) : (
                         <span className="flex items-center justify-end gap-1">
-                          <button
-                            type="button"
-                            className={`btn btn-quiet btn-tiny${s.watching ? " text-select-deep" : ""}`}
-                            title={s.watching ? t("Stop watching for new chapters") : t("Watch for new chapters")}
-                            aria-label={s.watching ? t("Stop watching {title}", { title: s.title }) : t("Watch {title}", { title: s.title })}
-                            aria-pressed={s.watching}
-                            onClick={() => handleWatchToggle(s)}
-                          >
-                            <Icon name="bell" size={13} filled={s.watching} />
-                          </button>
+                          {s.site !== "epub" && (
+                            <button
+                              type="button"
+                              className={`btn btn-quiet btn-tiny${s.watching ? " text-select-deep" : ""}`}
+                              title={s.watching ? t("Stop watching for new chapters") : t("Watch for new chapters")}
+                              aria-label={s.watching ? t("Stop watching {title}", { title: s.title }) : t("Watch {title}", { title: s.title })}
+                              aria-pressed={s.watching}
+                              onClick={() => handleWatchToggle(s)}
+                            >
+                              <Icon name="bell" size={13} filled={s.watching} />
+                            </button>
+                          )}
                           <button
                             type="button"
                             className="btn btn-quiet btn-tiny"

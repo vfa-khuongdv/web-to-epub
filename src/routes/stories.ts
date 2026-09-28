@@ -1,7 +1,10 @@
+import crypto from "crypto";
+import express, { Router } from "express";
 import multer from "multer";
 import os from "os";
-import { Router } from "express";
+import path from "path";
 import { findSupportedSite } from "../config/supportedSites";
+import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
 import { settingsStore } from "../services/settingsStore";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
@@ -15,6 +18,11 @@ import { Library, libraryFor } from "./library";
 export const storiesRouter = Router();
 
 const upload = multer({ dest: os.tmpdir() });
+
+// A book bigger than this is refused before parsing: the raw body parser's own limit
+// sits just above so an oversized file still gets our JSON message.
+export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
+const IMPORT_BODY_LIMIT = MAX_IMPORT_BYTES + 1024 * 1024;
 
 // Load TOC and save story — used by both POST /stories (create/update from URL)
 // and POST /stories/:id/refresh (the "Load N new chapters" button).
@@ -83,6 +91,89 @@ storiesRouter.post("/stories", async (req, res) => {
   }
 });
 
+// Import an .epub file as a story. A file hash gives the story a stable URL and id, so
+// re-importing the same file targets the same story; without ?overwrite=1 that answers
+// 409 and the UI asks first. Parsing and the cover/media writes happen here, in the
+// library the request is talking to (private mode included).
+storiesRouter.post(
+  "/stories/import-epub",
+  express.raw({ type: () => true, limit: IMPORT_BODY_LIMIT }),
+  async (req, res) => {
+    const library = libraryFor(req, res);
+    if (!library) return;
+    const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
+    if (bytes.length === 0) {
+      res.status(400).json({ message: t("Please choose an EPUB file") });
+      return;
+    }
+    if (bytes.length > MAX_IMPORT_BYTES) {
+      res.status(400).json({ message: t("The EPUB file is too large (maximum {size} MB)", { size: 100 }) });
+      return;
+    }
+
+    const hash = crypto.createHash("sha1").update(bytes).digest("hex");
+    const storyUrl = `epub:${hash}`;
+    const id = storyId(storyUrl);
+    const overwrite = req.query.overwrite === "1";
+    const existing = await library.stories.getOutline(id);
+    if (existing && !overwrite) {
+      res.status(409).json({ code: "exists", message: t("This book is already in the library"), story: existing });
+      return;
+    }
+    const name = typeof req.query.name === "string" ? path.basename(req.query.name) : "";
+    const fallbackTitle = name ? path.parse(name).name : undefined;
+
+    try {
+      const book = await parseEpub(bytes, {
+        fallbackTitle,
+        storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
+      });
+
+      let coverUrl = existing?.coverUrl;
+      if (book.cover) {
+        const saved = library.covers.saveBytes(id, book.cover.bytes);
+        if (saved) coverUrl = saved;
+      }
+
+      const defaults = settingsStore.get();
+      const now = new Date().toISOString();
+      const story: StoredStory = {
+        id,
+        storyUrl,
+        site: "epub",
+        title: book.title,
+        // The file wins when it carries metadata; otherwise a re-import keeps what the
+        // reader edited, and a new story starts from the settings defaults.
+        author: book.author ?? existing?.author ?? (defaults.defaultAuthor || undefined),
+        language: book.language ?? existing?.language ?? defaults.defaultBookLanguage,
+        coverUrl,
+        watching: false,
+        newChapterCount: 0,
+        chapters: book.chapters.map((chapter, index) => ({
+          order: index + 1,
+          url: `${storyUrl}#${index + 1}`,
+          title: chapter.title,
+          status: "done" as const,
+          blocks: chapter.blocks,
+        })),
+        createdAt: existing?.createdAt ?? now,
+        updatedAt: now,
+      };
+      await library.stories.save(story);
+      res.status(existing ? 200 : 201).json({ story: await library.stories.getOutline(id) });
+    } catch (err) {
+      // Only the parser's own, already-translated errors are safe to echo; anything else
+      // (raw parser messages, FS/SQLite failures with absolute paths) gets the generic
+      // wording instead of leaking internals.
+      const message =
+        err instanceof NotEpubError || err instanceof EpubTooLargeError || err instanceof DrmError
+          ? err.message
+          : t("Could not import the EPUB file");
+      res.status(400).json({ message });
+    }
+  }
+);
+
 storiesRouter.get("/stories", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) return;
@@ -115,6 +206,20 @@ storiesRouter.get("/stories/:id/cover", (req, res) => {
   }
   res.type(cover.contentType);
   res.sendFile(cover.filePath);
+});
+
+// Book image stored by an import, served to the reader/editor. `libraryFor` makes the
+// private library's ?vault= work, like the cover route.
+storiesRouter.get("/stories/:id/media/:name", (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const media = library.epubMedia.find(req.params.id, req.params.name);
+  if (!media) {
+    res.status(404).json({ message: t("Book image not found") });
+    return;
+  }
+  res.type(media.contentType);
+  res.sendFile(media.filePath);
 });
 
 // Save book metadata edited by user in the detail panel (multipart because a new
@@ -174,6 +279,10 @@ storiesRouter.post("/stories/:id/watch", async (req, res) => {
   const story = await library.stories.getOutline(id);
   if (!story) {
     res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  if (story.site === "epub") {
+    res.status(400).json({ message: t("Imported books have no chapter list to watch") });
     return;
   }
   await library.stories.setWatching(id, watching);
@@ -271,6 +380,7 @@ storiesRouter.delete("/stories/:id", async (req, res) => {
     return;
   }
   await library.covers.remove(req.params.id);
+  await library.epubMedia.remove(req.params.id);
   await removeStoryAudio(library.dataDir, req.params.id);
   res.json({ ok: true });
 });

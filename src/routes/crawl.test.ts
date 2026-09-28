@@ -147,4 +147,25 @@ describe("POST /stories/:id/crawl/stop", () => {
     expect(chapter2?.status).toBe("pending");
     expect(chapter3?.status).toBe("pending");
   });
+
+  it("refuses to crawl a story imported from an EPUB file", async () => {
+    const { storyId } = await import("../services/storyStore");
+    const epubId = storyId("epub:0123456789abcdef");
+    await stories.save({
+      id: epubId,
+      storyUrl: "epub:0123456789abcdef",
+      site: "epub",
+      title: "Sách nhập",
+      watching: false,
+      newChapterCount: 0,
+      chapters: [{ order: 1, url: "epub:0123456789abcdef#1", title: "Một", status: "done", blocks: [] }],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const res = await fetch(`${base}/api/stories/${epubId}/crawl`, { method: "POST" });
+
+    expect(res.status).toBe(400);
+    await stories.remove(epubId);
+  });
 });

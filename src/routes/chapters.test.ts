@@ -108,6 +108,45 @@ describe("PATCH /stories/:id/chapters/:order/url", () => {
     const res = await patchUrl(99, { url: "https://www.fanfiction.net/s/14575449/9/x" });
     expect(res.status).toBe(404);
   });
+
+  it("resolves imported book images for the editor and stores markers back", async () => {
+    const marker = `epub-media/${id}/abcdef123456.png`;
+    const contentHtml = `<p>Ảnh</p><img src="/api/stories/${id}/media/abcdef123456.png?vault=v1" alt="p"/>`;
+
+    const res = await fetch(`${base}/api/stories/${id}/chapters/2`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Chương 1", contentHtml }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // Stored: the marker, never the URL or the token.
+    const stored = await stories.getChapter(id, 2);
+    expect(JSON.stringify(stored?.blocks)).toContain(marker);
+    expect(JSON.stringify(stored?.blocks)).not.toContain("/api/stories/");
+
+    // Answered: the URL the browser can load (no token on a request that had none).
+    const image = body.chapter.blocks.find((block: { type: string }) => block.type === "image");
+    expect(image.src).toBe(`/api/stories/${id}/media/abcdef123456.png`);
+  });
+
+  it("resolves stored markers when a chapter is read", async () => {
+    const marker = `epub-media/${id}/abcdef123456.png`;
+    await stories.saveChapter(id, {
+      order: 3,
+      url: "https://example.com/c3",
+      title: "Chương 3",
+      status: "done",
+      blocks: [{ type: "image", src: marker, alt: "" }],
+    });
+
+    const res = await fetch(`${base}/api/stories/${id}/chapters/3`);
+    const body = await res.json();
+
+    expect(body.chapter.blocks[0].src).toBe(`/api/stories/${id}/media/abcdef123456.png`);
+    expect(JSON.stringify(await stories.getChapter(id, 3))).toContain(marker);
+  });
 });
 
 describe("PATCH /stories/:id/chapters/:order/title", () => {
@@ -310,5 +349,94 @@ describe("DELETE /stories/:id/chapters/:order", () => {
     const res = await deleteChapter(2);
     expect(res.status).toBe(409);
     expect(await stories.getChapter(id, 2)).toBeDefined();
+  });
+});
+
+/**
+ * PATCH /stories/:id/chapters/:order/spell-checked — the reader marks a chapter's typos as
+ * fixed. Only the flag changes; the outline carries it so the chapter list can show it.
+ */
+describe("PATCH /stories/:id/chapters/:order/spell-checked", () => {
+  let server: Server;
+  let base: string;
+  let stories: typeof import("../services/storyStore").storyStore;
+  let library: NonNullable<ReturnType<typeof import("./library").libraryFor>>;
+  let id: string;
+
+  beforeAll(async () => {
+    const express = (await import("express")).default;
+    const { chaptersRouter } = await import("./chapters");
+    const store = await import("../services/storyStore");
+    const { libraryFor } = await import("./library");
+    stories = store.storyStore;
+    id = store.storyId(STORY_URL);
+    library = libraryFor({ header: () => undefined, query: {} } as never, {} as never)!;
+
+    const app = express();
+    app.use(express.json());
+    app.use("/api", chaptersRouter);
+    server = app.listen(0);
+    await new Promise((resolve) => server.once("listening", resolve));
+    const address = server.address();
+    if (typeof address === "string" || address === null) throw new Error("expected a TCP address");
+    base = `http://127.0.0.1:${address.port}`;
+  });
+
+  beforeEach(async () => {
+    library.runningCrawls.clear();
+    await stories.remove(id);
+    await stories.save({
+      id,
+      storyUrl: STORY_URL,
+      site: "fanfiction.net",
+      title: "Reluctant Cultivator in Konoha",
+      watching: false,
+      newChapterCount: 0,
+      chapters: [
+        {
+          order: 1,
+          url: "https://www.fanfiction.net/s/14575449/1/x",
+          title: "Chapter 1",
+          status: "done",
+          blocks: [{ type: "paragraph", text: "hi" }],
+        },
+      ],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+  });
+
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(DATA_DIR, { recursive: true, force: true });
+  });
+
+  async function mark(order: number, body: unknown) {
+    return fetch(`${base}/api/stories/${id}/chapters/${order}/spell-checked`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+  }
+
+  it("sets and clears the flag without touching the content", async () => {
+    const res = await mark(1, { spellChecked: true });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { chapter: StoredChapter }).chapter.spellChecked).toBe(true);
+    expect((await stories.getOutline(id))?.chapters[0].spellChecked).toBe(true);
+    expect((await stories.getChapter(id, 1))?.blocks).toEqual([{ type: "paragraph", text: "hi" }]);
+
+    await mark(1, { spellChecked: false });
+    expect((await stories.getOutline(id))?.chapters[0].spellChecked).toBeUndefined();
+  });
+
+  it("rejects a missing flag and an unknown chapter", async () => {
+    expect((await mark(1, {})).status).toBe(400);
+    expect((await mark(99, { spellChecked: true })).status).toBe(404);
+  });
+
+  it("409s while the story is crawling", async () => {
+    library.runningCrawls.set(id, { cursor: 0, total: 1, startedAt: Date.now(), abort: new AbortController() });
+    expect((await mark(1, { spellChecked: true })).status).toBe(409);
   });
 });

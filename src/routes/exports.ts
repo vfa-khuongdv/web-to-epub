@@ -4,6 +4,7 @@ import { Response as ExpressResponse, Router } from "express";
 import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
 import { coverPathForExport } from "../services/coverStore";
 import { blocksToHtml } from "../services/chapterHtml";
+import { exportMediaHtml, storyMediaDir } from "../services/epubMedia";
 import { t } from "../services/lang";
 import { BookMetadata, ExportChapter } from "../types";
 import { settingsStore } from "../services/settingsStore";
@@ -139,6 +140,9 @@ exportsRouter.post("/stories/:id/export", async (req, res) => {
       // so we don't silently export blank chapters.
       let contentHtml = wanted.contentHtml || (stored ? blocksToHtml(stored.blocks ?? []) : "");
       if (!contentHtml) continue;
+      // Imported book images: markers (from the DB) and resolved URLs (from an edited
+      // chapter) both become file:// paths embedImages may read from the media dir.
+      contentHtml = exportMediaHtml(contentHtml, id, library.dataDir);
       // Only audio matching the saved text: unsaved edits in the editor are not narrated.
       const audio = withNarration
         ? await freshChapterAudio(library.stories, library.dataDir, id, wanted.order, { variant: ttsVariant, voice: ttsVoice })
@@ -147,14 +151,12 @@ exportsRouter.post("/stories/:id/export", async (req, res) => {
       included.push({ title: wanted.title ?? stored?.title ?? "", includeInBook: true, contentHtml });
     }
 
-    await streamExport(
-      res,
-      metadata,
-      included,
-      metadata.title || story.title || "book",
-      library.dataDir,
-      withNarration ? [storyAudioDir(library.dataDir, id)] : []
-    );
+    // Imported books keep their images under the library's media dir; the export reads
+    // those local files instead of re-fetching anything. Narration adds its own dir.
+    const localRoots = [storyMediaDir(library.dataDir, id)];
+    if (withNarration) localRoots.push(storyAudioDir(library.dataDir, id));
+
+    await streamExport(res, metadata, included, metadata.title || story.title || "book", library.dataDir, localRoots);
   } catch (err) {
     res.status(500).json({ message: err instanceof Error ? err.message : "EPUB export error" });
   }
