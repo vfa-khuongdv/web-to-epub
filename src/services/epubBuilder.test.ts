@@ -7,6 +7,7 @@ import { unzipSync, zipSync } from "fflate";
 import sharp from "sharp";
 import { JSDOM } from "jsdom";
 import type { ExportChapter } from "../types";
+import { TINY_PNG } from "./__fixtures__/epubFixtures";
 import {
   buildEpub,
   contentDisposition,
@@ -1028,5 +1029,47 @@ describe("buildEpub", () => {
     expect(Object.keys(part1)).not.toContain("OEBPS/media/1.mp3");
     expect(Object.keys(part2)).toContain("OEBPS/media/1.mp3");
     expect(Object.keys(part2)).not.toContain("OEBPS/media/0.mp3");
+  });
+});
+
+describe("embedImages with local book images", () => {
+  // localMediaPath only trusts file:// paths inside `localRoots` — the import route
+  // points these at the story's media dir, and nothing else may be read from disk.
+  let root: string;
+  let out: string;
+
+  beforeEach(async () => {
+    root = await fs.promises.mkdtemp(path.join(os.tmpdir(), "epub-img-root-"));
+    out = await fs.promises.mkdtemp(path.join(os.tmpdir(), "epub-img-out-"));
+  });
+
+  afterEach(async () => {
+    await fs.promises.rm(root, { recursive: true, force: true });
+    await fs.promises.rm(out, { recursive: true, force: true });
+  });
+
+  it("embeds an image file inside the allowed roots", async () => {
+    const imagePath = path.join(root, "pic.png");
+    await fs.promises.writeFile(imagePath, TINY_PNG);
+    const chapters: ExportChapter[] = [
+      { title: "Chương 1", includeInBook: true, contentHtml: `<p>x</p><img src="file://${imagePath}" />` },
+    ];
+
+    const result = await embedImages(chapters, out, undefined, [root]);
+
+    expect(result[0].contentHtml).not.toContain(imagePath);
+    expect(result[0].contentHtml).toMatch(/<img src="file:\/\/.+\.png"/);
+  });
+
+  it("drops a file:// image outside the allowed roots", async () => {
+    const imagePath = path.join(root, "pic.png");
+    await fs.promises.writeFile(imagePath, TINY_PNG);
+    const chapters: ExportChapter[] = [
+      { title: "Chương 1", includeInBook: true, contentHtml: `<p>x</p><img src="file://${imagePath}" />` },
+    ];
+
+    const result = await embedImages(chapters, out, undefined, []);
+
+    expect(result[0].contentHtml).toBe("<p>x</p>");
   });
 });

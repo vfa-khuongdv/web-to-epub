@@ -108,6 +108,45 @@ describe("PATCH /stories/:id/chapters/:order/url", () => {
     const res = await patchUrl(99, { url: "https://www.fanfiction.net/s/14575449/9/x" });
     expect(res.status).toBe(404);
   });
+
+  it("resolves imported book images for the editor and stores markers back", async () => {
+    const marker = `epub-media/${id}/abcdef123456.png`;
+    const contentHtml = `<p>Ảnh</p><img src="/api/stories/${id}/media/abcdef123456.png?vault=v1" alt="p"/>`;
+
+    const res = await fetch(`${base}/api/stories/${id}/chapters/2`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: "Chương 1", contentHtml }),
+    });
+    expect(res.status).toBe(200);
+    const body = await res.json();
+
+    // Stored: the marker, never the URL or the token.
+    const stored = await stories.getChapter(id, 2);
+    expect(JSON.stringify(stored?.blocks)).toContain(marker);
+    expect(JSON.stringify(stored?.blocks)).not.toContain("/api/stories/");
+
+    // Answered: the URL the browser can load (no token on a request that had none).
+    const image = body.chapter.blocks.find((block: { type: string }) => block.type === "image");
+    expect(image.src).toBe(`/api/stories/${id}/media/abcdef123456.png`);
+  });
+
+  it("resolves stored markers when a chapter is read", async () => {
+    const marker = `epub-media/${id}/abcdef123456.png`;
+    await stories.saveChapter(id, {
+      order: 3,
+      url: "https://example.com/c3",
+      title: "Chương 3",
+      status: "done",
+      blocks: [{ type: "image", src: marker, alt: "" }],
+    });
+
+    const res = await fetch(`${base}/api/stories/${id}/chapters/3`);
+    const body = await res.json();
+
+    expect(body.chapter.blocks[0].src).toBe(`/api/stories/${id}/media/abcdef123456.png`);
+    expect(JSON.stringify(await stories.getChapter(id, 3))).toContain(marker);
+  });
 });
 
 describe("PATCH /stories/:id/chapters/:order/title", () => {

@@ -1,10 +1,24 @@
 import { Router } from "express";
+import type { Request } from "express";
 import { htmlToBlocks } from "../services/chapterHtml";
+import { mapBlockMedia, resolveMediaHtml, restoreMediaHtml } from "../services/epubMedia";
 import { t } from "../services/lang";
 import { StoredChapter } from "../types";
 import { libraryFor } from "./library";
 
 export const chaptersRouter = Router();
+
+function requestVaultToken(req: Request): string | undefined {
+  return req.header("X-Vault-Token") ?? (typeof req.query.vault === "string" ? req.query.vault : undefined);
+}
+
+// Imported book images are stored as markers; the reader/editor needs a loadable URL.
+// The same mapping is reversed on PATCH, so edits never bake an origin or token into DB.
+function presentChapter(chapter: StoredChapter, storyId: string, token?: string): StoredChapter {
+  if (!chapter.blocks) return chapter;
+  const blocks = mapBlockMedia(chapter.blocks, (html) => resolveMediaHtml(html, storyId, token));
+  return { ...chapter, blocks };
+}
 
 // One chapter's content, fetched when user opens it to view/edit.
 chaptersRouter.get("/stories/:id/chapters/:order", async (req, res) => {
@@ -20,7 +34,7 @@ chaptersRouter.get("/stories/:id/chapters/:order", async (req, res) => {
     res.status(404).json({ message: t("Chapter not found") });
     return;
   }
-  res.json({ chapter });
+  res.json({ chapter: presentChapter(chapter, req.params.id, requestVaultToken(req)) });
 });
 
 // Edit chapter title and content. Crawled content often mixes junk from the source site
@@ -58,7 +72,7 @@ chaptersRouter.patch("/stories/:id/chapters/:order", async (req, res) => {
     return;
   }
 
-  const blocks = htmlToBlocks(contentHtml);
+  const blocks = mapBlockMedia(htmlToBlocks(contentHtml), (html) => restoreMediaHtml(html, id));
   if (blocks.length === 0) {
     res.status(400).json({ message: t("Chapter content cannot be empty") });
     return;
@@ -75,7 +89,7 @@ chaptersRouter.patch("/stories/:id/chapters/:order", async (req, res) => {
     errorKind: undefined,
   };
   await library.stories.saveChapter(id, updated);
-  res.json({ chapter: updated });
+  res.json({ chapter: presentChapter(updated, id, requestVaultToken(req)) });
 });
 
 // Correct a chapter's source URL without touching its content or status: the site itself
@@ -117,7 +131,7 @@ chaptersRouter.patch("/stories/:id/chapters/:order/url", async (req, res) => {
 
   const updated: StoredChapter = { ...chapter, url: trimmed };
   await library.stories.saveChapter(id, updated);
-  res.json({ chapter: updated });
+  res.json({ chapter: presentChapter(updated, id, requestVaultToken(req)) });
 });
 
 // Correct a chapter's title without requiring content — the TOC-derived name can be
@@ -154,7 +168,7 @@ chaptersRouter.patch("/stories/:id/chapters/:order/title", async (req, res) => {
 
   const updated: StoredChapter = { ...chapter, title: trimmed };
   await library.stories.saveChapter(id, updated);
-  res.json({ chapter: updated });
+  res.json({ chapter: presentChapter(updated, id, requestVaultToken(req)) });
 });
 
 // Remove one chapter from the library: junk TOC entries and chapters the site will never
