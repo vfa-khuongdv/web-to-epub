@@ -81,6 +81,30 @@ describe("parseStoryPage", () => {
     ]);
   });
 
+  it("tiêu đề phần trỏ cùng trang với chương mở đầu phần (vd 'II. NƯỚC Ý' + '32. Tỉnh Giấc Mơ') → bỏ tiêu đề phần, giữ chương", () => {
+    // Real markup from "Bá Tước Monte Cristo": the part heading and the chapter that
+    // opens the part are two <li> entries with the same href; the page content itself
+    // already carries the part name (as an <h2>), so the extra entry would duplicate it.
+    const html = `
+      <div class="book-title"><b><a class="title" href="/books/?author=a">Tác Giả</a> » Truyện</b></div>
+      <h1 class="t3">Truyện Thử</h1>
+      <div id="ml"><h5>MỤC LỤC</h5><ul>
+        <li>I. MARSEILLES</li>
+        <li><b>1. Tàu Cập Bến</b></li>
+        <li><a href="?title=truyen-thu&amp;page=2" class="txt">II. NƯỚC Ý</a></li>
+        <li><a href="?title=truyen-thu&amp;page=2" class="txt">2. Tỉnh Giấc Mơ</a></li>
+        <li><a href="?title=truyen-thu&amp;page=3" class="txt">3. Chương Ba</a></li>
+      </ul></div>
+      <div id="book-content"><div id="book-page" cat="truyendich" source="truyen-thu" page="1"></div></div>`;
+    const toc = parseStoryPage(html, "https://vietmessenger.com/books/?title=truyen-thu");
+
+    expect(toc.chapters).toEqual([
+      { url: "https://vietmessenger.com/books/?title=truyen-thu", title: "1. Tàu Cập Bến" },
+      { url: "https://vietmessenger.com/books/?title=truyen-thu&page=2", title: "2. Tỉnh Giấc Mơ" },
+      { url: "https://vietmessenger.com/books/?title=truyen-thu&page=3", title: "3. Chương Ba" },
+    ]);
+  });
+
   it("sách members-only (form đăng nhập, không có mục lục) báo lỗi rõ ràng", () => {
     const html = `<html><body><div id="main"><div id="member-login">SIGN IN</div></div></body></html>`;
     expect(() => parseStoryPage(html, "https://vietmessenger.com/books/?title=abc")).toThrow(
