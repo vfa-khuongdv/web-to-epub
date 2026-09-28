@@ -72,6 +72,8 @@ export interface EpubFixtureOptions {
   chapters?: FixtureChapter[];
   cover?: { file: string; bytes: Buffer; pointedBy?: "meta" | "properties" | "guide" };
   encryptionXml?: string;
+  // 0 (stored, default — fast fixture builds) or 6 (deflate, what real books use).
+  compressionLevel?: number;
   extraEntries?: Record<string, Uint8Array>;
 }
 
@@ -159,7 +161,7 @@ export function buildEpubFixture(options: EpubFixtureOptions = {}): Buffer {
     files["META-INF/encryption.xml"] = new Uint8Array(Buffer.from(options.encryptionXml));
   }
 
-  return Buffer.from(zipSync(files, { level: 0 }));
+  return Buffer.from(zipSync(files, { level: options.compressionLevel ?? 0 }));
 }
 ```
 
@@ -203,6 +205,15 @@ describe("parseEpub", () => {
     expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Mở đầu", "Kết"]);
     // The leading heading duplicates the title, so it is dropped from the blocks.
     expect(book.chapters[0].blocks).toEqual([{ type: "paragraph", text: "Một." }]);
+  });
+
+  it("reads a deflate-compressed EPUB", async () => {
+    const bytes = buildEpubFixture({ compressionLevel: 6 });
+
+    const book = await parseEpub(bytes);
+
+    expect(book.chapters).toHaveLength(1);
+    expect(book.chapters[0].blocks).toEqual([{ type: "paragraph", text: "Nội dung một." }]);
   });
 
   it("reads chapter titles from toc.ncx in an EPUB2", async () => {
@@ -295,7 +306,8 @@ describe("parseEpub", () => {
     expect(html).not.toContain("file:");
     expect(html).not.toContain("ch2.xhtml");
     expect(html).not.toContain("audio");
-    expect(html).toContain('href="https://example.com"');
+    // JSON.stringify escapes attribute quotes, hence the backslashes.
+    expect(html).toContain('href=\\"https://example.com\\"');
   });
 
   it.each(["meta", "properties", "guide"] as const)("extracts the cover pointed at by %s", async (pointedBy) => {
@@ -353,7 +365,7 @@ Create `src/services/epubImport.ts`:
 ```ts
 import path from "path";
 import { JSDOM } from "jsdom";
-import { Unzip } from "fflate";
+import { Unzip, UnzipInflate } from "fflate";
 import { ContentBlock } from "../types";
 import { sniffImageExtension } from "./coverStore";
 import { walkToBlocks } from "./extractor";
@@ -443,7 +455,11 @@ function unzipEntries(bytes: Buffer, maxTotal: number): Promise<Map<string, Buff
           chunks.push(chunk);
           if (final) entries.set(file.name, Buffer.concat(chunks));
         };
+        file.start();
       });
+      // fflate's streaming Unzip registers only stored (0) by default; deflate (8) is
+      // what every real EPUB uses, so register it or the archive silently yields nothing.
+      unzip.register(UnzipInflate);
       unzip.push(bytes, true);
     } catch {
       fail(new NotEpubError());
