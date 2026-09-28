@@ -1,13 +1,16 @@
 import { spawn } from "child_process";
 import { t } from "../lang";
 
-export interface StoryMixInput {
+export type StoryMixInput = {
   chapters: string[];
   // Background music looped under the narration; none leaves it narration only.
   music?: string;
   musicVolume: number;
-  out: string;
-}
+} & (
+  | { out: string }
+  // One file per chapter, in `chapters` order (the zip export, a chapter's download).
+  | { outs: string[] }
+);
 
 export interface MixCommand {
   command: string;

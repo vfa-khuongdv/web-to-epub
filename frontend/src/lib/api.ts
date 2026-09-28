@@ -639,11 +639,20 @@ export async function deleteStoryAudio(storyId: string): Promise<void> {
 
 // Opened by <a href> / <audio src>, which send no headers: the private-mode token rides
 // in the query. `download` asks for the attachment file name (the player does not want it).
-export function chapterAudioUrl(storyId: string, order: number, options: { download?: boolean } = {}): string {
+// A download may carry background music (`music`), which the server mixes into the file.
+export function chapterAudioUrl(
+  storyId: string,
+  order: number,
+  options: { download?: boolean; music?: { musicId?: string; musicVolume?: number } } = {}
+): string {
   const token = currentVaultToken();
   const params = new URLSearchParams();
   if (token) params.set("vault", token);
   if (options.download) params.set("download", "1");
+  if (options.download && options.music?.musicId) {
+    params.set("music", options.music.musicId);
+    params.set("musicVolume", String(options.music.musicVolume ?? 0.3));
+  }
   const query = params.toString();
   return `/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/audio${query ? `?${query}` : ""}`;
 }
@@ -675,13 +684,17 @@ export interface AudioMixJob {
   fileName?: string;
   message?: string;
   musicName?: string;
+  // Zip format: chapters in the zip, and those left out for having no audio.
+  count?: number;
+  missing?: number[];
 }
 
 // One MP3 of the whole story with background music under it. The server joins it in
 // the background (it takes minutes on a long story); poll fetchAudioMix with the job id.
+// `format: "zip"` is the zip export with music: one file per chapter instead of one.
 export async function startAudioMix(
   storyId: string,
-  music: { musicId?: string; musicVolume?: number }
+  music: { musicId?: string; musicVolume?: number; format?: "mp3" | "zip" }
 ): Promise<{ jobId: string; total: number }> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/export-audio-mix`, {
     method: "POST",

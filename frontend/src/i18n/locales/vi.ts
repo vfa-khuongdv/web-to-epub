@@ -184,6 +184,7 @@ export const vi: Record<string, string> = {
   "Export audio + music (.mp3)": "Xuất audio + nhạc nền (.mp3)",
   "Exported the whole story as one file, with the background music “{name}”.": "Đã xuất cả truyện thành một file, có nhạc nền “{name}”.",
   "Exported the whole story as one file. Background music is off in the player, so it has none.": "Đã xuất cả truyện thành một file. Nhạc nền đang tắt ở trình phát nên file không có nhạc nền.",
+  "Mixing audio… {done}/{total}": "Đang trộn nhạc… {done}/{total}",
   "Re-crawl": "Crawl lại",
   "Re-crawling will overwrite this chapter's saved content. Continue?":
     "Crawl lại sẽ ghi đè nội dung đã lưu của chương này. Tiếp tục?",

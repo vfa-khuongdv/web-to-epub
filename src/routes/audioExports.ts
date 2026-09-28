@@ -34,7 +34,7 @@ function holdExport(filePath: string, fileName: string, contentType: string): st
 
 const MAX_MUSIC_GAIN = 4;
 
-// "Export audio (1 file)" runs for minutes on a long story — longer than an HTTP request
+// Exports with background music run for minutes on a long story — longer than an HTTP request
 // may stay open — so it is a job the page polls. Kept in memory: single process only.
 interface MixJob {
   storyId: string;
@@ -46,6 +46,9 @@ interface MixJob {
   message?: string;
   // The track mixed in, so the page can say which one.
   musicName?: string;
+  // Zip format: chapters in the zip, and those left out for having no audio.
+  count?: number;
+  missing?: number[];
 }
 const mixJobs = new Map<string, MixJob>();
 
@@ -72,8 +75,38 @@ audioExportsRouter.get("/stories/:id/chapters/:order/audio", async (req, res) =>
     return;
   }
   const headers: Record<string, string> = { "Content-Type": "audio/mpeg", "Cache-Control": "no-cache" };
-  if (req.query.download === "1") headers["Content-Disposition"] = contentDisposition(chapterAudioFileName(order, audio.title, 3));
-  res.sendFile(audio.filePath, { headers });
+  if (req.query.download !== "1") {
+    res.sendFile(audio.filePath, { headers });
+    return;
+  }
+  const story = await library.stories.getOutline(req.params.id);
+  headers["Content-Disposition"] = contentDisposition(chapterAudioFileName(story?.title ?? "", order, audio.title, 3));
+  // The download link carries the player's music (`?music=<id>&musicVolume=`): one chapter
+  // mixes in seconds, so it is done right here. The player itself plays the plain file and
+  // its music on its own.
+  const choice = await musicChoice(req.query.music, req.query.musicVolume);
+  if (!choice) {
+    res.status(400).json({ message: t("Background music track not found") });
+    return;
+  }
+  const python = choice.music ? await mixerPython() : undefined;
+  if (!choice.music || !python) {
+    res.sendFile(audio.filePath, { headers });
+    return;
+  }
+  const mixed = path.join(os.tmpdir(), `chapter-audio-${randomUUID()}.mp3`);
+  try {
+    await mixStoryAudio(
+      { command: python.command, args: [MIX_SCRIPT], env: python.env },
+      { chapters: [audio.filePath], music: choice.music, musicVolume: choice.musicVolume, outs: [mixed] },
+      () => {}
+    );
+  } catch (err) {
+    await fs.rm(mixed, { force: true });
+    res.status(500).json({ message: err instanceof Error ? err.message : String(err) });
+    return;
+  }
+  res.sendFile(mixed, { headers }, () => void fs.rm(mixed, { force: true }));
 });
 
 // Zip every narrated chapter (or the requested ones) whose audio is current. Chapters
@@ -95,7 +128,7 @@ audioExportsRouter.post("/stories/:id/export-audio", async (req, res) => {
   const missing: number[] = [];
   for (const order of plan) {
     const audio = await freshChapterAudio(library.stories, library.dataDir, story.id, order);
-    if (audio) entries.push({ name: chapterAudioFileName(order, audio.title, width), filePath: audio.filePath });
+    if (audio) entries.push({ name: chapterAudioFileName(story.title, order, audio.title, width), filePath: audio.filePath });
     else missing.push(order);
   }
   if (entries.length === 0) {
@@ -127,9 +160,30 @@ async function mixerPython(): Promise<{ command: string; env: NodeJS.ProcessEnv 
   return undefined;
 }
 
-// One MP3 of the whole story with the player's background music under it. Only once
-// every chapter has audio: a book-length file with holes in it is not worth hours of
-// listening. Answers 202 with a job id; GET /exports/audio-mix/:jobId reports progress.
+interface MusicChoice {
+  music?: string;
+  musicName?: string;
+  musicVolume: number;
+}
+
+// The background music a request asks for: a track id and its gain against the voice at
+// full volume. The page sends the player's music volume over its voice volume, so a file
+// keeps the balance heard in the app — above 1 when the voice is turned down, capped so
+// music cannot bury the narration. Undefined for an unknown track.
+async function musicChoice(musicId: unknown, volume: unknown): Promise<MusicChoice | undefined> {
+  const gain = Number(volume);
+  const musicVolume = volume !== undefined && Number.isFinite(gain) && gain >= 0 ? Math.min(gain, MAX_MUSIC_GAIN) : 0.3;
+  if (typeof musicId !== "string" || !musicId) return { musicVolume };
+  const track = await backgroundMusic.get(musicId);
+  if (!track) return undefined;
+  return { music: backgroundMusic.filePath(track), musicName: track.name, musicVolume };
+}
+
+// The narration with the player's background music under it, as a job the page polls
+// (GET /exports/audio-mix/:jobId) — it takes minutes on a long story. `format: "mp3"`
+// (the default) joins the story into one file, only once every chapter has audio: a
+// book-length file with holes in it is not worth hours of listening. `format: "zip"` is
+// the zip export with music: one file per narrated chapter, the missing ones listed.
 audioExportsRouter.post("/stories/:id/export-audio-mix", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) return;
@@ -144,19 +198,22 @@ audioExportsRouter.post("/stories/:id/export-audio-mix", async (req, res) => {
     return;
   }
 
+  const body = (req.body ?? {}) as { musicId?: unknown; musicVolume?: unknown; format?: unknown };
+  const zip = body.format === "zip";
   const plan = await chaptersToNarrate(library.stories, story.id);
-  const chapters: string[] = [];
+  const width = String(Math.max(0, ...plan)).length;
+  const chapters: { filePath: string; name: string }[] = [];
   const missing: number[] = [];
   for (const order of plan) {
     const audio = await freshChapterAudio(library.stories, library.dataDir, story.id, order);
-    if (audio) chapters.push(audio.filePath);
+    if (audio) chapters.push({ filePath: audio.filePath, name: chapterAudioFileName(story.title, order, audio.title, width) });
     else missing.push(order);
   }
   if (chapters.length === 0) {
     res.status(400).json({ message: t("No narrated chapters to export") });
     return;
   }
-  if (missing.length > 0) {
+  if (!zip && missing.length > 0) {
     res.status(400).json({
       message: t("Every chapter needs audio before the story can be joined into one file — {count} chapters have none yet", {
         count: missing.length,
@@ -166,24 +223,11 @@ audioExportsRouter.post("/stories/:id/export-audio-mix", async (req, res) => {
     return;
   }
 
-  const body = (req.body ?? {}) as { musicId?: unknown; musicVolume?: unknown };
-  let music: string | undefined;
-  let musicName: string | undefined;
-  if (typeof body.musicId === "string") {
-    const track = await backgroundMusic.get(body.musicId);
-    if (!track) {
-      res.status(400).json({ message: t("Background music track not found") });
-      return;
-    }
-    music = backgroundMusic.filePath(track);
-    musicName = track.name;
+  const choice = await musicChoice(body.musicId, body.musicVolume);
+  if (!choice) {
+    res.status(400).json({ message: t("Background music track not found") });
+    return;
   }
-  // The music's gain against the voice at full volume. The page sends the player's music
-  // volume over its voice volume, so the file keeps the balance heard in the app — above
-  // 1 when the voice is turned down, capped so music cannot bury the narration.
-  const musicVolume =
-    typeof body.musicVolume === "number" && body.musicVolume >= 0 ? Math.min(body.musicVolume, MAX_MUSIC_GAIN) : 0.3;
-
   const python = await mixerPython();
   if (!python) {
     res.status(409).json({ message: t("Narration is not installed — install it in Settings → Narration") });
@@ -191,27 +235,46 @@ audioExportsRouter.post("/stories/:id/export-audio-mix", async (req, res) => {
   }
 
   const jobId = randomUUID();
-  const job: MixJob = { storyId: story.id, state: "running", done: 0, total: chapters.length, musicName };
+  const job: MixJob = {
+    storyId: story.id,
+    state: "running",
+    done: 0,
+    total: chapters.length,
+    musicName: choice.musicName,
+    ...(zip ? { count: chapters.length, missing } : {}),
+  };
   mixJobs.set(jobId, job);
   setTimeout(() => mixJobs.delete(jobId), AUDIO_EXPORT_TTL_MS * 4).unref();
   res.status(202).json({ jobId, total: chapters.length });
 
-  const filePath = path.join(os.tmpdir(), `audio-export-${randomUUID()}.mp3`);
+  const cmd = { command: python.command, args: [MIX_SCRIPT], env: python.env };
+  const onProgress = (done: number) => {
+    job.done = done;
+  };
+  const stem = fileStem(story.title, "book");
+  const filePath = path.join(os.tmpdir(), `audio-export-${randomUUID()}.${zip ? "zip" : "mp3"}`);
+  // The zip's chapters are mixed into a folder of their own first, then zipped.
+  const mixedDir = zip ? await fs.mkdtemp(path.join(os.tmpdir(), "audio-mix-")) : undefined;
   try {
-    await mixStoryAudio(
-      { command: python.command, args: [MIX_SCRIPT], env: python.env },
-      { chapters, music, musicVolume, out: filePath },
-      (done) => {
-        job.done = done;
-      }
-    );
-    job.fileName = `${fileStem(story.title, "book")} (audio).mp3`;
-    job.exportId = holdExport(filePath, job.fileName, "audio/mpeg");
+    const input = { chapters: chapters.map((chapter) => chapter.filePath), music: choice.music, musicVolume: choice.musicVolume };
+    if (mixedDir) {
+      const outs = chapters.map((_, i) => path.join(mixedDir, `${i}.mp3`));
+      await mixStoryAudio(cmd, { ...input, outs }, onProgress);
+      await writeAudioZip(chapters.map((chapter, i) => ({ name: chapter.name, filePath: outs[i] })), filePath);
+      job.fileName = `${stem} (audio).zip`;
+      job.exportId = holdExport(filePath, job.fileName, "application/zip");
+    } else {
+      await mixStoryAudio(cmd, { ...input, out: filePath }, onProgress);
+      job.fileName = `${stem} (audio).mp3`;
+      job.exportId = holdExport(filePath, job.fileName, "audio/mpeg");
+    }
     job.state = "done";
   } catch (err) {
     await fs.rm(filePath, { force: true });
     job.state = "error";
     job.message = err instanceof Error ? err.message : String(err);
+  } finally {
+    if (mixedDir) await fs.rm(mixedDir, { recursive: true, force: true });
   }
 });
 
