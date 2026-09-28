@@ -23,7 +23,7 @@ vi.mock("unpdf", async (importOriginal) => {
 
 // The fixtures are small PDFs printed by Chromium (Vietnamese text, real text layer):
 // pdf-outline.pdf has bookmarks, pdf-headings.pdf only "Chương N" headings, pdf-scan.pdf
-// one page holding nothing but an image.
+// one page holding nothing but an image, pdf-typeset.pdf a faux-bold title and a drop cap.
 const fixture = (name: string) => readFileSync(path.join(__dirname, "__fixtures__", name));
 
 function imageSink() {
@@ -97,6 +97,20 @@ describe("parsePdf", () => {
     expect(sink.stored).toHaveLength(1);
     expect(sink.stored[0].extension).toBe("jpg");
     expect(sink.stored[0].bytes.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
+  });
+
+  it("reads a title drawn three times at one spot once, and joins a drop cap to its word", async () => {
+    const book = await parsePdf(fixture("pdf-typeset.pdf"), { fallbackTitle: "Sách" });
+
+    expect(book.chapters).toEqual([
+      {
+        title: "Sách",
+        blocks: [
+          { type: "heading", level: 2, text: "CHƯƠNG MỘT" },
+          { type: "paragraph", text: "Người thứ nhất bước vào." },
+        ],
+      },
+    ]);
   });
 
   it("rejects a file that is not a PDF", async () => {

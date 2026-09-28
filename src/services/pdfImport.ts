@@ -82,31 +82,50 @@ async function readLines(pdf: PdfDocument, pageNumber: number): Promise<{ width:
   const [left, , right] = page.view;
   const content = await page.getTextContent();
   const lines: Line[] = [];
+  // Characters per font size on each line: the line's size is its text's, not that of a
+  // drop cap opening it.
+  const sizes = new Map<Line, Map<number, number>>();
+  // Text drawn more than once at the same spot (a faux-bold or shadowed title) is read once.
+  const drawn = new Set<string>();
   let current: Line | undefined;
   let currentEnd = 0;
+  let currentSize = 0;
   let ended = false;
   for (const raw of content.items) {
     if (!("str" in raw)) continue;
     const item = raw as TextItem;
     const [, , c, d, x, y] = item.transform;
     const size = Math.hypot(c, d) || 1;
-    if (item.str) {
-      const sameLine = current && !ended && Math.abs(current.y - y) < size * 0.5;
+    const spot = `${Math.round(x)},${Math.round(y)},${item.str}`;
+    if (item.str && !drawn.has(spot)) {
+      drawn.add(spot);
+      const sameLine = current && !ended && Math.abs(current.y - y) < Math.max(size, currentSize) * 0.5;
       if (current && sameLine) {
+        // A drop cap is one large letter; the rest of its word follows in the body size.
+        // (`current.size` is still the first item's here.)
+        const dropCap = current.text.trim().length === 1 && current.size > size * 2 && !!item.str.trim();
+        if (dropCap) current.text = current.text.trim();
         const gap = x - currentEnd;
-        const needsSpace = gap > size * 0.15 && !/\s$/.test(current.text) && !/^\s/.test(item.str);
+        const needsSpace = !dropCap && gap > size * 0.15 && !/\s$/.test(current.text) && !/^\s/.test(item.str);
         current.text += (needsSpace ? " " : "") + item.str;
       } else {
         current = { page: pageNumber, x, y, size, right: x, text: item.str };
         lines.push(current);
+        sizes.set(current, new Map());
       }
+      const weights = sizes.get(current)!;
+      weights.set(size, (weights.get(size) ?? 0) + item.str.trim().length);
       currentEnd = x + item.width;
+      currentSize = size;
       current.right = currentEnd;
       ended = false;
     }
     if (item.hasEOL) ended = true;
   }
   page.cleanup();
+  for (const [line, weights] of sizes) {
+    line.size = [...weights].reduce((best, entry) => (entry[1] > best[1] ? entry : best), [line.size, -1])[0];
+  }
   const kept = lines
     .map((line) => ({ ...line, text: clean(line.text) }))
     .filter((line, index, all) => {
@@ -214,7 +233,7 @@ function linesToBlocks(lines: Line[], bodySize: number, lineGap: number, margins
       const shortLine = previous.right < (margins.get(previous.page)?.right ?? previous.right) - previous.size * 3;
       breaks =
         previous.page === line.page
-          ? previous.y - line.y > lineGap * 1.4 || (sentenceEnd && shortLine)
+          ? previous.y - line.y > lineGap * 1.25 || (sentenceEnd && shortLine)
           : sentenceEnd;
     }
     if (breaks) {
