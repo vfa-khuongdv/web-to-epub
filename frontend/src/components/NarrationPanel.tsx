@@ -4,6 +4,7 @@ import { formatBytes } from "../lib/formatBytes";
 import { formatEta } from "../lib/formatEta";
 import { useLang } from "../i18n";
 import { NarrationOutcome } from "../hooks/useNarration";
+import { exportMusic, useNarrationPlayer } from "../hooks/narrationPlayer";
 import { NarrationState } from "../types";
 import { Icon } from "./Icon";
 import { ProgressBar } from "./ProgressBar";
@@ -215,6 +216,7 @@ export default function NarrationPanel({
  */
 function useAudioExport(storyId: string) {
   const { t } = useLang();
+  const player = useNarrationPlayer();
   const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -228,7 +230,7 @@ function useAudioExport(storyId: string) {
       const bridge = window.electronExport;
       const folder = bridge ? await bridge.pickFolder() : null;
       if (bridge && folder === null) return;
-      const created = await exportStoryAudio(storyId);
+      const created = await exportStoryAudio(storyId, exportMusic(player));
       if (bridge && folder !== null) {
         await bridge.saveUrl(folder, created.fileName, `${window.location.origin}${created.url}`);
       } else {

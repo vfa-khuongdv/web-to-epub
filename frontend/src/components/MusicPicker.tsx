@@ -171,7 +171,30 @@ export default function MusicPicker({ player }: { player: NarrationPlayer }) {
   );
 }
 
-/** Settings → Background music: the same picker, reading the app-wide player. */
+/**
+ * Settings → Background music: the same picker, reading the app-wide player, plus the
+ * switch that mixes the picked track into downloaded audio.
+ */
 export function MusicSettings() {
-  return <MusicPicker player={useNarrationPlayer()} />;
+  const { t } = useLang();
+  const player = useNarrationPlayer();
+  return (
+    <>
+      <MusicPicker player={player} />
+      <label className="mt-2 flex items-center gap-2 text-[13px]">
+        <input
+          type="checkbox"
+          className="size-4 accent-select"
+          checked={player.musicInExport}
+          onChange={(event) => player.setMusicInExport(event.target.checked)}
+        />
+        <span>{t("Mix background music into downloaded audio")}</span>
+      </label>
+      <p className="text-[11px] leading-snug text-ink-3">
+        {t(
+          "Downloading a chapter's audio or exporting a story's audio then gives one file with the picked track under the voice, at the music volume above."
+        )}
+      </p>
+    </>
+  );
 }

@@ -1,5 +1,5 @@
 import { ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
-import { chapterAudioUrl, fetchMusicTracks, musicAudioUrl } from "../lib/api";
+import { ExportMusic, chapterAudioUrl, fetchMusicTracks, musicAudioUrl } from "../lib/api";
 import { useVault } from "../vault";
 
 export const PLAYBACK_RATES = [0.8, 1, 1.25, 1.5, 1.75, 2] as const;
@@ -13,6 +13,9 @@ const MUSIC_VOLUME_KEY = "narration-music-volume";
 // list does not mean music under every chapter. Kept here, beside the track and its volume,
 // because all three are one preference in this browser.
 const MUSIC_ENABLED_KEY = "narration-music-enabled";
+// Whether downloaded audio (a chapter, the story's zip) gets the picked track mixed in.
+// Off unless the user turns it on: an export is narration only by default.
+const MUSIC_IN_EXPORT_KEY = "narration-music-export";
 // Background music starts well under the voice.
 const DEFAULT_MUSIC_VOLUME = 0.3;
 // Position is saved this often while playing, and on every pause.
@@ -141,6 +144,20 @@ export function readMusicEnabled(): boolean {
   }
 }
 
+export function readMusicInExport(): boolean {
+  try {
+    return localStorage.getItem(MUSIC_IN_EXPORT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+// The music an export should carry: the picked track at its volume, when the user asked
+// for music in exports. Independent of whether music plays while listening.
+export function exportMusic(player: Pick<NarrationPlayer, "musicInExport" | "musicTrack" | "musicVolume">): ExportMusic | undefined {
+  return player.musicInExport && player.musicTrack ? { id: player.musicTrack, volume: player.musicVolume } : undefined;
+}
+
 function remember(key: string, value: string | null): void {
   try {
     if (value === null) localStorage.removeItem(key);
@@ -202,6 +219,8 @@ export interface NarrationPlayer {
   setMusicEnabled: (enabled: boolean) => void;
   setMusicTrack: (id: string | null) => void;
   setMusicVolume: (volume: number) => void;
+  musicInExport: boolean;
+  setMusicInExport: (enabled: boolean) => void;
   close: () => void;
   // "Show me what is playing": the library opens that story and its reader at the chapter.
   openRequest: { storyId: string; order: number } | null;
@@ -243,6 +262,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
   const [musicTrack, setMusicTrackState] = useState(readMusicTrack);
   const [musicEnabled, setMusicEnabledState] = useState(readMusicEnabled);
   const [musicVolume, setMusicVolumeState] = useState(readMusicVolume);
+  const [musicInExport, setMusicInExportState] = useState(readMusicInExport);
   const [error, setError] = useState<string | null>(null);
   const [openRequest, setOpenRequest] = useState<{ storyId: string; order: number } | null>(null);
   const requestOpen = useCallback((storyId: string, o: number) => setOpenRequest({ storyId, order: o }), []);
@@ -538,6 +558,11 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     [music]
   );
 
+  const setMusicInExport = useCallback((enabled: boolean) => {
+    setMusicInExportState(enabled);
+    remember(MUSIC_IN_EXPORT_KEY, enabled ? "1" : null);
+  }, []);
+
   // A chapter of the loaded queue, from its top (the queue popover).
   const jumpTo = useCallback(
     (next: number) => {
@@ -643,6 +668,8 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
       setMusicEnabled,
       setMusicTrack,
       setMusicVolume,
+      musicInExport,
+      setMusicInExport,
       close,
       openRequest,
       requestOpen,
@@ -669,6 +696,8 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     setMusicEnabled,
     setMusicTrack,
     setMusicVolume,
+    musicInExport,
+    setMusicInExport,
     close,
     audio,
     load,

@@ -5,8 +5,9 @@ import { BUNDLED_MUSIC_DIR, DATA_DIR } from "../config/paths";
 import { t } from "./lang";
 
 /**
- * Music the user uploads to play quietly under the narration. Only the in-app player
- * uses it; exports stay narration only. Shared by both libraries, like custom voices:
+ * Music the user uploads to play quietly under the narration: in the in-app player, and
+ * mixed into audio exports when the user asks for it (tts/musicMix.ts). Shared by both
+ * libraries, like custom voices:
  *
  *   <dir>/<id>.<ext>    the file as uploaded
  *   <dir>/<id>.json     { id, name, file, createdAt }

@@ -90,6 +90,8 @@ export interface TtsRuntime {
   // preview at a time, so a model switch never lands in the middle of someone's chapter.
   withModel<T>(variant: TtsVariant, fn: (worker: TtsWorker, model: LoadedModel) => Promise<T>): Promise<T>;
   diskBytes(): Promise<number>;
+  // The venv's interpreter; only usable once status() says "installed".
+  python: string;
   shutdown(): void;
   // Close the worker now unless something is using it (frees its model's memory).
   release(): void;
@@ -220,6 +222,8 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
   }
 
   const runtime: TtsRuntime = {
+    python,
+
     async status() {
       const installed = await isInstalled();
       const state: TtsStatus["state"] = installing

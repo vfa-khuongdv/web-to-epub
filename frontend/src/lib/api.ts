@@ -598,14 +598,29 @@ export async function deleteStoryAudio(storyId: string): Promise<void> {
 }
 
 // Opened by <a href> / <audio src>, which send no headers: the private-mode token rides
-// in the query. `download` asks for the attachment file name (the player does not want it).
-export function chapterAudioUrl(storyId: string, order: number, options: { download?: boolean } = {}): string {
+// in the query. `download` asks for the attachment file name (the player does not want it),
+// `music` a background track mixed under the voice of that download.
+export function chapterAudioUrl(
+  storyId: string,
+  order: number,
+  options: { download?: boolean; music?: ExportMusic } = {}
+): string {
   const token = currentVaultToken();
   const params = new URLSearchParams();
   if (token) params.set("vault", token);
   if (options.download) params.set("download", "1");
+  if (options.download && options.music) {
+    params.set("music", options.music.id);
+    params.set("musicVolume", String(options.music.volume));
+  }
   const query = params.toString();
   return `/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/audio${query ? `?${query}` : ""}`;
+}
+
+// A background track to mix into exported audio, at the player's music volume (0–1).
+export interface ExportMusic {
+  id: string;
+  volume: number;
 }
 
 export interface AudioExport {
@@ -616,11 +631,11 @@ export interface AudioExport {
   missing: number[];
 }
 
-export async function exportStoryAudio(storyId: string): Promise<AudioExport & { url: string }> {
+export async function exportStoryAudio(storyId: string, music?: ExportMusic): Promise<AudioExport & { url: string }> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/export-audio`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: "{}",
+    body: JSON.stringify(music ? { music } : {}),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not export audio")));
   const created = (await res.json()) as AudioExport;
