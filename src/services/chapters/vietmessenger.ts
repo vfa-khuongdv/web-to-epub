@@ -20,9 +20,10 @@ const REQUEST_TIMEOUT_MS = 60_000;
 const AES_PASSPHRASE = "VXJ6dj^@L";
 const GETHTML_URL = "https://vietmessenger.com/books/gethtml.php";
 
-// gethtml.php needs the book's category (the `cat` attribute of #book-page); chapter URLs
-// do not carry it, so the story page is loaded once per story per process to learn it.
-const catByTitle = new Map<string, string>();
+// gethtml.php needs the book's category (`cat` on #book-page) and its internal name
+// (`source`, e.g. "batuocmontecristo" for the URL title "ba tuoc monte cristo"); chapter
+// URLs carry neither, so the story page is loaded once per story per process.
+const bookRefByTitle = new Map<string, { cat: string; source: string }>();
 
 // The response is HTML-entity-encoded because the site's script puts it through the DOM
 // before decrypting. Only these entities appear in a payload of base64/hex strings.
@@ -98,15 +99,16 @@ export function parseChapterHtml(html: string, url: string): ExtractedChapter {
   return { sourceUrl: url, title, blocks };
 }
 
-async function loadCat(title: string, url: string): Promise<string> {
-  const cached = catByTitle.get(title);
+async function loadBookRef(title: string, url: string): Promise<{ cat: string; source: string }> {
+  const cached = bookRefByTitle.get(title);
   if (cached) return cached;
 
   const storyUrl = `https://vietmessenger.com/books/?${new URLSearchParams({ title })}`;
   const doc = new JSDOM(
     await fetchText(storyUrl, { headers: { "User-Agent": USER_AGENT } }, { timeoutMs: REQUEST_TIMEOUT_MS })
   ).window.document;
-  const cat = doc.querySelector<HTMLElement>("#book-page")?.getAttribute("cat")?.trim();
+  const bookPage = doc.querySelector<HTMLElement>("#book-page");
+  const cat = bookPage?.getAttribute("cat")?.trim();
   if (!cat) {
     if (doc.querySelector("#member-login")) {
       throw new Error(
@@ -117,8 +119,9 @@ async function loadCat(title: string, url: string): Promise<string> {
     }
     throw new Error(t("Could not find the book's category on the Viet Messenger page ({url})", { url: storyUrl }));
   }
-  catByTitle.set(title, cat);
-  return cat;
+  const ref = { cat, source: bookPage?.getAttribute("source")?.trim() || title };
+  bookRefByTitle.set(title, ref);
+  return ref;
 }
 
 // The site's other sections (comics) use the same ?title=&page= query shape, so only
@@ -143,7 +146,7 @@ export async function fetchVietmessengerChapter(url: string): Promise<ExtractedC
   }
   const { title, page } = chapterUrl;
 
-  const cat = await loadCat(title, url);
+  const bookRef = await loadBookRef(title, url);
   const raw = await fetchText(
     GETHTML_URL,
     {
@@ -154,7 +157,7 @@ export async function fetchVietmessengerChapter(url: string): Promise<ExtractedC
         "X-Requested-With": "XMLHttpRequest",
         Referer: url,
       },
-      body: new URLSearchParams({ c: cat, t: title, p: String(page) }).toString(),
+      body: new URLSearchParams({ c: bookRef.cat, t: bookRef.source, p: String(page) }).toString(),
     },
     { timeoutMs: REQUEST_TIMEOUT_MS }
   );

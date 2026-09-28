@@ -15,11 +15,11 @@ const readFixture = (name: string) =>
 // HTML-entity-encoded the way the site's jQuery puts it into the DOM before decrypting.
 const PAYLOAD = readFixture("vietmessenger-gethtml-page2.json");
 
-const storyPage = (cat: string | null, slug: string) => `<!doctype html><html><body>
+const storyPage = (cat: string | null, source: string | null) => `<!doctype html><html><body>
   <div class="book-title"><b><a class="title" href="/books/?author=a">Tác Giả</a> » Truyện</b></div>
   <h1 class="t3">Truyện Thử</h1>
   <div id="ml"><ul><li><b>Chương 1</b></li></ul></div>
-  <div id="book-content"><div id="book-page"${cat ? ` cat="${cat}"` : ""} source="${slug}" page="1"></div></div>
+  <div id="book-content"><div id="book-page"${cat ? ` cat="${cat}"` : ""}${source ? ` source="${source}"` : ""} page="1"></div></div>
 </body></html>`;
 
 const MEMBERS_ONLY = `<html><body><div id="main"><div id="member-login">SIGN IN</div></div></body></html>`;
@@ -110,6 +110,40 @@ describe("fetchVietmessengerChapter", () => {
         },
         body: "c=truyendai&t=cache-a&p=2",
       },
+      { timeoutMs: 60_000 }
+    );
+  });
+
+  it("gửi tham số t là source của trang truyện, không phải title trong URL", async () => {
+    // Real case: "Bá Tước Monte Cristo" has title "ba tuoc monte cristo" in the URL but
+    // source "batuocmontecristo" (spaces stripped); gethtml.php only answers the source.
+    const url = chapterUrl("ba-tuoc-monte-cristo", 2);
+    mockedFetchText.mockImplementation(async (input, init) =>
+      init?.method === "POST" ? PAYLOAD : storyPage("truyendich", "batuocmontecristo")
+    );
+
+    await fetchVietmessengerChapter(url);
+
+    expect(mockedFetchText).toHaveBeenNthCalledWith(
+      2,
+      "https://vietmessenger.com/books/gethtml.php",
+      expect.objectContaining({ body: "c=truyendich&t=batuocmontecristo&p=2" }),
+      { timeoutMs: 60_000 }
+    );
+  });
+
+  it("trang truyện thiếu source → dùng title trong URL làm tham số t", async () => {
+    const url = chapterUrl("no-source-a", 2);
+    mockedFetchText.mockImplementation(async (input, init) =>
+      init?.method === "POST" ? PAYLOAD : storyPage("truyendai", null)
+    );
+
+    await fetchVietmessengerChapter(url);
+
+    expect(mockedFetchText).toHaveBeenNthCalledWith(
+      2,
+      "https://vietmessenger.com/books/gethtml.php",
+      expect.objectContaining({ body: "c=truyendai&t=no-source-a&p=2" }),
       { timeoutMs: 60_000 }
     );
   });

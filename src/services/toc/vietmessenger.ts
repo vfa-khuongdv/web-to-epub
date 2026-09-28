@@ -81,7 +81,13 @@ export function parseStoryPage(html: string, pageUrl: string): TocResult {
     chapters.push({ url, title: text || url });
   });
 
-  if (chapters.length === 0) {
+  // A part heading ("II. NƯỚC Ý") is another <li> that links to the same page as the
+  // chapter opening that part; the page's own content already carries the part name
+  // (as an <h2>), so keep only the chapter entry — otherwise that page would be
+  // fetched twice and both chapters would hold the same text.
+  const deduped = chapters.filter((chapter, i) => i === chapters.length - 1 || chapter.url !== chapters[i + 1].url);
+
+  if (deduped.length === 0) {
     // Members-only books replace the whole book page with a sign-in form. The app never
     // signs in, so say that plainly instead of "no chapter list" (which reads like a bad URL).
     if (doc.querySelector("#member-login")) {
@@ -94,7 +100,7 @@ export function parseStoryPage(html: string, pageUrl: string): TocResult {
     throw new Error(t("No chapter list found at {url} — check the story URL again", { url: pageUrl }));
   }
 
-  return { title, author, coverUrl, chapters };
+  return { title, author, coverUrl, chapters: deduped };
 }
 
 // The site's other sections (comics) use the same ?title=&page= query shape, so only
