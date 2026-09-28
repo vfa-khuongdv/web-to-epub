@@ -44,6 +44,7 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
           (notice.fileCount > 1
             ? t("Exported {count} EPUB files", { count: notice.fileCount })
             : t("Exported EPUB"))}
+        {notice.kind === "epub-imported" && t("Imported {title}", { title: notice.title })}
         {failed && <span className="font-semibold text-error"> · {t("{count} errors", { count: notice.errors })}</span>}
       </p>
       <button

@@ -522,4 +522,15 @@ export const en: Record<string, string> = {
   "Ch. {order}": "Ch. {order}",
   "Delete audio": "Delete audio",
   "Delete this story's narration? Chapters can be narrated again afterwards.": "Delete this story's narration? Chapters can be narrated again afterwards.",
+
+  // EPUB import
+  "Import EPUB": "Import EPUB",
+  "Importing…": "Importing…",
+  "Please choose an .epub file.": "Please choose an .epub file.",
+  "This book is already in the library. Overwrite it with “{name}”?": "This book is already in the library. Overwrite it with “{name}”?",
+  "Overwrite": "Overwrite",
+  "Or drop an .epub file here to import it.": "Or drop an .epub file here to import it.",
+  "Imported {title}": "Imported {title}",
+  "EPUB file": "EPUB file",
+  "Could not import the EPUB file": "Could not import the EPUB file",
 };

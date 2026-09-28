@@ -175,6 +175,8 @@ interface ChapterCardProps {
   onRetry: () => void;
   retrying: boolean;
   retriedOnce: boolean;
+  // Imported books have no source page to open, retry or re-crawl.
+  imported?: boolean;
   onBodyChange: (html: string) => void;
   // Chapter content no longer pairs with chapter list: open a chapter, load it.
   loadBody?: () => Promise<string>;
@@ -223,6 +225,7 @@ export default function ChapterCard({
   onRetry,
   retrying,
   retriedOnce,
+  imported,
   onBodyChange,
   loadBody,
   onSave,
@@ -491,13 +494,13 @@ export default function ChapterCard({
                   <Icon name="narration" size={13} />
                 </a>
               )}
-              {failed && (
+              {failed && !imported && (
                 <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
                   <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
                   {retrying ? t("Retrying…") : t("Retry")}
                 </button>
               )}
-              {chip === "done" && (
+              {chip === "done" && !imported && (
                 <button
                   type="button"
                   className="btn btn-quiet btn-tiny"
@@ -529,50 +532,51 @@ export default function ChapterCard({
       {open && (
         <tr className="chapter-open" id={panelId}>
           <td colSpan={4}>
-            {urlEditing ? (
-              <form
-                className="flex flex-wrap items-center gap-1.5"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  void handleSaveUrl();
-                }}
-              >
-                <label className="visually-hidden" htmlFor={`chapter-url-${order}`}>
-                  {t("Source URL for chapter {order}", { order })}
-                </label>
-                <input
-                  id={`chapter-url-${order}`}
-                  type="text"
-                  className="input min-w-[16rem] flex-1 text-xs"
-                  value={urlDraft}
-                  onChange={(e) => setUrlDraft(e.target.value)}
-                  disabled={urlSaving}
-                  autoFocus
-                />
-                <button type="submit" className="btn btn-tiny" disabled={urlSaving || !urlDraft.trim()}>
-                  <Icon name="check" size={13} />
-                  {urlSaving ? t("Saving…") : t("Save URL")}
-                </button>
-                <button type="button" className="btn btn-quiet btn-tiny" disabled={urlSaving} onClick={cancelEditUrl}>
-                  {t("Cancel")}
-                </button>
-              </form>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
-                <span className="break-all">
-                  {t("Source:")}{" "}
-                  <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
-                    {chapter.sourceUrl}
-                  </a>
-                </span>
-                {onSaveUrl && (
-                  <button type="button" className="btn btn-quiet btn-tiny" onClick={startEditUrl}>
-                    <Icon name="edit" size={12} />
-                    {t("Edit URL")}
+            {!imported &&
+              (urlEditing ? (
+                <form
+                  className="flex flex-wrap items-center gap-1.5"
+                  onSubmit={(e) => {
+                    e.preventDefault();
+                    void handleSaveUrl();
+                  }}
+                >
+                  <label className="visually-hidden" htmlFor={`chapter-url-${order}`}>
+                    {t("Source URL for chapter {order}", { order })}
+                  </label>
+                  <input
+                    id={`chapter-url-${order}`}
+                    type="text"
+                    className="input min-w-[16rem] flex-1 text-xs"
+                    value={urlDraft}
+                    onChange={(e) => setUrlDraft(e.target.value)}
+                    disabled={urlSaving}
+                    autoFocus
+                  />
+                  <button type="submit" className="btn btn-tiny" disabled={urlSaving || !urlDraft.trim()}>
+                    <Icon name="check" size={13} />
+                    {urlSaving ? t("Saving…") : t("Save URL")}
                   </button>
-                )}
-              </div>
-            )}
+                  <button type="button" className="btn btn-quiet btn-tiny" disabled={urlSaving} onClick={cancelEditUrl}>
+                    {t("Cancel")}
+                  </button>
+                </form>
+              ) : (
+                <div className="flex flex-wrap items-center gap-2 text-xs text-ink-2">
+                  <span className="break-all">
+                    {t("Source:")}{" "}
+                    <a href={chapter.sourceUrl} target="_blank" rel="noreferrer">
+                      {chapter.sourceUrl}
+                    </a>
+                  </span>
+                  {onSaveUrl && (
+                    <button type="button" className="btn btn-quiet btn-tiny" onClick={startEditUrl}>
+                      <Icon name="edit" size={12} />
+                      {t("Edit URL")}
+                    </button>
+                  )}
+                </div>
+              ))}
             {urlError && (
               <div className="banner mt-2">
                 <Icon name="alert" size={14} />

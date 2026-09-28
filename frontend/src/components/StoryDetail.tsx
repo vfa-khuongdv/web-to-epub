@@ -135,6 +135,9 @@ export default function StoryDetail({
   );
   const { updateQueue } = player;
   const narrationLoaded = narration.state !== null;
+  // A book imported from a file has no TOC to crawl, check or watch; those controls
+  // and the source link would all point at an epub: URL that no site can answer.
+  const imported = story.site === "epub";
   useEffect(() => {
     // Not before this page knows which chapters have audio: an empty list would read as
     // "the chapter playing lost its audio" and stop the player on the way back to its story.
@@ -431,11 +434,15 @@ export default function StoryDetail({
           <div>
             <h3 className="story-title">{story.title}</h3>
           <div className="story-src mt-1">
-            <span>{story.site}</span>
-            <span aria-hidden="true">·</span>
-            <a href={story.storyUrl} target="_blank" rel="noreferrer" className="break-all">
-              {story.storyUrl}
-            </a>
+            <span>{imported ? t("EPUB file") : story.site}</span>
+            {!imported && (
+              <>
+                <span aria-hidden="true">·</span>
+                <a href={story.storyUrl} target="_blank" rel="noreferrer" className="break-all">
+                  {story.storyUrl}
+                </a>
+              </>
+            )}
           </div>
           </div>
 
@@ -481,15 +488,17 @@ export default function StoryDetail({
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={job.running || remaining === 0}
-              onClick={() => handleCrawl()}
-            >
-              <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
-              {job.running ? t("Crawling…") : t("Continue crawl ({count} chapters)", { count: remaining })}
-            </button>
+            {!imported && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={job.running || remaining === 0}
+                onClick={() => handleCrawl()}
+              >
+                <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
+                {job.running ? t("Crawling…") : t("Continue crawl ({count} chapters)", { count: remaining })}
+              </button>
+            )}
             {job.running && (
               <button type="button" className="btn" disabled={stopping} onClick={handleStop}>
                 <Icon name="x" size={13} />
@@ -530,16 +539,18 @@ export default function StoryDetail({
                 {progress ? exportProgressLabel(progress, t) : t("Preparing…")}
               </span>
             )}
-            <button
-              type="button"
-              className={`btn${story.watching ? " text-select-deep" : ""}`}
-              aria-pressed={story.watching}
-              title={story.watching ? t("Stop watching for new chapters") : t("Check for new chapters when opening app")}
-              onClick={handleWatchToggle}
-            >
-              <Icon name="bell" size={13} filled={story.watching} />
-              {story.watching ? t("Watching") : t("Watch for new chapters")}
-            </button>
+            {!imported && (
+              <button
+                type="button"
+                className={`btn${story.watching ? " text-select-deep" : ""}`}
+                aria-pressed={story.watching}
+                title={story.watching ? t("Stop watching for new chapters") : t("Check for new chapters when opening app")}
+                onClick={handleWatchToggle}
+              >
+                <Icon name="bell" size={13} filled={story.watching} />
+                {story.watching ? t("Watching") : t("Watch for new chapters")}
+              </button>
+            )}
             <button type="button" className="btn" disabled={saving} onClick={handleSave}>
               <Icon name={saved ? "check" : "upload"} size={13} />
               {saving ? t("Saving…") : saved ? t("Saved") : t("Save metadata")}
@@ -655,6 +666,7 @@ export default function StoryDetail({
                   title={c.title}
                   retrying={c.retrying}
                   retriedOnce={c.retriedOnce}
+                  imported={imported}
                   onTitleChange={(title) =>
                     setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)))
                   }
