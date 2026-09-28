@@ -427,6 +427,9 @@ export const vi: Record<string, string> = {
   "Loading voices…": "Đang tải danh sách giọng…",
   "Loading music…": "Đang tải danh sách nhạc…",
   "Play background music while listening": "Phát nhạc nền khi nghe chương",
+  "Mix background music into downloaded audio": "Trộn nhạc nền vào audio tải về",
+  "Downloading a chapter's audio or exporting a story's audio then gives one file with the picked track under the voice, at the music volume above.":
+    "Khi tải audio một chương hoặc xuất audio cả truyện, file nhận được sẽ có bản nhạc đã chọn chạy dưới giọng đọc, theo âm lượng nhạc ở trên.",
   "No voices yet — upload one above.": "Chưa có giọng nào — hãy tải lên một giọng ở trên.",
   "Your voice": "Giọng của bạn",
   "Preview “{name}”": "Nghe thử “{name}”",

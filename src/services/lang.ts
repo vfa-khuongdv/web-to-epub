@@ -177,6 +177,11 @@ const vi: Record<string, string> = {
   "The music file is too large (50 MB at most)": "File nhạc quá lớn (tối đa 50 MB)",
   "Unsupported audio file — use MP3, M4A, WAV, FLAC or OGG": "File audio không hỗ trợ — hãy dùng MP3, M4A, WAV, FLAC hoặc OGG",
   "Track not found": "Không tìm thấy bản nhạc",
+  "This music cannot be mixed into an export — use an MP3, WAV, FLAC or OGG track":
+    "Không trộn được bản nhạc này vào file xuất — hãy dùng bản nhạc MP3, WAV, FLAC hoặc OGG",
+  "Mixing background music needs narration installed (Settings → Narration)":
+    "Cần cài giọng đọc để trộn nhạc nền (Cài đặt → Giọng đọc)",
+  "Could not mix the background music: {detail}": "Không trộn được nhạc nền: {detail}",
 };
 
 let current: Lang = DEFAULT_LANG;

@@ -57,6 +57,12 @@ export const OMNIVOICE_WORKER_SCRIPT = path
   .join(__dirname, "..", "..", "tts", "omnivoice_worker.py")
   .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 
+// Mixes background music into exported chapters (src/services/tts/musicMix.ts); run with
+// an installed engine's Python, unpacked out of app.asar like the workers.
+export const MIX_MUSIC_SCRIPT = path
+  .join(__dirname, "..", "..", "tts", "mix_music.py")
+  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
 // The worker script ships next to dist/. Inside the packaged Electron app it is unpacked
 // out of app.asar (see asarUnpack in package.json) because Python cannot read an asar.
 export const WORKER_SCRIPT = path

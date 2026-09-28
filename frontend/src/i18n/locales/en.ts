@@ -425,6 +425,9 @@ export const en: Record<string, string> = {
   "Loading voices…": "Loading voices…",
   "Loading music…": "Loading music…",
   "Play background music while listening": "Play background music while listening",
+  "Mix background music into downloaded audio": "Mix background music into downloaded audio",
+  "Downloading a chapter's audio or exporting a story's audio then gives one file with the picked track under the voice, at the music volume above.":
+    "Downloading a chapter's audio or exporting a story's audio then gives one file with the picked track under the voice, at the music volume above.",
   "No voices yet — upload one above.": "No voices yet — upload one above.",
   "Your voice": "Your voice",
   "Preview “{name}”": "Preview “{name}”",

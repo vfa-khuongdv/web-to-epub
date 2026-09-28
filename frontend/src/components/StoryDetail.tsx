@@ -7,7 +7,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
 import { useNarration } from "../hooks/useNarration";
-import { PlayerQueue, useNarrationPlayer } from "../hooks/narrationPlayer";
+import { PlayerQueue, exportMusic, useNarrationPlayer } from "../hooks/narrationPlayer";
 import NarrationPanel from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
@@ -661,7 +661,7 @@ export default function StoryDetail({
                   onRetry={() => handleCrawl([c.order])}
                   audioUrl={
                     narratable && narration.state?.chapters[c.order] === "ready"
-                      ? chapterAudioUrl(story.id, c.order, { download: true })
+                      ? chapterAudioUrl(story.id, c.order, { download: true, music: exportMusic(player) })
                       : undefined
                   }
                   audioPlaying={player.isPlaying(story.id, c.order)}

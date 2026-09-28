@@ -40,6 +40,14 @@ vi.mock("../services/tts/runtime", () => ({
   },
 }));
 
+// Stands in for tts/mix_music.py: each output reads "<voice>+<track name>@<gain>".
+vi.mock("../services/tts/musicMix", () => ({
+  mixMusic: async (track: { name: string }, gain: number, jobs: { voice: string; out: string }[]) => {
+    const fsp = await import("node:fs/promises");
+    for (const job of jobs) await fsp.writeFile(job.out, `${await fsp.readFile(job.voice, "utf8")}+${track.name}@${gain}`);
+  },
+}));
+
 function makeStory(id: string, language: string): StoredStory {
   return {
     id,
@@ -243,6 +251,30 @@ describe("narration routes", () => {
     expect(Object.keys(entries)).toEqual(["002 - Chương 2.mp3"]);
 
     expect((await fetch(`${base}/exports/audio/${created.exportId}`)).status).toBe(404);
+  });
+
+  it("mixes the asked-for background music into a chapter download and the zip", async () => {
+    const { backgroundMusic } = await import("../services/backgroundMusic");
+    const track = await backgroundMusic.add("Song", Buffer.concat([Buffer.from("ID3"), Buffer.alloc(64)]));
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+
+    const chapter = `${base}/stories/${viId}/chapters/1/audio`;
+    const mixed = await fetch(`${chapter}?download=1&music=${track.id}&musicVolume=0.5`);
+    expect(mixed.status).toBe(200);
+    expect(mixed.headers.get("content-disposition")).toContain("attachment");
+    expect(await mixed.text()).toBe("Chương 1|Một.+Song@0.5");
+    // The player's stream (no download) never gets music; an unknown track is a 404.
+    expect(await (await fetch(`${chapter}?music=${track.id}`)).text()).toBe("Chương 1|Một.");
+    expect((await fetch(`${chapter}?download=1&music=${"0".repeat(8)}-0000-0000-0000-${"0".repeat(12)}`)).status).toBe(404);
+
+    const res = await post(`/stories/${viId}/export-audio`, { music: { id: track.id, volume: 2 } });
+    expect(res.status).toBe(200);
+    const zip = await fetch(`${base}/exports/audio/${(await res.json()).exportId}`);
+    const { unzipSync } = await import("fflate");
+    const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+    expect(Buffer.from(entries["001 - Chương 1.mp3"]).toString()).toBe("Chương 1|Một.+Song@1");
+    await backgroundMusic.remove(track.id);
   });
 
   it("puts current narration into the EPUB only when asked", async () => {
