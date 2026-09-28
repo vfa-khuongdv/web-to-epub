@@ -473,6 +473,7 @@ export const vi: Record<string, string> = {
   "Could not stop narration": "Không dừng đọc được",
   "{ready}/{total} chapters narrated": "{ready}/{total} chương đã có giọng đọc",
   "Stop narration": "Dừng đọc",
+  "Continue listening · chapter {order} · {time}": "Nghe tiếp · chương {order} · {time}",
   "Narrate ({count} chapters)": "Tạo giọng đọc ({count} chương)",
   "Narration progress": "Tiến độ tạo giọng đọc",
   "Reading chapter {order} — part {part}/{parts}": "Đang đọc chương {order} — đoạn {part}/{parts}",
