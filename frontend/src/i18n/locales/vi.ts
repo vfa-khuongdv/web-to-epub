@@ -524,4 +524,15 @@ export const vi: Record<string, string> = {
   "Ch. {order}": "Chương {order}",
   "Delete audio": "Xoá audio",
   "Delete this story's narration? Chapters can be narrated again afterwards.": "Xoá giọng đọc của truyện này? Sau đó vẫn tạo lại được cho từng chương.",
+
+  // EPUB import
+  "Import EPUB": "Nhập file EPUB",
+  "Importing…": "Đang nhập…",
+  "Please choose an .epub file.": "Hãy chọn file .epub.",
+  "This book is already in the library. Overwrite it with “{name}”?": "Truyện này đã có trong thư viện. Ghi đè bằng “{name}”?",
+  "Overwrite": "Ghi đè",
+  "Or drop an .epub file here to import it.": "Hoặc kéo-thả file .epub vào đây để nhập.",
+  "Imported {title}": "Đã nhập {title}",
+  "EPUB file": "File EPUB",
+  "Could not import the EPUB file": "Không nhập được file EPUB",
 };
