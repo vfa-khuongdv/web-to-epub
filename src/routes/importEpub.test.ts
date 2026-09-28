@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { mkdtempSync } from "node:fs";
+import { mkdtempSync, readFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import type { Server } from "node:http";
 import os from "node:os";
@@ -146,6 +146,30 @@ describe("POST /stories/import-epub", () => {
 
     expect(res.status).toBe(400);
     expect((await res.json()).message).toBe("This file is not an EPUB book");
+  });
+
+  it("converts a PDF into an imported book with its scanned page as a stored image", async () => {
+    const pdf = readFileSync(path.join(__dirname, "../services/__fixtures__/pdf-scan.pdf"));
+    const pdfId = storyId(`pdf:${createHash("sha1").update(pdf).digest("hex")}`);
+    await stories.remove(pdfId);
+
+    const res = await importEpub(pdf, "?name=Ban-scan.pdf", { "Content-Type": "application/pdf" });
+    expect(res.status).toBe(201);
+    const { story } = await res.json();
+    expect(story).toMatchObject({ id: pdfId, site: "epub", title: "Ban-scan", watching: false });
+    expect(story.storyUrl).toMatch(/^pdf:[0-9a-f]{40}$/);
+    expect(story.chapters).toHaveLength(1);
+
+    const stored = await stories.get(pdfId);
+    const image = stored?.chapters[0].blocks?.find((block) => block.type === "image");
+    expect(image?.src).toMatch(new RegExp(`^epub-media/${pdfId}/[0-9a-f]{12}\\.jpg$`));
+    await stories.remove(pdfId);
+  });
+
+  it("answers the PDF wording for a broken PDF", async () => {
+    const res = await importEpub(Buffer.from("%PDF-1.4\ngarbage"));
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toBe("This file is not a readable PDF");
   });
 
   it("refuses the watch toggle on an imported book", async () => {

@@ -5,6 +5,7 @@ import os from "os";
 import path from "path";
 import { findSupportedSite } from "../config/supportedSites";
 import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
+import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
 import { settingsStore } from "../services/settingsStore";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
@@ -103,16 +104,19 @@ storiesRouter.post(
     if (!library) return;
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     if (bytes.length === 0) {
-      res.status(400).json({ message: t("Please choose an EPUB file") });
+      res.status(400).json({ message: t("Please choose an EPUB or PDF file") });
       return;
     }
     if (bytes.length > MAX_IMPORT_BYTES) {
-      res.status(400).json({ message: t("The EPUB file is too large (maximum {size} MB)", { size: 100 }) });
+      res.status(400).json({ message: t("The file is too large (maximum {size} MB)", { size: 100 }) });
       return;
     }
 
+    // A PDF is converted into chapters here and then lives on as an imported book like an
+    // EPUB (site "epub": no TOC, nothing to crawl); only its story URL tells them apart.
+    const pdf = isPdf(bytes);
     const hash = crypto.createHash("sha1").update(bytes).digest("hex");
-    const storyUrl = `epub:${hash}`;
+    const storyUrl = `${pdf ? "pdf" : "epub"}:${hash}`;
     const id = storyId(storyUrl);
     const overwrite = req.query.overwrite === "1";
     const existing = await library.stories.getOutline(id);
@@ -124,10 +128,11 @@ storiesRouter.post(
     const fallbackTitle = name ? path.parse(name).name : undefined;
 
     try {
-      const book = await parseEpub(bytes, {
+      const parseOptions = {
         fallbackTitle,
-        storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
-      });
+        storeImage: (imageBytes: Buffer, extension: string) => library.epubMedia.save(id, imageBytes, extension),
+      };
+      const book = pdf ? await parsePdf(bytes, parseOptions) : await parseEpub(bytes, parseOptions);
 
       let coverUrl = existing?.coverUrl;
       if (book.cover) {
@@ -166,9 +171,14 @@ storiesRouter.post(
       // (raw parser messages, FS/SQLite failures with absolute paths) gets the generic
       // wording instead of leaking internals.
       const message =
-        err instanceof NotEpubError || err instanceof EpubTooLargeError || err instanceof DrmError
+        err instanceof NotEpubError ||
+        err instanceof EpubTooLargeError ||
+        err instanceof DrmError ||
+        err instanceof NotPdfError ||
+        err instanceof PdfTooLargeError ||
+        err instanceof PdfLockedError
           ? err.message
-          : t("Could not import the EPUB file");
+          : t(pdf ? "Could not import the PDF file" : "Could not import the EPUB file");
       res.status(400).json({ message });
     }
   }

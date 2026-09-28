@@ -187,10 +187,18 @@ const vi: Record<string, string> = {
   "This file is not an EPUB book": "File này không phải là sách EPUB",
   "This EPUB file is too large to import": "File EPUB quá lớn để nhập",
   "This EPUB file is locked with DRM and cannot be imported": "File EPUB này bị khoá DRM, không thể nhập",
-  "Please choose an EPUB file": "Hãy chọn một file EPUB",
-  "The EPUB file is too large (maximum {size} MB)": "File EPUB quá lớn (tối đa {size} MB)",
+  "Please choose an EPUB or PDF file": "Hãy chọn một file EPUB hoặc PDF",
+  "The file is too large (maximum {size} MB)": "File quá lớn (tối đa {size} MB)",
   "This book is already in the library": "Truyện này đã có trong thư viện",
   "Could not import the EPUB file": "Không nhập được file EPUB",
+
+  // PDF import
+  "This file is not a readable PDF": "File này không phải PDF đọc được",
+  "This PDF has too many pages to import (maximum {count})": "File PDF có quá nhiều trang để nhập (tối đa {count})",
+  "This PDF is password-protected or does not allow copying, so it cannot be imported":
+    "File PDF này có mật khẩu hoặc không cho phép sao chép nội dung, không thể nhập",
+  "Could not import the PDF file": "Không nhập được file PDF",
+  "Pages {from}–{to}": "Trang {from}–{to}",
   "Book image not found": "Không tìm thấy ảnh của sách",
   "Imported books cannot be crawled": "Truyện nhập từ file không crawl được",
   "Imported books have no chapter list to watch": "Truyện nhập từ file không có danh sách chương để theo dõi",
