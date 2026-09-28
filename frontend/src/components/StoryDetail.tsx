@@ -451,7 +451,7 @@ export default function StoryDetail({
           <div>
             <h3 className="story-title">{story.title}</h3>
           <div className="story-src mt-1">
-            <span>{imported ? t("EPUB file") : story.site}</span>
+            <span>{imported ? (story.storyUrl.startsWith("pdf:") ? t("PDF file") : t("EPUB file")) : story.site}</span>
             {!imported && (
               <>
                 <span aria-hidden="true">·</span>

@@ -178,19 +178,19 @@ export async function createStory(url: string): Promise<StoredStory> {
   return data.story as StoredStory;
 }
 
-// Import an .epub file as a story. `overwrite` is the user confirming the "already in
+// Import an .epub or .pdf file as a story. `overwrite` is the user confirming the "already in
 // the library" dialog; without it the server answers 409 with code "exists".
 export async function importEpub(file: File, options: { overwrite?: boolean } = {}): Promise<StoredStory> {
   const params = new URLSearchParams({ name: file.name });
   if (options.overwrite) params.set("overwrite", "1");
   const res = await apiFetch(`/api/stories/import-epub?${params}`, {
     method: "POST",
-    headers: langHeaders({ "Content-Type": "application/epub+zip" }),
+    headers: langHeaders({ "Content-Type": file.type || "application/octet-stream" }),
     body: file,
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw apiError(data?.message || tr("Could not import the EPUB file"), res.status, data?.code, data?.story);
+    throw apiError(data?.message || tr("Could not import the file"), res.status, data?.code, data?.story);
   }
   const data = await res.json();
   return data.story as StoredStory;

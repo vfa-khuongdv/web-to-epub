@@ -331,7 +331,7 @@ export default function LibraryView({
     }
   }
 
-  // Import one .epub file. A 409 comes back as code "exists" — ask before overwriting
+  // Import one .epub or .pdf file (the server converts a PDF into chapters). A 409 comes back as code "exists" — ask before overwriting
   // (the file hash is the story id, so it is the same book), then retry with the flag.
   async function handleImport(file: File, overwrite = false) {
     setImportBusy(true);
@@ -353,8 +353,8 @@ export default function LibraryView({
   function handleImportFiles(files: FileList | null) {
     const file = files?.[0];
     if (!file) return;
-    if (!/\.epub$/i.test(file.name)) {
-      setError(t("Please choose an .epub file."));
+    if (!/\.(epub|pdf)$/i.test(file.name)) {
+      setError(t("Please choose an .epub or .pdf file."));
       return;
     }
     void handleImport(file);
@@ -547,12 +547,12 @@ export default function LibraryView({
             </button>
             <button type="button" className="btn" disabled={importBusy} onClick={() => fileInput.current?.click()}>
               <Icon name="upload" size={13} />
-              {importBusy ? t("Importing…") : t("Import EPUB")}
+              {importBusy ? t("Importing…") : t("Import EPUB / PDF")}
             </button>
             <input
               ref={fileInput}
               type="file"
-              accept=".epub,application/epub+zip"
+              accept=".epub,application/epub+zip,.pdf,application/pdf"
               className="hidden"
               onChange={(event) => {
                 handleImportFiles(event.target.files);
@@ -589,7 +589,7 @@ export default function LibraryView({
             <p className="mt-1.5 text-xs text-ink-3">
               {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
               {[...new Set(supportedSites.map((s) => s.name))].join(", ") || t("loading…")}
-              <span className="block">{t("Or drop an .epub file here to import it.")}</span>
+              <span className="block">{t("Or drop an .epub or .pdf file here to import it.")}</span>
             </p>
           )}
         </div>
@@ -748,7 +748,7 @@ export default function LibraryView({
                         </span>
                       </button>
                     </td>
-                    <td className="dim">{s.site === "epub" ? t("EPUB file") : s.site}</td>
+                    <td className="dim">{s.site === "epub" ? (s.storyUrl.startsWith("pdf:") ? t("PDF file") : t("EPUB file")) : s.site}</td>
                     <td className="num">{s.chapterCount}</td>
                     <td className="num">
                       <b>{s.done}</b>
