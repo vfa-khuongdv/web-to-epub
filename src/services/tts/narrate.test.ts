@@ -133,7 +133,7 @@ describe("narration job", () => {
     expect(events.at(-1)).toMatchObject({ seconds: 4, skipped: false, done: 2, total: 4 });
   });
 
-  it("skips chapters whose audio is current, keeps it when the voice changes, redoes it when the text does", async () => {
+  it("skips chapters that have audio, keeps it when the voice or the text changes, redoes it on regenerate", async () => {
     await narrateChapters(job(fakeRuntime()), [1, 5]);
     expect(await narrationStates(stories, dir, STORY_ID, settings)).toEqual({ 1: "ready", 3: "missing", 4: "missing", 5: "ready" });
 
@@ -148,14 +148,20 @@ describe("narration job", () => {
     await narrateChapters(job(revoiced), [1, 5]);
     expect(revoiced.calls).toHaveLength(0);
 
-    // An edited chapter is stale, and only that one is redone — in the new voice.
+    // An edited chapter keeps its audio.
     const edited = (await stories.getChapter(STORY_ID, 1))!;
     edited.blocks = [{ type: "paragraph", text: "Một, đã sửa." }];
     await stories.saveChapter(STORY_ID, edited);
-    expect(await narrationStates(stories, dir, STORY_ID, settings)).toMatchObject({ 1: "missing", 5: "ready" });
+    expect(await narrationStates(stories, dir, STORY_ID, settings)).toMatchObject({ 1: "ready", 5: "ready" });
+    const kept = fakeRuntime();
+    await narrateChapters(job(kept), [1, 5]);
+    expect(kept.calls).toHaveLength(0);
+
+    // Regenerating redoes the chapters asked for — in the voice in Settings now, from the edited text.
     const redo = fakeRuntime();
-    await narrateChapters(job(redo), [1, 5]);
+    await narrateChapters({ ...job(redo), regenerate: true }, [1]);
     expect(redo.calls.map((c) => [c.variant, c.request.voice])).toEqual([["nano", "B"]]);
+    expect(await fs.readdir(path.join(dir, "audio", STORY_ID))).not.toContain("1.new.mp3");
   });
 
   it("records each part's timing and serves the chapter's timeline, estimating it for older audio", async () => {

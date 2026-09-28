@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
+import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
@@ -35,6 +35,7 @@ interface ChapterState {
   retrying: boolean;
   version: number;
   retriedOnce: boolean;
+  spellChecked: boolean;
 }
 
 function toChapterState(chapter: StoredChapter, version: number, t: Translate): ChapterState {
@@ -56,6 +57,7 @@ function toChapterState(chapter: StoredChapter, version: number, t: Translate): 
     retrying: false,
     version,
     retriedOnce: chapter.status === "error",
+    spellChecked: !!chapter.spellChecked,
   };
 }
 
@@ -339,6 +341,17 @@ export default function StoryDetail({
       await onStoryChanged();
     } catch (err) {
       setError((err as Error).message);
+    }
+  }
+
+  async function handleToggleSpellChecked(order: number, spellChecked: boolean) {
+    setError(null);
+    try {
+      const updated = await saveChapterSpellChecked(story.id, order, spellChecked);
+      setChapters((cs) => cs.map((c) => (c.order === order ? { ...c, spellChecked: !!updated.spellChecked } : c)));
+    } catch (err) {
+      setError((err as Error).message);
+      throw err;
     }
   }
 
@@ -634,7 +647,7 @@ export default function StoryDetail({
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
-              <th className="w-36" />
+              <th className="w-44" />
             </tr>
           </thead>
           <tbody>
@@ -678,6 +691,16 @@ export default function StoryDetail({
                   }
                   audioPlaying={player.isPlaying(story.id, c.order)}
                   onPlayAudio={() => playChapter(c.order)}
+                  onRegenerateAudio={() => void narration.start([c.order], { regenerate: true })}
+                  onCreateAudio={
+                    narratable && narration.state?.chapters[c.order] === "missing"
+                      ? () => void narration.start([c.order])
+                      : undefined
+                  }
+                  regenerateDisabled={!!narration.state?.running}
+                  regenerating={narration.state?.running?.order === c.order}
+                  spellChecked={c.spellChecked}
+                  onToggleSpellChecked={() => handleToggleSpellChecked(c.order, !c.spellChecked)}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {
@@ -856,7 +879,7 @@ export function StoryDetailSkeleton() {
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
-              <th className="w-36" />
+              <th className="w-44" />
             </tr>
           </thead>
           <tbody>

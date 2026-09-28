@@ -9,11 +9,10 @@ import path from "path";
  *   <dataDir>/audio/<storyId>/<order>.mp3
  *   <dataDir>/audio/<storyId>/<order>.json   AudioMeta
  *
- * `text` fingerprints the text the file reads. A file whose text no longer matches is
- * stale — the chapter was edited — and is treated as missing, so an export never ships
- * narration of old text. The model and voice are recorded but do not make a file stale:
- * changing them in Settings applies to chapters narrated from then on, and audio already
- * made keeps playing (deleting a story's audio is how to re-voice it).
+ * Audio once made is kept: editing the chapter (fixing a typo, re-splitting a paragraph)
+ * does not throw it away, and neither does changing the model or voice in Settings.
+ * Re-narrating a chapter ("Regenerate audio") or deleting a story's audio replaces it.
+ * `text` records what the file reads; it is not compared against the chapter.
  */
 export interface NarrationVoice {
   variant: string;
@@ -22,9 +21,6 @@ export interface NarrationVoice {
 
 export interface AudioMeta {
   text?: string;
-  // Before `text`: one key over text + variant + voice + engine version. Still accepted
-  // once, when it matches the current voice, and rewritten as `text` (see readFreshAudio).
-  key?: string;
   seconds: number;
   variant?: string;
   voice?: string;
@@ -55,48 +51,20 @@ export function textKey(parts: string[]): string {
   return createHash("sha1").update(JSON.stringify(parts)).digest("hex");
 }
 
-// The pre-`text` key, only to recognise audio made before it.
-export function legacyNarrationKey(parts: string[], voice: NarrationVoice, engineVersion: string): string {
-  return createHash("sha1")
-    .update(JSON.stringify([parts, voice.variant, voice.voice, engineVersion]))
-    .digest("hex");
-}
-
-export async function readFreshAudio(
-  dataDir: string,
-  storyId: string,
-  order: number,
-  parts: string[],
-  // The voice in Settings now, to recognise (and upgrade) audio saved with the old key.
-  legacy?: { voice: NarrationVoice; engineVersion: string }
-): Promise<CachedAudio | undefined> {
+// The audio of a chapter, whatever text it now has. A meta file is the sign the MP3 is
+// complete (see writeAudioMeta).
+export async function readChapterAudio(dataDir: string, storyId: string, order: number): Promise<CachedAudio | undefined> {
   let meta: AudioMeta;
   try {
     meta = JSON.parse(await fs.readFile(metaPath(dataDir, storyId, order), "utf8")) as AudioMeta;
   } catch {
     return undefined;
   }
-  const text = textKey(parts);
-  const fresh =
-    meta.text !== undefined
-      ? meta.text === text
-      : legacy !== undefined && meta.key === legacyNarrationKey(parts, legacy.voice, legacy.engineVersion);
-  if (!fresh) return undefined;
   const filePath = chapterAudioPath(dataDir, storyId, order);
   try {
     await fs.access(filePath);
   } catch {
     return undefined;
-  }
-  if (meta.text === undefined && legacy) {
-    const upgraded: AudioMeta = {
-      text,
-      seconds: meta.seconds ?? 0,
-      variant: legacy.voice.variant,
-      voice: legacy.voice.voice,
-      engine: legacy.engineVersion,
-    };
-    await fs.writeFile(metaPath(dataDir, storyId, order), JSON.stringify(upgraded)).catch(() => {});
   }
   return { filePath, seconds: meta.seconds ?? 0, timings: meta.timings };
 }

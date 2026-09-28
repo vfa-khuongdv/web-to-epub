@@ -171,6 +171,40 @@ chaptersRouter.patch("/stories/:id/chapters/:order/title", async (req, res) => {
   res.json({ chapter: presentChapter(updated, id, requestVaultToken(req)) });
 });
 
+// Mark a chapter's typos as fixed (or not). Only the flag changes, so it works while the
+// chapter is open in the editor without saving the editor's text along with it.
+chaptersRouter.patch("/stories/:id/chapters/:order/spell-checked", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { id } = req.params;
+  const order = Number(req.params.order);
+  if (!Number.isInteger(order)) {
+    res.status(400).json({ message: t("Invalid chapter order") });
+    return;
+  }
+  // Same reasoning as the edits above: an active crawl would overwrite this.
+  if (library.runningCrawls.has(id)) {
+    res.status(409).json({ message: t("Story is currently crawling, cannot edit chapters") });
+    return;
+  }
+
+  const chapter = await library.stories.getChapter(id, order);
+  if (!chapter) {
+    res.status(404).json({ message: t("Chapter not found") });
+    return;
+  }
+
+  const { spellChecked } = req.body as { spellChecked?: unknown };
+  if (typeof spellChecked !== "boolean") {
+    res.status(400).json({ message: t("Invalid spell-check flag") });
+    return;
+  }
+
+  const updated: StoredChapter = { ...chapter, spellChecked: spellChecked || undefined };
+  await library.stories.saveChapter(id, updated);
+  res.json({ chapter: presentChapter(updated, id, requestVaultToken(req)) });
+});
+
 // Remove one chapter from the library: junk TOC entries and chapters the site will never
 // serve are deleted outright, highlights included. Order is the TOC position, so the rest
 // keeps theirs — the list shows a gap. A later TOC refresh can bring the chapter back as

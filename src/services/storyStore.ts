@@ -104,6 +104,7 @@ interface ChapterRow {
   status: string;
   error: string | null;
   error_kind: string | null;
+  spell_checked: number;
   blocks: string | null;
 }
 
@@ -172,6 +173,9 @@ export function createStoryStore(baseDir: string): StoryStore {
   if (!chapterColumns.some((column) => column.name === "error_kind")) {
     db.exec("ALTER TABLE chapters ADD COLUMN error_kind TEXT");
   }
+  if (!chapterColumns.some((column) => column.name === "spell_checked")) {
+    db.exec("ALTER TABLE chapters ADD COLUMN spell_checked INTEGER NOT NULL DEFAULT 0");
+  }
 
   const upsertStory = db.prepare(`
     INSERT INTO stories (id, story_url, site, title, author, language, cover_url, created_at, updated_at)
@@ -187,14 +191,15 @@ export function createStoryStore(baseDir: string): StoryStore {
       updated_at = excluded.updated_at
   `);
   const upsertChapter = db.prepare(`
-    INSERT INTO chapters (story_id, "order", url, title, status, error, error_kind, blocks)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO chapters (story_id, "order", url, title, status, error, error_kind, spell_checked, blocks)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(story_id, "order") DO UPDATE SET
       url = excluded.url,
       title = excluded.title,
       status = excluded.status,
       error = excluded.error,
       error_kind = excluded.error_kind,
+      spell_checked = excluded.spell_checked,
       blocks = excluded.blocks
   `);
   const deleteChapters = db.prepare(`DELETE FROM chapters WHERE story_id = ?`);
@@ -213,7 +218,7 @@ export function createStoryStore(baseDir: string): StoryStore {
   const selectStory = db.prepare(`SELECT * FROM stories WHERE id = ?`);
   const selectChapters = db.prepare(`SELECT * FROM chapters WHERE story_id = ? ORDER BY "order"`);
   const selectChapterOutlines = db.prepare(
-    `SELECT "order", url, title, status, error, error_kind FROM chapters WHERE story_id = ? ORDER BY "order"`
+    `SELECT "order", url, title, status, error, error_kind, spell_checked FROM chapters WHERE story_id = ? ORDER BY "order"`
   );
   const selectChapter = db.prepare(`SELECT * FROM chapters WHERE story_id = ? AND "order" = ?`);
   const selectSummaries = db.prepare(`
@@ -269,6 +274,7 @@ export function createStoryStore(baseDir: string): StoryStore {
       chapter.status,
       chapter.error ?? null,
       chapter.errorKind ?? null,
+      chapter.spellChecked ? 1 : 0,
       chapter.blocks ? JSON.stringify(chapter.blocks) : null,
     ];
   }
@@ -318,6 +324,7 @@ export function createStoryStore(baseDir: string): StoryStore {
           status: row.status as StoredChapter["status"],
           error: row.error ?? undefined,
           errorKind: (row.error_kind as StoredChapter["errorKind"]) ?? undefined,
+          ...(row.spell_checked ? { spellChecked: true } : {}),
           blocks: row.blocks ? (JSON.parse(row.blocks) as ContentBlock[]) : undefined,
         })),
         createdAt: story.created_at,
@@ -349,6 +356,7 @@ export function createStoryStore(baseDir: string): StoryStore {
           status: row.status as StoredChapter["status"],
           error: row.error ?? undefined,
           errorKind: (row.error_kind as StoredChapter["errorKind"]) ?? undefined,
+          ...(row.spell_checked ? { spellChecked: true } : {}),
         })),
         createdAt: story.created_at,
         updatedAt: story.updated_at,
@@ -366,6 +374,7 @@ export function createStoryStore(baseDir: string): StoryStore {
         status: row.status as StoredChapter["status"],
         error: row.error ?? undefined,
         errorKind: (row.error_kind as StoredChapter["errorKind"]) ?? undefined,
+        ...(row.spell_checked ? { spellChecked: true } : {}),
         blocks: row.blocks ? (JSON.parse(row.blocks) as ContentBlock[]) : undefined,
       };
     },
