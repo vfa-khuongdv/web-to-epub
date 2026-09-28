@@ -4,7 +4,7 @@ import multer from "multer";
 import os from "os";
 import path from "path";
 import { findSupportedSite } from "../config/supportedSites";
-import { parseEpub } from "../services/epubImport";
+import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
 import { settingsStore } from "../services/settingsStore";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
@@ -162,7 +162,14 @@ storiesRouter.post(
       await library.stories.save(story);
       res.status(existing ? 200 : 201).json({ story: await library.stories.getOutline(id) });
     } catch (err) {
-      res.status(400).json({ message: err instanceof Error ? err.message : t("Could not import the EPUB file") });
+      // Only the parser's own, already-translated errors are safe to echo; anything else
+      // (raw parser messages, FS/SQLite failures with absolute paths) gets the generic
+      // wording instead of leaking internals.
+      const message =
+        err instanceof NotEpubError || err instanceof EpubTooLargeError || err instanceof DrmError
+          ? err.message
+          : t("Could not import the EPUB file");
+      res.status(400).json({ message });
     }
   }
 );

@@ -103,7 +103,16 @@ function unzipEntries(bytes: Buffer, maxTotal: number): Promise<Map<string, Buff
 }
 
 function xmlDocument(source: string, contentType: "application/xml" | "text/html" = "application/xml"): Document {
-  return new JSDOM(source, { contentType }).window.document;
+  try {
+    return new JSDOM(source, { contentType }).window.document;
+  } catch (err) {
+    // Malformed XML from an untrusted file is just "not an EPUB": jsdom's DOMException
+    // carries a raw parser message (about:blank:1:7: unexpected close tag.) that must
+    // never reach the user. The nav document is parsed as HTML, which is lenient and
+    // never takes this path.
+    if (contentType === "application/xml") throw new NotEpubError();
+    throw err;
+  }
 }
 
 function textOf(element: Element | undefined | null): string | undefined {

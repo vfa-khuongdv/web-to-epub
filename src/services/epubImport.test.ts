@@ -171,6 +171,18 @@ describe("parseEpub", () => {
     await expect(parseEpub(Buffer.alloc(0))).rejects.toBeInstanceOf(NotEpubError);
   });
 
+  it("rejects malformed XML in the container and OPF as not an EPUB", async () => {
+    const badContainer = buildEpubFixture({
+      extraEntries: { "META-INF/container.xml": new Uint8Array(Buffer.from("<container><rootfiles>")) },
+    });
+    await expect(parseEpub(badContainer)).rejects.toBeInstanceOf(NotEpubError);
+
+    const badOpf = buildEpubFixture({
+      extraEntries: { "OEBPS/content.opf": new Uint8Array(Buffer.from("<package><manifest>")) },
+    });
+    await expect(parseEpub(badOpf)).rejects.toBeInstanceOf(NotEpubError);
+  });
+
   it("stops when the expanded book passes the cap", async () => {
     const bytes = buildEpubFixture({
       chapters: [{ id: "ch1", file: "OEBPS/ch1.xhtml", html: `<p>${"x".repeat(4096)}</p>` }],

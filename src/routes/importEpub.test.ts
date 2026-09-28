@@ -137,6 +137,17 @@ describe("POST /stories/import-epub", () => {
     expect((await drm.json()).message).toContain("DRM");
   });
 
+  it("answers the translated message for a malformed book, never a parser message", async () => {
+    const malformed = buildEpubFixture({
+      extraEntries: { "META-INF/container.xml": new Uint8Array(Buffer.from("<container><rootfiles>")) },
+    });
+
+    const res = await importEpub(malformed);
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toBe("This file is not an EPUB book");
+  });
+
   it("refuses the watch toggle on an imported book", async () => {
     await importEpub(fixture);
     const res = await fetch(`${base}/api/stories/${id}/watch`, {
