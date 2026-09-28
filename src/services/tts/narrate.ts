@@ -1,3 +1,4 @@
+import fs from "fs/promises";
 import { OMNIVOICE_VERSION, VIENEU_VERSION } from "../../config/tts";
 import { StoredChapter, StoredStory } from "../../types";
 import { StoryStore } from "../storyStore";
@@ -5,7 +6,7 @@ import {
   NarrationVoice,
   chapterAudioPath,
   ensureStoryAudioDir,
-  readFreshAudio,
+  readChapterAudio,
   writeAudioMeta,
 } from "./audioCache";
 import { chapterParts, chapterPartsWithBlocks } from "./chapterText";
@@ -40,13 +41,8 @@ export function engineVersion(variant: TtsVariant): string {
   return variant === "omnivoice" ? `omnivoice-${OMNIVOICE_VERSION}` : VIENEU_VERSION;
 }
 
-// The current voice, so audio saved before text-only freshness is still recognised.
-function legacy(settings: NarrationSettings) {
-  return { voice: narrationVoice(settings), engineVersion: engineVersion(settings.variant) };
-}
-
-// The audio file of one chapter, if it matches the chapter's current text. The voice in
-// Settings does not matter: audio made with another voice keeps playing.
+// The audio file of one chapter. It is kept when the chapter is edited afterwards, and
+// the voice in Settings does not matter: audio made with another voice keeps playing.
 export async function freshChapterAudio(
   stories: StoryStore,
   dataDir: string,
@@ -56,9 +52,7 @@ export async function freshChapterAudio(
 ): Promise<{ filePath: string; seconds: number; timings?: [number, number][]; title: string; chapter: StoredChapter } | undefined> {
   const chapter = await stories.getChapter(storyId, order);
   if (!chapter || !readable(chapter)) return undefined;
-  const parts = chapterParts(chapter.title, chapter.blocks ?? []);
-  if (parts.length === 0) return undefined;
-  const audio = await readFreshAudio(dataDir, storyId, order, parts, legacy(settings));
+  const audio = await readChapterAudio(dataDir, storyId, order);
   return audio ? { ...audio, title: chapter.title, chapter } : undefined;
 }
 
@@ -110,7 +104,7 @@ function round(seconds: number): number {
 }
 
 /**
- * Which chapters already have audio matching their current text.
+ * Which chapters already have audio.
  * Reads each chapter's content one at a time rather than the whole story at once.
  */
 export async function narrationStates(
@@ -145,6 +139,8 @@ export interface NarrateJob {
   runtime: Pick<TtsRuntime, "withModel">;
   signal: AbortSignal;
   onEvent: (event: NarrateEvent) => void;
+  // Narrate the chapters again even when they have audio ("Regenerate audio").
+  regenerate?: boolean;
 }
 
 // The plan: readable chapters (optionally the requested ones), in TOC order.
@@ -159,7 +155,8 @@ export async function chaptersToNarrate(stories: StoryStore, storyId: string, or
 }
 
 /**
- * Narrate chapters one after another. A chapter whose audio is already fresh is skipped,
+ * Narrate chapters one after another. A chapter that already has audio is skipped (unless
+ * the job regenerates),
  * so running again after an app restart continues where it stopped. The voice is read
  * per chapter, so a change in Settings applies from the next chapter. A failed chapter
  * is reported and the job moves on — like a crawl, one bad chapter does not stop the rest.
@@ -183,25 +180,30 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
       continue;
     }
 
-    const cached = await readFreshAudio(job.dataDir, job.storyId, order, parts, legacy(settings));
+    const cached = job.regenerate ? undefined : await readChapterAudio(job.dataDir, job.storyId, order);
     if (cached) {
       done++;
       job.onEvent({ type: "narrate-chapter-done", order, seconds: cached.seconds, skipped: true, done, total });
       continue;
     }
 
+    const audioPath = chapterAudioPath(job.dataDir, job.storyId, order);
+    // Regenerating writes beside the old file and swaps it in once complete, so a failed or
+    // cancelled run keeps the audio the chapter had.
+    const out = job.regenerate ? audioPath.replace(/\.mp3$/, ".new.mp3") : audioPath;
     try {
       const voice = await customVoices.synthVoice(settings.voice, settings.variant);
       const { seconds, timings } = await job.runtime.withModel(settings.variant, (worker) =>
         worker.synth({
           parts,
           ...voice,
-          out: chapterAudioPath(job.dataDir, job.storyId, order),
+          out,
           signal: job.signal,
           onProgress: (part, count) =>
             job.onEvent({ type: "narrate-progress", order, part, parts: count, done, total }),
         })
       );
+      if (out !== audioPath) await fs.rename(out, audioPath);
       await writeAudioMeta(job.dataDir, job.storyId, order, parts, {
         seconds,
         voice: narrationVoice(settings),
@@ -211,6 +213,7 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
       done++;
       job.onEvent({ type: "narrate-chapter-done", order, seconds, skipped: false, done, total });
     } catch (err) {
+      if (out !== audioPath) await fs.rm(out, { force: true });
       if (err instanceof NarrationCancelled) break;
       failed++;
       job.onEvent({

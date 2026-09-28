@@ -127,7 +127,7 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
     return;
   }
 
-  const body = (req.body ?? {}) as { orders?: unknown };
+  const body = (req.body ?? {}) as { orders?: unknown; regenerate?: unknown };
   const orders = Array.isArray(body.orders) ? body.orders.filter((o): o is number => Number.isInteger(o)) : undefined;
   const plan = await chaptersToNarrate(library.stories, id, orders);
 
@@ -152,6 +152,7 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
         settings: narrationSettings,
         runtime: ttsEngines,
         signal: abort.signal,
+        regenerate: body.regenerate === true,
         onEvent: (event) => {
           run.done = event.done;
           if (event.type === "narrate-progress") {

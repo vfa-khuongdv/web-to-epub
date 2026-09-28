@@ -131,29 +131,38 @@ async function compressImage(bytes: Buffer): Promise<Buffer | undefined> {
   }
 }
 
-async function saveImage(src: string, dir: string, index: number): Promise<string | undefined> {
+async function saveImage(src: string, dir: string, index: number, localRoots: string[] = []): Promise<string | undefined> {
   let bytes: Buffer;
   let contentType = "";
-  const dataUri = src.match(DATA_URI_RE);
-  if (dataUri) {
-    bytes = Buffer.from(dataUri[1], "base64");
-  } else if (/^https?:/i.test(src)) {
+  const localPath = localMediaPath(src, localRoots);
+  if (localPath) {
     try {
-      const res = await fetchWithRetry(
-        src,
-        { headers: { "User-Agent": IMAGE_USER_AGENT, Accept: "image/*" } },
-        { maxAttempts: 2 }
-      );
-      if (!res.ok) return undefined;
-      const declaredLength = Number(res.headers.get("content-length"));
-      if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
-      bytes = Buffer.from(await res.arrayBuffer());
-      contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      bytes = await fs.readFile(localPath);
     } catch {
       return undefined;
     }
   } else {
-    return undefined;
+    const dataUri = src.match(DATA_URI_RE);
+    if (dataUri) {
+      bytes = Buffer.from(dataUri[1], "base64");
+    } else if (/^https?:/i.test(src)) {
+      try {
+        const res = await fetchWithRetry(
+          src,
+          { headers: { "User-Agent": IMAGE_USER_AGENT, Accept: "image/*" } },
+          { maxAttempts: 2 }
+        );
+        if (!res.ok) return undefined;
+        const declaredLength = Number(res.headers.get("content-length"));
+        if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
+        bytes = Buffer.from(await res.arrayBuffer());
+        contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+      } catch {
+        return undefined;
+      }
+    } else {
+      return undefined;
+    }
   }
 
   if (bytes.length === 0 || bytes.length > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
@@ -175,7 +184,8 @@ async function saveImage(src: string, dir: string, index: number): Promise<strin
 export async function embedImages(
   chapters: ExportChapter[],
   dir: string,
-  onProgress?: OnBuildProgress
+  onProgress?: OnBuildProgress,
+  localRoots: string[] = []
 ): Promise<ExportChapter[]> {
   const sources = new Set<string>();
   for (const chapter of chapters) {
@@ -189,7 +199,7 @@ export async function embedImages(
   const list = [...sources];
   let done = 0;
   const saved = await mapWithConcurrency(list, IMAGE_CONCURRENCY, async (src, index) => {
-    const filePath = await saveImage(src, dir, index);
+    const filePath = await saveImage(src, dir, index, localRoots);
     onProgress?.({ phase: "images", done: ++done, total: list.length });
     return filePath;
   });
@@ -574,7 +584,7 @@ export async function buildEpub(
 
   const imageDir = await fs.mkdtemp(path.join(os.tmpdir(), "epub-img-"));
   try {
-    const withImages = await embedImages(included, imageDir, onProgress);
+    const withImages = await embedImages(included, imageDir, onProgress, localMediaRoots);
     const { chapters: withMedia, media } = await embedMedia(withImages, imageDir, onProgress, localMediaRoots);
 
     const groups = await groupChaptersBySize(withMedia, media, maxBytes);

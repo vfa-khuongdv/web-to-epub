@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
+import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../lib/api";
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
@@ -8,7 +8,7 @@ import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
 import { useNarration } from "../hooks/useNarration";
 import { PlayerQueue, useNarrationPlayer } from "../hooks/narrationPlayer";
-import NarrationPanel from "./NarrationPanel";
+import NarrationPanel, { playerMusic } from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
 import { vaultQuery } from "../vault/token";
@@ -35,6 +35,7 @@ interface ChapterState {
   retrying: boolean;
   version: number;
   retriedOnce: boolean;
+  spellChecked: boolean;
 }
 
 function toChapterState(chapter: StoredChapter, version: number, t: Translate): ChapterState {
@@ -56,6 +57,7 @@ function toChapterState(chapter: StoredChapter, version: number, t: Translate): 
     retrying: false,
     version,
     retriedOnce: chapter.status === "error",
+    spellChecked: !!chapter.spellChecked,
   };
 }
 
@@ -135,6 +137,9 @@ export default function StoryDetail({
   );
   const { updateQueue } = player;
   const narrationLoaded = narration.state !== null;
+  // A book imported from a file has no TOC to crawl, check or watch; those controls
+  // and the source link would all point at an epub: URL that no site can answer.
+  const imported = story.site === "epub";
   useEffect(() => {
     // Not before this page knows which chapters have audio: an empty list would read as
     // "the chapter playing lost its audio" and stop the player on the way back to its story.
@@ -339,6 +344,17 @@ export default function StoryDetail({
     }
   }
 
+  async function handleToggleSpellChecked(order: number, spellChecked: boolean) {
+    setError(null);
+    try {
+      const updated = await saveChapterSpellChecked(story.id, order, spellChecked);
+      setChapters((cs) => cs.map((c) => (c.order === order ? { ...c, spellChecked: !!updated.spellChecked } : c)));
+    } catch (err) {
+      setError((err as Error).message);
+      throw err;
+    }
+  }
+
   // Flash "Saved" on button after successful save.
   useEffect(() => {
     if (!saved) return;
@@ -431,11 +447,15 @@ export default function StoryDetail({
           <div>
             <h3 className="story-title">{story.title}</h3>
           <div className="story-src mt-1">
-            <span>{story.site}</span>
-            <span aria-hidden="true">·</span>
-            <a href={story.storyUrl} target="_blank" rel="noreferrer" className="break-all">
-              {story.storyUrl}
-            </a>
+            <span>{imported ? t("EPUB file") : story.site}</span>
+            {!imported && (
+              <>
+                <span aria-hidden="true">·</span>
+                <a href={story.storyUrl} target="_blank" rel="noreferrer" className="break-all">
+                  {story.storyUrl}
+                </a>
+              </>
+            )}
           </div>
           </div>
 
@@ -481,15 +501,17 @@ export default function StoryDetail({
           )}
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              className="btn btn-primary"
-              disabled={job.running || remaining === 0}
-              onClick={() => handleCrawl()}
-            >
-              <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
-              {job.running ? t("Crawling…") : t("Continue crawl ({count} chapters)", { count: remaining })}
-            </button>
+            {!imported && (
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={job.running || remaining === 0}
+                onClick={() => handleCrawl()}
+              >
+                <Icon name="play" size={12} className={job.running ? "animate-pulse" : undefined} />
+                {job.running ? t("Crawling…") : t("Continue crawl ({count} chapters)", { count: remaining })}
+              </button>
+            )}
             {job.running && (
               <button type="button" className="btn" disabled={stopping} onClick={handleStop}>
                 <Icon name="x" size={13} />
@@ -530,16 +552,18 @@ export default function StoryDetail({
                 {progress ? exportProgressLabel(progress, t) : t("Preparing…")}
               </span>
             )}
-            <button
-              type="button"
-              className={`btn${story.watching ? " text-select-deep" : ""}`}
-              aria-pressed={story.watching}
-              title={story.watching ? t("Stop watching for new chapters") : t("Check for new chapters when opening app")}
-              onClick={handleWatchToggle}
-            >
-              <Icon name="bell" size={13} filled={story.watching} />
-              {story.watching ? t("Watching") : t("Watch for new chapters")}
-            </button>
+            {!imported && (
+              <button
+                type="button"
+                className={`btn${story.watching ? " text-select-deep" : ""}`}
+                aria-pressed={story.watching}
+                title={story.watching ? t("Stop watching for new chapters") : t("Check for new chapters when opening app")}
+                onClick={handleWatchToggle}
+              >
+                <Icon name="bell" size={13} filled={story.watching} />
+                {story.watching ? t("Watching") : t("Watch for new chapters")}
+              </button>
+            )}
             <button type="button" className="btn" disabled={saving} onClick={handleSave}>
               <Icon name={saved ? "check" : "upload"} size={13} />
               {saving ? t("Saving…") : saved ? t("Saved") : t("Save metadata")}
@@ -623,7 +647,7 @@ export default function StoryDetail({
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
-              <th className="w-36" />
+              <th className="w-44" />
             </tr>
           </thead>
           <tbody>
@@ -655,17 +679,28 @@ export default function StoryDetail({
                   title={c.title}
                   retrying={c.retrying}
                   retriedOnce={c.retriedOnce}
+                  imported={imported}
                   onTitleChange={(title) =>
                     setChapters((cs) => cs.map((x) => (x.id === c.id ? { ...x, title } : x)))
                   }
                   onRetry={() => handleCrawl([c.order])}
                   audioUrl={
                     narratable && narration.state?.chapters[c.order] === "ready"
-                      ? chapterAudioUrl(story.id, c.order, { download: true })
+                      ? chapterAudioUrl(story.id, c.order, { download: true, music: playerMusic(player) })
                       : undefined
                   }
                   audioPlaying={player.isPlaying(story.id, c.order)}
                   onPlayAudio={() => playChapter(c.order)}
+                  onRegenerateAudio={() => void narration.start([c.order], { regenerate: true })}
+                  onCreateAudio={
+                    narratable && narration.state?.chapters[c.order] === "missing"
+                      ? () => void narration.start([c.order])
+                      : undefined
+                  }
+                  regenerateDisabled={!!narration.state?.running}
+                  regenerating={narration.state?.running?.order === c.order}
+                  spellChecked={c.spellChecked}
+                  onToggleSpellChecked={() => handleToggleSpellChecked(c.order, !c.spellChecked)}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {
@@ -844,7 +879,7 @@ export function StoryDetailSkeleton() {
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
-              <th className="w-36" />
+              <th className="w-44" />
             </tr>
           </thead>
           <tbody>

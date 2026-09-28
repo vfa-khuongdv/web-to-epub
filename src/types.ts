@@ -62,6 +62,8 @@ export interface StoredChapter {
   error?: string;
   errorKind?: ChapterErrorKind;
   blocks?: ContentBlock[];
+  // The reader marked the chapter's typos as fixed; a re-crawl replaces the text and clears it.
+  spellChecked?: boolean;
 }
 
 export interface StoredStory {
