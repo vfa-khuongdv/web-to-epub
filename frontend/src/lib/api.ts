@@ -259,6 +259,18 @@ export async function saveChapterTitle(storyId: string, order: number, title: st
   return data.chapter as StoredChapter;
 }
 
+// Mark a chapter's typos as fixed (or not). Only the flag changes, not the text.
+export async function saveChapterSpellChecked(storyId: string, order: number, spellChecked: boolean): Promise<StoredChapter> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/chapters/${order}/spell-checked`, {
+    method: "PATCH",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ spellChecked }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not update spell-check mark")));
+  const data = await res.json();
+  return data.chapter as StoredChapter;
+}
+
 export async function deleteStory(id: string): Promise<void> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}`, { method: "DELETE", headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete story")));
@@ -581,11 +593,16 @@ export async function fetchNarration(storyId: string): Promise<NarrationState> {
   return (await res.json()) as NarrationState;
 }
 
-export async function startNarration(storyId: string, orders?: number[]): Promise<{ total: number }> {
+// `regenerate` narrates the chapters again even when they already have audio.
+export async function startNarration(
+  storyId: string,
+  orders?: number[],
+  options: { regenerate?: boolean } = {}
+): Promise<{ total: number }> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/narrate`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify(orders ? { orders } : {}),
+    body: JSON.stringify({ ...(orders ? { orders } : {}), ...(options.regenerate ? { regenerate: true } : {}) }),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not start narration")));
   return (await res.json()) as { total: number };
@@ -635,7 +652,7 @@ export interface AudioExport {
   exportId: string;
   fileName: string;
   count: number;
-  // Chapters left out because their audio is missing or out of date.
+  // Chapters left out because they have no audio.
   missing: number[];
 }
 
@@ -648,6 +665,38 @@ export async function exportStoryAudio(storyId: string): Promise<AudioExport & {
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not export audio")));
   const created = (await res.json()) as AudioExport;
   return { ...created, url: `/api/exports/audio/${encodeURIComponent(created.exportId)}` };
+}
+
+export interface AudioMixJob {
+  state: "running" | "done" | "error";
+  done: number;
+  total: number;
+  exportId?: string;
+  fileName?: string;
+  message?: string;
+  musicName?: string;
+}
+
+// One MP3 of the whole story with background music under it. The server joins it in
+// the background (it takes minutes on a long story); poll fetchAudioMix with the job id.
+export async function startAudioMix(
+  storyId: string,
+  music: { musicId?: string; musicVolume?: number }
+): Promise<{ jobId: string; total: number }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/export-audio-mix`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(music),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not export audio")));
+  return (await res.json()) as { jobId: string; total: number };
+}
+
+export async function fetchAudioMix(jobId: string): Promise<AudioMixJob & { url?: string }> {
+  const res = await apiFetch(`/api/exports/audio-mix/${encodeURIComponent(jobId)}`, { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not export audio")));
+  const job = (await res.json()) as AudioMixJob;
+  return job.exportId ? { ...job, url: `/api/exports/audio/${encodeURIComponent(job.exportId)}` } : job;
 }
 
 // ---- App update (see src/services/appUpdate.ts) ------------------------------

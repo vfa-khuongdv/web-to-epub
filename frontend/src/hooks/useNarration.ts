@@ -121,10 +121,10 @@ export function useNarration(storyId: string, enabled: boolean, version?: string
   }, [enabled, storyId, refresh, setRunning]);
 
   const start = useCallback(
-    async (orders?: number[]) => {
+    async (orders?: number[], options?: { regenerate?: boolean }) => {
       setError(null);
       try {
-        await startNarration(storyId, orders);
+        await startNarration(storyId, orders, options);
       } catch (err) {
         setError((err as Error).message);
       }

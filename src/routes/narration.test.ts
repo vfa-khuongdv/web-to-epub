@@ -23,6 +23,8 @@ const fake = vi.hoisted(() => ({
 vi.mock("../services/tts/runtime", () => ({
   runtimeFor: () => ({
     status: async () => ({ supported: true, state: fake.installed ? "installed" : "not-installed" }),
+    // Node plays the engine's Python, running the fake mixer below.
+    python: async () => (fake.installed ? { command: process.execPath, env: {} } : undefined),
   }),
   ttsEngines: {
     withModel: async (_variant: string, fn: (worker: unknown) => Promise<unknown>) =>
@@ -38,6 +40,11 @@ vi.mock("../services/tts/runtime", () => ({
         },
       }),
   },
+}));
+
+vi.mock("../config/tts", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../config/tts")>()),
+  MIX_SCRIPT: (await import("node:path")).join(__dirname, "..", "services", "tts", "__fixtures__", "fakeMixer.js"),
 }));
 
 function makeStory(id: string, language: string): StoredStory {
@@ -201,7 +208,7 @@ describe("narration routes", () => {
     expect(events.at(-1)).toMatchObject({ done: 2, failed: 0, total: 2, cancelled: false });
   });
 
-  it("serves one chapter's audio only while it matches the chapter", async () => {
+  it("serves one chapter's audio, and keeps serving it after the chapter is edited", async () => {
     expect((await fetch(`${base}/stories/${viId}/chapters/1/audio`)).status).toBe(409);
     await post(`/stories/${viId}/narrate`);
     await waitIdle(viId);
@@ -223,7 +230,12 @@ describe("narration routes", () => {
     const edited = (await stories.getChapter(viId, 1))!;
     edited.blocks = [{ type: "paragraph", text: "Đã sửa." }];
     await stories.saveChapter(viId, edited);
-    expect((await fetch(`${base}/stories/${viId}/chapters/1/audio`)).status).toBe(409);
+    expect((await fetch(`${base}/stories/${viId}/chapters/1/audio`)).status).toBe(200);
+
+    // Regenerate reads the edited text into the same file.
+    await post(`/stories/${viId}/narrate`, { orders: [1], regenerate: true });
+    await waitIdle(viId);
+    expect(await (await fetch(`${base}/stories/${viId}/chapters/1/audio`)).text()).toBe("Chương 1|Đã sửa.");
   });
 
   it("zips the narrated chapters, lists the missing ones, and serves the zip once", async () => {
@@ -310,5 +322,50 @@ describe("narration routes", () => {
     expect((await (await fetch(`${base}/stories/${viId}/narration`)).json()).chapters).toEqual({ 1: "missing", 2: "missing" });
     expect((await fetch(`${base}/stories/${"0".repeat(40)}/narration`, { method: "DELETE" })).status).toBe(404);
   });
-});
+  async function waitMix(jobId: string) {
+    for (let i = 0; i < 200; i++) {
+      const job = await (await fetch(`${base}/exports/audio-mix/${jobId}`)).json();
+      if (job.state !== "running") return job;
+      await new Promise((r) => setTimeout(r, 10));
+    }
+    throw new Error("mix did not finish");
+  }
 
+  it("joins the story into one MP3 with the background music, once every chapter has audio", async () => {
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+    const partial = await post(`/stories/${viId}/export-audio-mix`);
+    expect(partial.status).toBe(400);
+    expect(await partial.json()).toMatchObject({ missing: [2] });
+
+    await post(`/stories/${viId}/narrate`, { orders: [2] });
+    await waitIdle(viId);
+    const { backgroundMusic } = await import("../services/backgroundMusic");
+    const track = await backgroundMusic.add("Mưa", Buffer.concat([Buffer.from("ID3"), Buffer.alloc(20)]));
+
+    expect((await post(`/stories/${viId}/export-audio-mix`, { musicId: "0".repeat(8) + "-0000-0000-0000-" + "0".repeat(12) })).status).toBe(400);
+    const res = await post(`/stories/${viId}/export-audio-mix`, { musicId: track.id, musicVolume: 0.25 });
+    expect(res.status).toBe(202);
+    const { jobId, total } = await res.json();
+    expect(total).toBe(2);
+
+    const job = await waitMix(jobId);
+    expect(job).toMatchObject({ state: "done", done: 2, total: 2, fileName: "Truyện (audio).mp3", musicName: "Mưa" });
+    const file = await fetch(`${base}/exports/audio/${job.exportId}`);
+    expect(file.headers.get("content-type")).toBe("audio/mpeg");
+    expect(await file.text()).toBe("Chương 1|Một.+Chương 2|Hai.~music@0.25");
+    // Served once, like the zip.
+    expect((await fetch(`${base}/exports/audio/${job.exportId}`)).status).toBe(404);
+  });
+
+  it("joins without music when none is given, and refuses when no engine is installed", async () => {
+    await post(`/stories/${viId}/narrate`);
+    await waitIdle(viId);
+    const job = await waitMix((await (await post(`/stories/${viId}/export-audio-mix`)).json()).jobId);
+    expect(job.musicName).toBeUndefined();
+    expect(await (await fetch(`${base}/exports/audio/${job.exportId}`)).text()).toBe("Chương 1|Một.+Chương 2|Hai.");
+
+    fake.installed = false;
+    expect((await post(`/stories/${viId}/export-audio-mix`)).status).toBe(409);
+  });
+});

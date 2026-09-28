@@ -63,6 +63,12 @@ export const WORKER_SCRIPT = path
   .join(__dirname, "..", "..", "tts", "vieneu_worker.py")
   .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
 
+// Joins a story's chapter MP3s into one file with background music (audio export).
+// Unpacked out of app.asar like the workers, and run with an engine's Python.
+export const MIX_SCRIPT = path
+  .join(__dirname, "..", "..", "tts", "mix_story.py")
+  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
 // Voices and preview samples that ship with the app (see src/services/tts/voiceSamples.ts):
 //   tts/voices/presets.json            VieNeu's preset voices per model, written by the render script
 //   tts/voices/omnivoice.json          OmniVoice's built-in voices: a reference clip each (hand-edited)

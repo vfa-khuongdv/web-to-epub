@@ -90,6 +90,9 @@ export interface TtsRuntime {
   // preview at a time, so a model switch never lands in the middle of someone's chapter.
   withModel<T>(variant: TtsVariant, fn: (worker: TtsWorker, model: LoadedModel) => Promise<T>): Promise<T>;
   diskBytes(): Promise<number>;
+  // The engine's Python and environment, to run a helper script (the audio mixer) with
+  // its packages; undefined until the engine is installed.
+  python(): Promise<{ command: string; env: NodeJS.ProcessEnv } | undefined>;
   shutdown(): void;
   // Close the worker now unless something is using it (frees its model's memory).
   release(): void;
@@ -300,6 +303,10 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
       };
       await walk(deps.ttsDir);
       return total;
+    },
+
+    async python() {
+      return (await isInstalled()) ? { command: python, env } : undefined;
     },
 
     shutdown() {

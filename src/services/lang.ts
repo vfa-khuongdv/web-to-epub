@@ -38,6 +38,7 @@ const vi: Record<string, string> = {
   "Chapter URL is required": "URL chương là bắt buộc",
   "Chapter URL is not a valid URL": "URL chương không hợp lệ",
   "Invalid chapter order": "Số thứ tự chương không hợp lệ",
+  "Invalid spell-check flag": "Trạng thái sửa chính tả không hợp lệ",
   "Cover file is required": "Thiếu file cover",
   "Invalid cover file — only JPG, PNG, WebP, or GIF accepted":
     "File bìa không hợp lệ — chỉ nhận JPG, PNG, WebP hoặc GIF",
@@ -163,6 +164,10 @@ const vi: Record<string, string> = {
   "Story is being narrated, cannot delete": "Truyện đang được đọc, không xoá được",
   "Chapter audio has not been generated yet — narrate the chapter first":
     "Chương này chưa có audio — hãy tạo giọng đọc cho chương trước",
+  "This story's audio is already being joined": "Audio của truyện này đang được ghép",
+  "Every chapter needs audio before the story can be joined into one file — {count} chapters have none yet": "Mọi chương cần có audio trước khi ghép thành một file — còn {count} chương chưa có",
+  "Background music track not found": "Không tìm thấy bài nhạc nền",
+  "Could not join the audio: {message}": "Không ghép được audio: {message}",
   "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",
   "Unsupported narration variant": "Kiểu giọng đọc không hợp lệ",
   "Unsupported narration engine": "Bộ đọc không hợp lệ",
