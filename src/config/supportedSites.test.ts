@@ -58,6 +58,14 @@ describe("findSupportedSite", () => {
     expect(findSupportedSite("https://fanfiction.net/s/5782108/1/")?.domain).toBe("fanfiction.net");
   });
 
+  it("nhận vietmessenger.com", () => {
+    expect(findSupportedSite("https://vietmessenger.com/books/?title=2030")).toEqual({
+      domain: "vietmessenger.com",
+      name: "Viet Messenger",
+    });
+    expect(findSupportedSite("https://www.vietmessenger.com/books/?title=a")?.domain).toBe("vietmessenger.com");
+  });
+
   it("nhận subdomain con của supported site", () => {
     expect(findSupportedSite("https://m.wattpad.com/story/123")?.domain).toBe("wattpad.com");
   });

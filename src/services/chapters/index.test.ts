@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getChapterFetcher } from "./index";
 import { fetchAsianfanficsChapter } from "./asianfanfics";
 import { fetchTruyenfullChapter } from "./truyenfull";
+import { fetchVietmessengerChapter } from "./vietmessenger";
 import { fetchWattpadChapter } from "./wattpad";
 
 describe("getChapterFetcher", () => {
@@ -9,6 +10,9 @@ describe("getChapterFetcher", () => {
     expect(getChapterFetcher("https://www.wattpad.com/148415654-a")?.fetchChapter).toBe(fetchWattpadChapter);
     expect(getChapterFetcher("https://www.asianfanfics.com/story/view/1143593/1/attraction")?.fetchChapter).toBe(
       fetchAsianfanficsChapter
+    );
+    expect(getChapterFetcher("https://vietmessenger.com/books/?title=2030&page=2")?.fetchChapter).toBe(
+      fetchVietmessengerChapter
     );
   });
 

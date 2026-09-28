@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { getTocAdapter } from "./index";
 import { asianfanficsAdapter } from "./asianfanfics";
 import { truyenfullTemplateAdapter } from "./truyenfullTemplate";
+import { vietmessengerAdapter } from "./vietmessenger";
 import { wattpadAdapter } from "./wattpad";
 import { xtruyenAdapter } from "./xtruyen";
 
@@ -14,6 +15,7 @@ describe("getTocAdapter", () => {
     expect(getTocAdapter("https://xtruyen.vn/truyen/han-phu/")).toBe(xtruyenAdapter);
     expect(getTocAdapter("https://www.wattpad.com/story/44634431-pumpkin-patch-princess")).toBe(wattpadAdapter);
     expect(getTocAdapter("https://www.asianfanfics.com/story/view/1143593/attraction")).toBe(asianfanficsAdapter);
+    expect(getTocAdapter("https://vietmessenger.com/books/?title=2030")).toBe(vietmessengerAdapter);
   });
 
   it("hostname không phân biệt hoa/thường", () => {

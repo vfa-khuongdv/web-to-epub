@@ -98,6 +98,11 @@ const vi: Record<string, string> = {
     "Chương này đang bị website khóa nội dung (yêu cầu tắt/mở lại quảng cáo), không thể trích xuất: {url}",
   "This chapter is part of Wattpad's Paid Stories program and cannot be extracted: {url}":
     "Chương này thuộc chương trình trả phí (Paid Stories) của Wattpad, không thể trích xuất: {url}",
+  "This is not a Viet Messenger chapter page: {url}": "URL này không phải trang chương của Viet Messenger: {url}",
+  "Viet Messenger did not return chapter content — the chapter may have been removed or the site changed ({url})":
+    "Viet Messenger không trả về nội dung chương — chương có thể đã bị xoá hoặc trang đã đổi cấu trúc ({url})",
+  "Could not find the book's category on the Viet Messenger page ({url})":
+    "Không tìm thấy thể loại (cat) của sách trên trang Viet Messenger ({url})",
   "Could not find chapter content at {url} — the site may have changed structure or the chapter is locked":
     "Không tìm thấy nội dung chương tại {url} — trang có thể đã đổi cấu trúc hoặc chương bị khoá",
   "Cloudflare verification did not finish — try again in a moment ({url})":
@@ -126,6 +131,10 @@ const vi: Record<string, string> = {
   "xtruyen's chapter list API did not return JSON": "API danh sách chương của xtruyen trả về không phải JSON",
   "xtruyen's chapter list API returned the wrong format":
     "API danh sách chương của xtruyen trả về sai định dạng",
+  "This is not a Viet Messenger book page: {url} — paste a URL like https://vietmessenger.com/books/?title=<name>":
+    "URL này không phải trang truyện Viet Messenger: {url} — cần dán URL dạng https://vietmessenger.com/books/?title=<tên>",
+  "This book is members-only on Viet Messenger — it needs a member account, which this app cannot sign in to: {url}":
+    "Sách này trên Viet Messenger chỉ dành cho thành viên — cần tài khoản thành viên, app không tự đăng nhập được: {url}",
   "Story not found on Asianfanfics — check the story URL again ({url})":
     "Không tìm thấy truyện trên Asianfanfics — kiểm tra lại URL truyện ({url})",
   "This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}":

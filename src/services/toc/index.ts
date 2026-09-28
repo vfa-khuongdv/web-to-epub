@@ -2,6 +2,7 @@ import { asianfanficsAdapter } from "./asianfanfics";
 import { fanfictionAdapter } from "./fanfiction";
 import { truyenfullTemplateAdapter } from "./truyenfullTemplate";
 import { TocAdapter } from "./types";
+import { vietmessengerAdapter } from "./vietmessenger";
 import { wattpadAdapter } from "./wattpad";
 import { xtruyenAdapter } from "./xtruyen";
 
@@ -13,6 +14,7 @@ const ADAPTERS: TocAdapter[] = [
   wattpadAdapter,
   asianfanficsAdapter,
   fanfictionAdapter,
+  vietmessengerAdapter,
 ];
 
 export function getTocAdapter(url: string): TocAdapter | undefined {
