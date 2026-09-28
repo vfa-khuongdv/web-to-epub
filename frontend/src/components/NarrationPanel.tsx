@@ -7,6 +7,7 @@ import { NarrationPlayer, useNarrationPlayer } from "../hooks/narrationPlayer";
 import { NarrationOutcome } from "../hooks/useNarration";
 import { NarrationState } from "../types";
 import { Icon } from "./Icon";
+import { formatClock } from "./PlayerBar";
 import { ProgressBar } from "./ProgressBar";
 
 /**
@@ -24,6 +25,8 @@ export default function NarrationPanel({
   onDismissOutcome,
   onOpenSettings,
   onAudioDeleted,
+  resume,
+  onResume,
   actions,
 }: {
   storyId: string;
@@ -36,6 +39,9 @@ export default function NarrationPanel({
   onOpenSettings: () => void;
   // After "Delete audio": the page refetches which chapters have narration.
   onAudioDeleted: () => void;
+  // The position this story was last listened to, when it can be played from there.
+  resume?: { order: number; time: number; title: string };
+  onResume?: () => void;
   // Export buttons, placed with the others.
   actions?: ReactNode;
 }) {
@@ -110,6 +116,17 @@ export default function NarrationPanel({
         </span>
 
         <span className="ml-auto flex flex-wrap items-center gap-2">
+          {resume && onResume && (
+            <button
+              type="button"
+              className="btn btn-tiny"
+              title={resume.title}
+              onClick={onResume}
+            >
+              <Icon name="play" size={11} />
+              {t("Continue listening · chapter {order} · {time}", { order: resume.order, time: formatClock(resume.time) })}
+            </button>
+          )}
           {running ? (
             <button
               type="button"

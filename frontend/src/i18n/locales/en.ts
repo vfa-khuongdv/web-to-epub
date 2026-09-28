@@ -471,6 +471,7 @@ export const en: Record<string, string> = {
   "Could not stop narration": "Could not stop narration",
   "{ready}/{total} chapters narrated": "{ready}/{total} chapters narrated",
   "Stop narration": "Stop narration",
+  "Continue listening · chapter {order} · {time}": "Continue listening · chapter {order} · {time}",
   "Narrate ({count} chapters)": "Narrate ({count} chapters)",
   "Narration progress": "Narration progress",
   "Reading chapter {order} — part {part}/{parts}": "Reading chapter {order} — part {part}/{parts}",

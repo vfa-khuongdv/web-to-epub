@@ -7,7 +7,7 @@ import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
 import { useNarration } from "../hooks/useNarration";
-import { PlayerQueue, useNarrationPlayer } from "../hooks/narrationPlayer";
+import { PlayerQueue, readPosition, useNarrationPlayer } from "../hooks/narrationPlayer";
 import NarrationPanel, { playerMusic } from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
@@ -147,6 +147,10 @@ export default function StoryDetail({
   }, [narrationLoaded, queue, updateQueue]);
   const playChapter = (order: number) =>
     player.storyId === story.id && player.order === order ? player.toggle() : player.play(queue, order);
+  // Where listening stopped last time, offered while this story is not the one loaded in
+  // the player (re-read on every render, so it follows what the player just saved).
+  const savedListen = player.storyId === story.id ? undefined : readPosition(story.id, vault.active);
+  const resumeListen = savedListen && narratedOrders.includes(savedListen.order) ? savedListen : undefined;
   // Opened from the player: the reader starts on the chapter being played.
   const [readerStart, setReaderStart] = useState<number | undefined>(undefined);
   const { openRequest, clearOpenRequest } = player;
@@ -581,6 +585,8 @@ export default function StoryDetail({
               onDismissOutcome={narration.dismissOutcome}
               onOpenSettings={onOpenSettings}
               onAudioDeleted={() => void narration.refresh()}
+              resume={resumeListen && { ...resumeListen, title: queue.titles[resumeListen.order] ?? "" }}
+              onResume={() => resumeListen && player.play(queue, resumeListen.order)}
             />
           )}
 
