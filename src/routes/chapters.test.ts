@@ -1,5 +1,5 @@
-import { mkdtempSync } from "node:fs";
-import { rm } from "node:fs/promises";
+import { existsSync, mkdtempSync } from "node:fs";
+import { rm, writeFile } from "node:fs/promises";
 import type { Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
@@ -289,6 +289,17 @@ describe("DELETE /stories/:id/chapters/:order", () => {
     expect(story?.chapters.map((c) => c.order)).toEqual([1, 3]);
     expect(story?.chapters[1].title).toBe("Junk");
     expect(await stories.getChapter(id, 2)).toBeUndefined();
+  });
+
+  it("removes the chapter's narrated audio, leaving the others'", async () => {
+    const { chapterAudioPath, ensureStoryAudioDir } = await import("../services/tts/audioCache");
+    await ensureStoryAudioDir(library.dataDir, id);
+    await writeFile(chapterAudioPath(library.dataDir, id, 2), "mp3");
+    await writeFile(chapterAudioPath(library.dataDir, id, 3), "mp3");
+
+    expect((await deleteChapter(2)).status).toBe(204);
+    expect(existsSync(chapterAudioPath(library.dataDir, id, 2))).toBe(false);
+    expect(existsSync(chapterAudioPath(library.dataDir, id, 3))).toBe(true);
   });
 
   it("404s for a chapter order that doesn't exist", async () => {
