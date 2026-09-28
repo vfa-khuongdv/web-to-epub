@@ -1,5 +1,6 @@
 import { Request as ExpressRequest, Response as ExpressResponse } from "express";
 import { CoverStore, createCoverStore } from "../services/coverStore";
+import { EpubMediaStore, createEpubMediaStore } from "../services/epubMedia";
 import { StoryStore, createStoryStore, storyStore } from "../services/storyStore";
 import { vault } from "../services/vault";
 import { t } from "../services/lang";
@@ -15,6 +16,8 @@ export interface Library {
   dataDir: string;
   stories: StoryStore;
   covers: CoverStore;
+  // Book images imported from an EPUB file, kept under <dataDir>/epub-media/<storyId>/.
+  epubMedia: EpubMediaStore;
   // Crawl state belongs to the library too: a story id is sha1 of its URL, so the same
   // story saved in both libraries shares an id and their events would cross. `abort` lets
   // POST /stories/:id/crawl/stop end a running crawl — checked between chapters, not
@@ -46,6 +49,7 @@ function createLibrary(dataDir: string, stories: StoryStore): Library {
     dataDir,
     stories,
     covers: createCoverStore(dataDir),
+    epubMedia: createEpubMediaStore(dataDir),
     runningCrawls: new Map(),
     liveSubscribers: new Map(),
     liveAllSubscribers: new Set(),
