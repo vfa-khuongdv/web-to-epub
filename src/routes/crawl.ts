@@ -20,6 +20,10 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
+  if (story.site === "epub") {
+    res.status(400).json({ message: t("Imported books cannot be crawled") });
+    return;
+  }
   if (library.runningCrawls.has(id)) {
     res.status(409).json({ message: t("Story is currently crawling") });
     return;
