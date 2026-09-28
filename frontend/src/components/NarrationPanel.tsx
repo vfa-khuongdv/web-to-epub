@@ -3,7 +3,7 @@ import { deleteStoryAudio, exportStoryAudio, fetchAudioMix, fetchTtsStatus, star
 import { formatBytes } from "../lib/formatBytes";
 import { formatEta } from "../lib/formatEta";
 import { useLang } from "../i18n";
-import { useNarrationPlayer } from "../hooks/narrationPlayer";
+import { NarrationPlayer, useNarrationPlayer } from "../hooks/narrationPlayer";
 import { NarrationOutcome } from "../hooks/useNarration";
 import { NarrationState } from "../types";
 import { Icon } from "./Icon";
@@ -141,7 +141,11 @@ export default function NarrationPanel({
             onClick={() => void audioExport.run()}
           >
             <Icon name="download" size={12} />
-            {audioExport.exporting ? t("Preparing audio…") : t("Export audio (.zip)")}
+            {audioExport.progress
+              ? t("Mixing audio… {done}/{total}", audioExport.progress)
+              : audioExport.exporting
+                ? t("Preparing audio…")
+                : t("Export audio (.zip)")}
           </button>
           <button
             type="button"
@@ -248,6 +252,30 @@ async function saveExport(folder: string | null, url: string, fileName: string) 
   a.remove();
 }
 
+// The background music the player is set to, as an export sends it: the track, and its
+// volume over the voice's so the file keeps the balance heard in the app. Empty when the
+// player's music is off.
+export function playerMusic(player: NarrationPlayer): { musicId?: string; musicVolume?: number } {
+  return player.musicEnabled && player.musicTrack
+    ? { musicId: player.musicTrack, musicVolume: player.musicVolume / Math.max(player.volume, 0.05) }
+    : {};
+}
+
+// Wait for a mix job, reporting its progress; resolves with the finished job.
+async function waitForMix(
+  jobId: string,
+  fallbackError: string,
+  onProgress: (progress: { done: number; total: number }) => void
+) {
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    const job = await fetchAudioMix(jobId);
+    if (job.state === "error") throw new Error(job.message ?? fallbackError);
+    onProgress({ done: job.done, total: job.total });
+    if (job.state === "done" && job.url && job.fileName) return { ...job, url: job.url, fileName: job.fileName };
+  }
+}
+
 /**
  * "Export audio": the server zips the narrated chapters to a temp file, then the zip is
  * saved without passing through this page's memory — the packaged app streams it into
@@ -255,7 +283,9 @@ async function saveExport(folder: string | null, url: string, fileName: string) 
  */
 function useAudioExport(storyId: string) {
   const { t } = useLang();
+  const player = useNarrationPlayer();
   const [exporting, setExporting] = useState(false);
+  const [progress, setProgress] = useState<{ done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -268,7 +298,18 @@ function useAudioExport(storyId: string) {
       const bridge = window.electronExport;
       const folder = bridge ? await bridge.pickFolder() : null;
       if (bridge && folder === null) return;
-      const created = await exportStoryAudio(storyId);
+      // With the player's music on, every chapter is mixed first — a job, like the
+      // one-file export; without it the server only zips the files, which is quick.
+      const music = playerMusic(player);
+      let created: { url: string; fileName: string; count: number; missing: number[] };
+      if (music.musicId) {
+        const { jobId, total } = await startAudioMix(storyId, { ...music, format: "zip" });
+        setProgress({ done: 0, total });
+        const job = await waitForMix(jobId, t("Could not export audio"), setProgress);
+        created = { url: job.url, fileName: job.fileName, count: job.count ?? 0, missing: job.missing ?? [] };
+      } else {
+        created = await exportStoryAudio(storyId);
+      }
       await saveExport(folder, created.url, created.fileName);
       setMessage(
         created.missing.length > 0
@@ -282,10 +323,11 @@ function useAudioExport(storyId: string) {
       setError((err as Error).message);
     } finally {
       setExporting(false);
+      setProgress(null);
     }
   }
 
-  return { exporting, error, message, run };
+  return { exporting, progress, error, message, run };
 }
 
 /**
@@ -308,28 +350,16 @@ function useAudioMix(storyId: string) {
       const bridge = window.electronExport;
       const folder = bridge ? await bridge.pickFolder() : null;
       if (bridge && folder === null) return;
-      // The player sets music and voice volume separately; the file keeps their balance.
-      const music =
-        player.musicEnabled && player.musicTrack
-          ? { musicId: player.musicTrack, musicVolume: player.musicVolume / Math.max(player.volume, 0.05) }
-          : {};
+      const music = playerMusic(player);
       const { jobId, total } = await startAudioMix(storyId, music);
       setProgress({ done: 0, total });
-      for (;;) {
-        await new Promise((resolve) => setTimeout(resolve, 1500));
-        const job = await fetchAudioMix(jobId);
-        if (job.state === "error") throw new Error(job.message ?? t("Could not export audio"));
-        setProgress({ done: job.done, total: job.total });
-        if (job.state === "done" && job.url && job.fileName) {
-          await saveExport(folder, job.url, job.fileName);
-          setMessage(
-            job.musicName
-              ? t("Exported the whole story as one file, with the background music “{name}”.", { name: job.musicName })
-              : t("Exported the whole story as one file. Background music is off in the player, so it has none.")
-          );
-          return;
-        }
-      }
+      const job = await waitForMix(jobId, t("Could not export audio"), setProgress);
+      await saveExport(folder, job.url, job.fileName);
+      setMessage(
+        job.musicName
+          ? t("Exported the whole story as one file, with the background music “{name}”.", { name: job.musicName })
+          : t("Exported the whole story as one file. Background music is off in the player, so it has none.")
+      );
     } catch (err) {
       setError((err as Error).message);
     } finally {

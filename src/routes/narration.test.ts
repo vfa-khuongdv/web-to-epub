@@ -225,7 +225,7 @@ describe("narration routes", () => {
     expect(Buffer.from(await range.arrayBuffer()).toString()).toBe(Buffer.from("Chương 1|Một.").subarray(0, 5).toString());
 
     const download = await fetch(`${base}/stories/${viId}/chapters/1/audio?download=1`);
-    expect(decodeURIComponent(download.headers.get("content-disposition") ?? "")).toContain("001 - Chương 1.mp3");
+    expect(decodeURIComponent(download.headers.get("content-disposition") ?? "")).toContain("Truyện - 001 - Chương 1.mp3");
 
     const edited = (await stories.getChapter(viId, 1))!;
     edited.blocks = [{ type: "paragraph", text: "Đã sửa." }];
@@ -252,7 +252,7 @@ describe("narration routes", () => {
     expect(zip.status).toBe(200);
     const { unzipSync } = await import("fflate");
     const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
-    expect(Object.keys(entries)).toEqual(["002 - Chương 2.mp3"]);
+    expect(Object.keys(entries)).toEqual(["Truyện - 002 - Chương 2.mp3"]);
 
     expect((await fetch(`${base}/exports/audio/${created.exportId}`)).status).toBe(404);
   });
@@ -367,5 +367,40 @@ describe("narration routes", () => {
 
     fake.installed = false;
     expect((await post(`/stories/${viId}/export-audio-mix`)).status).toBe(409);
+  });
+  it("zips each chapter with the music under it, listing the ones without audio", async () => {
+    await post(`/stories/${viId}/narrate`, { orders: [2] });
+    await waitIdle(viId);
+    const { backgroundMusic } = await import("../services/backgroundMusic");
+    const track = await backgroundMusic.add("Gió", Buffer.concat([Buffer.from("ID3"), Buffer.alloc(20)]));
+
+    const res = await post(`/stories/${viId}/export-audio-mix`, { format: "zip", musicId: track.id, musicVolume: 0.5 });
+    expect(res.status).toBe(202);
+    const job = await waitMix((await res.json()).jobId);
+    expect(job).toMatchObject({ state: "done", fileName: "Truyện (audio).zip", count: 1, missing: [1], musicName: "Gió" });
+
+    const zip = await fetch(`${base}/exports/audio/${job.exportId}`);
+    expect(zip.headers.get("content-type")).toBe("application/zip");
+    const { unzipSync, strFromU8 } = await import("fflate");
+    const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
+    expect(Object.keys(entries)).toEqual(["Truyện - 002 - Chương 2.mp3"]);
+    expect(strFromU8(entries["Truyện - 002 - Chương 2.mp3"])).toBe("Chương 2|Hai.~music@0.5");
+  });
+
+  it("mixes the music into a chapter's download link, not into what the player streams", async () => {
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+    const { backgroundMusic } = await import("../services/backgroundMusic");
+    const track = await backgroundMusic.add("Sóng", Buffer.concat([Buffer.from("ID3"), Buffer.alloc(20)]));
+
+    const url = `${base}/stories/${viId}/chapters/1/audio`;
+    const download = await fetch(`${url}?download=1&music=${track.id}&musicVolume=0.4`);
+    expect(download.status).toBe(200);
+    expect(decodeURIComponent(download.headers.get("content-disposition") ?? "")).toContain("Truyện - 001 - Chương 1.mp3");
+    expect(await download.text()).toBe("Chương 1|Một.~music@0.4");
+
+    expect(await (await fetch(`${url}?music=${track.id}`)).text()).toBe("Chương 1|Một.");
+    expect(await (await fetch(`${url}?download=1`)).text()).toBe("Chương 1|Một.");
+    expect((await fetch(`${url}?download=1&music=nope`)).status).toBe(400);
   });
 });

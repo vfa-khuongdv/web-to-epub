@@ -183,6 +183,7 @@ export const en: Record<string, string> = {
   "Export audio + music (.mp3)": "Export audio + music (.mp3)",
   "Exported the whole story as one file, with the background music “{name}”.": "Exported the whole story as one file, with the background music “{name}”.",
   "Exported the whole story as one file. Background music is off in the player, so it has none.": "Exported the whole story as one file. Background music is off in the player, so it has none.",
+  "Mixing audio… {done}/{total}": "Mixing audio… {done}/{total}",
   "Re-crawl": "Re-crawl",
   "Re-crawling will overwrite this chapter's saved content. Continue?":
     "Re-crawling will overwrite this chapter's saved content. Continue?",

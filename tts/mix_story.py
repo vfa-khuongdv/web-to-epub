@@ -6,6 +6,10 @@ numpy, soundfile and soxr). Reads one JSON object on stdin:
   {"chapters": ["/abs/1.mp3", ...], "music": "/abs/track.mp3" | null,
    "musicVolume": 0.3, "out": "/abs/story.mp3"}
 
+or, for one file per chapter (the zip export and a chapter's download), "outs":
+["/abs/001.mp3", ...] in place of "out" — each chapter mixed on its own, the music
+starting over in every file.
+
 and writes JSON lines on stdout:
 
   {"type": "progress", "done": 3, "total": 120}
@@ -67,9 +71,21 @@ def main():
         np.clip(voice, -1.0, 1.0, out=voice)
         return voice
 
+    frames = 0
+    if job.get("outs"):
+        for index, (path, out) in enumerate(zip(chapters, job["outs"])):
+            at = 0
+            voice = mixed(path)
+            partial = out + ".part"
+            sf.write(partial, voice, rate, format="MP3")
+            os.replace(partial, out)
+            frames += len(voice)
+            send({"type": "progress", "done": index + 1, "total": len(chapters)})
+        send({"type": "done", "seconds": round(frames / rate, 2)})
+        return
+
     out = job["out"]
     partial = out + ".part"
-    frames = 0
     with sf.SoundFile(partial, "w", samplerate=rate, channels=1, format="MP3") as sink:
         for index, path in enumerate(chapters):
             voice = mixed(path)

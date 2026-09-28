@@ -7,13 +7,13 @@ import { chapterAudioFileName, writeAudioZip } from "./audioExport";
 
 describe("chapterAudioFileName", () => {
   it("pads the order to at least three digits, or to the widest order", () => {
-    expect(chapterAudioFileName(7, "Chương 7", 1)).toBe("007 - Chương 7.mp3");
-    expect(chapterAudioFileName(42, "Chương 42", 4)).toBe("0042 - Chương 42.mp3");
+    expect(chapterAudioFileName("Truyện", 7, "Chương 7", 1)).toBe("Truyện - 007 - Chương 7.mp3");
+    expect(chapterAudioFileName("Truyện", 42, "Chương 42", 4)).toBe("Truyện - 0042 - Chương 42.mp3");
   });
 
   it("keeps diacritics, replaces characters a filesystem refuses, and names untitled chapters", () => {
-    expect(chapterAudioFileName(1, 'Hồi 1: "Gặp gỡ" / Phần a?', 1)).toBe("001 - Hồi 1 Gặp gỡ Phần a.mp3");
-    expect(chapterAudioFileName(3, "   ", 1)).toBe("003 - Chapter 3.mp3");
+    expect(chapterAudioFileName("Tây Du: Ký?", 1, 'Hồi 1: "Gặp gỡ" / Phần a?', 1)).toBe("Tây Du Ký - 001 - Hồi 1 Gặp gỡ Phần a.mp3");
+    expect(chapterAudioFileName("  ", 3, "   ", 1)).toBe("book - 003 - Chapter 3.mp3");
   });
 });
 
