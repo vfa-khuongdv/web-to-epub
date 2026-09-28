@@ -57,11 +57,12 @@ export interface ImportedBook {
 export interface ParseEpubOptions {
   storeImage?: StoreImage;
   fallbackTitle?: string;
-  // Overridable so tests can exercise the cap without a 500 MB file.
+  // Overridable so tests can exercise the caps without huge fixtures.
   maxTotalUncompressedBytes?: number;
+  maxEntries?: number;
 }
 
-function unzipEntries(bytes: Buffer, maxTotal: number): Promise<Map<string, Buffer>> {
+function unzipEntries(bytes: Buffer, maxTotal: number, maxEntries: number): Promise<Map<string, Buffer>> {
   return new Promise((resolve, reject) => {
     const entries = new Map<string, Buffer>();
     let total = 0;
@@ -74,7 +75,11 @@ function unzipEntries(bytes: Buffer, maxTotal: number): Promise<Map<string, Buff
     try {
       const unzip = new Unzip((file) => {
         count += 1;
-        if (aborted || count > MAX_ENTRIES) return;
+        if (aborted) return;
+        if (count > maxEntries) {
+          fail(new EpubTooLargeError());
+          return;
+        }
         const chunks: Uint8Array[] = [];
         file.ondata = (error, chunk, final) => {
           if (aborted) return;
@@ -292,7 +297,11 @@ function stripTitleHeading(blocks: ContentBlock[], title: string): void {
 }
 
 export async function parseEpub(bytes: Buffer, options: ParseEpubOptions = {}): Promise<ImportedBook> {
-  const entries = await unzipEntries(bytes, options.maxTotalUncompressedBytes ?? MAX_TOTAL_UNCOMPRESSED_BYTES);
+  const entries = await unzipEntries(
+    bytes,
+    options.maxTotalUncompressedBytes ?? MAX_TOTAL_UNCOMPRESSED_BYTES,
+    options.maxEntries ?? MAX_ENTRIES
+  );
 
   const containerBytes = entries.get("META-INF/container.xml");
   const opfHref = containerBytes

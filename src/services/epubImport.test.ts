@@ -109,7 +109,8 @@ describe("parseEpub", () => {
     ]);
   });
 
-  it("strips scripts, event handlers, local and script links", async () => {
+  it("strips scripts, event handlers, srcset, inline styles, local and script links", async () => {
+    const { stored, store } = imageSink();
     const bytes = buildEpubFixture({
       chapters: [
         {
@@ -117,23 +118,28 @@ describe("parseEpub", () => {
           file: "OEBPS/ch1.xhtml",
           html:
             `<h1>An toàn</h1><script>alert(1)</script>` +
-            `<p onclick="steal()">Đoạn <a href="javascript:alert(2)">độc</a>` +
+            `<p onclick="steal()" style="color:red">Đoạn <a href="javascript:alert(2)">độc</a>` +
             ` <a href="file:///etc/passwd">tệp</a> <a href="ch2.xhtml">chương sau</a>` +
-            ` <a href="https://example.com">web</a></p>` +
+            ` <a href="https://example.com">web</a>` +
+            ` <img src="data:image/png;base64,${TINY_PNG.toString("base64")}" srcset="evil.png 2x" alt="inline"/></p>` +
             `<audio src="sound.mp3"></audio>`,
         },
       ],
     });
 
-    const book = await parseEpub(bytes);
+    const book = await parseEpub(bytes, { storeImage: store });
     const html = JSON.stringify(book.chapters[0].blocks);
 
+    expect(stored).toHaveLength(1);
     expect(html).not.toContain("script");
     expect(html).not.toContain("onclick");
     expect(html).not.toContain("javascript:");
     expect(html).not.toContain("file:");
     expect(html).not.toContain("ch2.xhtml");
     expect(html).not.toContain("audio");
+    expect(html).not.toContain("srcset");
+    expect(html).not.toContain("style=");
+    expect(html).toContain("epub-media/0123456789abcdef/img-1.png");
     // JSON.stringify escapes attribute quotes, hence the backslashes.
     expect(html).toContain('href=\\"https://example.com\\"');
   });
@@ -189,5 +195,14 @@ describe("parseEpub", () => {
     });
 
     await expect(parseEpub(bytes, { maxTotalUncompressedBytes: 1024 })).rejects.toBeInstanceOf(EpubTooLargeError);
+  });
+
+  it("stops when the book has more entries than the cap", async () => {
+    const bytes = buildEpubFixture();
+
+    await expect(parseEpub(bytes, { maxEntries: 2 })).rejects.toBeInstanceOf(EpubTooLargeError);
+
+    const book = await parseEpub(bytes);
+    expect(book.chapters).toHaveLength(1);
   });
 });
