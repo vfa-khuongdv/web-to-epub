@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { htmlToBlocks } from "../services/chapterHtml";
 import { t } from "../services/lang";
+import { removeChapterAudio } from "../services/tts/audioCache";
 import { StoredChapter } from "../types";
 import { libraryFor } from "./library";
 
@@ -158,7 +159,7 @@ chaptersRouter.patch("/stories/:id/chapters/:order/title", async (req, res) => {
 });
 
 // Remove one chapter from the library: junk TOC entries and chapters the site will never
-// serve are deleted outright, highlights included. Order is the TOC position, so the rest
+// serve are deleted outright, highlights and narrated audio included. Order is the TOC position, so the rest
 // keeps theirs — the list shows a gap. A later TOC refresh can bring the chapter back as
 // pending while the site still lists its URL; that is accepted, not a bug.
 chaptersRouter.delete("/stories/:id/chapters/:order", async (req, res) => {
@@ -181,5 +182,6 @@ chaptersRouter.delete("/stories/:id/chapters/:order", async (req, res) => {
     res.status(404).json({ message: t("Chapter not found") });
     return;
   }
+  await removeChapterAudio(library.dataDir, id, order);
   res.status(204).end();
 });
