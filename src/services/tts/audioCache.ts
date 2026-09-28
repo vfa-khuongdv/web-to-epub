@@ -97,6 +97,11 @@ export async function removeStoryAudio(dataDir: string, storyId: string): Promis
   await fs.rm(storyAudioDir(dataDir, storyId), { recursive: true, force: true });
 }
 
+export async function removeChapterAudio(dataDir: string, storyId: string, order: number): Promise<void> {
+  await fs.rm(chapterAudioPath(dataDir, storyId, order), { force: true });
+  await fs.rm(metaPath(dataDir, storyId, order), { force: true });
+}
+
 export async function storyAudioBytes(dataDir: string, storyId: string): Promise<number> {
   try {
     const dir = storyAudioDir(dataDir, storyId);

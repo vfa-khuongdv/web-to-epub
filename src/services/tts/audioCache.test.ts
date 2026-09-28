@@ -6,6 +6,7 @@ import {
   chapterAudioPath,
   ensureStoryAudioDir,
   readChapterAudio,
+  removeChapterAudio,
   removeStoryAudio,
   storyAudioBytes,
   textKey,
@@ -60,5 +61,19 @@ describe("audio cache", () => {
     await removeStoryAudio(dataDir, "s1");
     expect(await storyAudioBytes(dataDir, "s1")).toBe(0);
     await removeStoryAudio(dataDir, "missing");
+  });
+
+  it("removes one chapter's audio and meta, leaving the others", async () => {
+    await fs.writeFile(chapterAudioPath(dataDir, "s1", 1), "mp3");
+    await writeAudioMeta(dataDir, "s1", 1, ["a"], info);
+    await fs.writeFile(chapterAudioPath(dataDir, "s1", 2), "mp3");
+    await writeAudioMeta(dataDir, "s1", 2, ["b"], info);
+
+    await removeChapterAudio(dataDir, "s1", 1);
+    expect(await readChapterAudio(dataDir, "s1", 1)).toBeUndefined();
+    expect(await fs.readdir(path.join(dataDir, "audio", "s1"))).toEqual(expect.arrayContaining(["2.mp3", "2.json"]));
+    expect(await fs.readdir(path.join(dataDir, "audio", "s1"))).not.toContain("1.json");
+    // Nothing narrated yet is not an error.
+    await removeChapterAudio(dataDir, "missing", 1);
   });
 });
