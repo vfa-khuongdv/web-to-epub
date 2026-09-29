@@ -39,8 +39,6 @@ export const en: Record<string, string> = {
   "{done}/{total} chapters": "{done}/{total} chapters",
   "{eta} remaining": "{eta} remaining",
   "{count} errors": "{count} errors",
-  "Downloaded {count} chapters": "Downloaded {count} chapters",
-  "Downloaded {done}/{total} chapters": "Downloaded {done}/{total} chapters",
   "Exported EPUB": "Exported EPUB",
   "Exported {count} EPUB files": "Exported {count} EPUB files",
   "Loaded {count} chapters": "Loaded {count} chapters",

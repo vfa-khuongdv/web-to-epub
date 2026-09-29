@@ -97,7 +97,6 @@ export interface LiveCrawl {
 // Toasts the app can raise. Kept as data, not text, so the stack re-renders them
 // in whichever language is on screen.
 export type NoticeInput =
-  | { kind: "crawl-done"; done: number; total: number; errors: number }
   | { kind: "toc-loaded"; count: number }
   | { kind: "session-saved"; username?: string }
   | { kind: "export-done"; fileCount: number }
@@ -118,7 +117,7 @@ export function useCrawlJob() {
   // Which story is crawling, for ALL stories not just the open story: the library
   // table shows "Crawling" chip without needing to select story.
   const [live, setLive] = useState<Record<string, LiveCrawl | undefined>>({});
-  // Crawls that finished while this session was open, oldest first: the toast stack.
+  // Notices raised while this session was open, oldest first: the toast stack.
   const [notices, setNotices] = useState<Notice[]>([]);
   const nextNoticeId = useRef(0);
   // Latest crawl state by story. The live channel writes this ref and the state
@@ -234,17 +233,8 @@ export function useCrawlJob() {
       const storyId = event.storyId;
       if (!storyId) return;
       if (event.type === "idle") {
-        // The run just left the live channel: report what it managed, but only if
-        // there was something to crawl — an empty plan is not worth a toast.
-        const finished = liveRef.current[storyId];
-        if (finished && finished.total > 0) {
-          pushNotice({
-            kind: "crawl-done",
-            done: finished.cursor,
-            total: finished.total,
-            errors: finished.errors,
-          });
-        }
+        // The run just left the live channel. No toast for a finished crawl: the
+        // story's own chapter list and status chip already report the outcome.
         const next = { ...liveRef.current, [storyId]: undefined };
         liveRef.current = next;
         setLive(next);
@@ -282,7 +272,7 @@ export function useCrawlJob() {
       source.close();
       if (liveSource.current === source) liveSource.current = null;
     };
-  }, [applyEvent, pushNotice]);
+  }, [applyEvent]);
 
   // Switch to viewing a story: log resets from shared channel's current state
   // (crawling stories show correct progress immediately, don't wait for events).

@@ -40,8 +40,6 @@ export const vi: Record<string, string> = {
   "{done}/{total} chapters": "{done}/{total} chương",
   "{eta} remaining": "còn {eta}",
   "{count} errors": "{count} lỗi",
-  "Downloaded {count} chapters": "Đã tải xong {count} chương",
-  "Downloaded {done}/{total} chapters": "Đã tải xong {done}/{total} chương",
   "Exported EPUB": "Đã xuất xong EPUB",
   "Exported {count} EPUB files": "Đã xuất xong {count} file EPUB",
   "Loaded {count} chapters": "Đã tải xong danh sách {count} chương",

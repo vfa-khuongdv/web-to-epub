@@ -15,37 +15,23 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
     return () => clearTimeout(timer);
   }, [notice.id, onDismiss]);
 
-  const failed = notice.kind === "crawl-done" && notice.errors > 0;
-  // A run can end with failures or after a crash mid-way; say how far it got
-  // instead of claiming a clean finish.
-  const complete = notice.kind === "crawl-done" && notice.done >= notice.total && notice.errors === 0;
-
   return (
     <div
       role="status"
       className="flex max-w-[360px] items-center gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12.5px] shadow-lg"
     >
-      <Icon
-        name={failed ? "alert" : "check"}
-        size={14}
-        className={`shrink-0${failed ? " text-error" : ""}`}
-      />
+      <Icon name="check" size={14} className="shrink-0" />
       <p>
         {notice.kind === "toc-loaded" && t("Loaded {count} chapters", { count: notice.count })}
         {notice.kind === "session-saved" &&
           (notice.username
             ? t("Saved login for {username}", { username: notice.username })
             : t("Saved site session"))}
-        {notice.kind === "crawl-done" &&
-          (complete
-            ? t("Downloaded {count} chapters", { count: notice.total })
-            : t("Downloaded {done}/{total} chapters", { done: notice.done, total: notice.total }))}
         {notice.kind === "export-done" &&
           (notice.fileCount > 1
             ? t("Exported {count} EPUB files", { count: notice.fileCount })
             : t("Exported EPUB"))}
         {notice.kind === "epub-imported" && t("Imported {title}", { title: notice.title })}
-        {failed && <span className="font-semibold text-error"> · {t("{count} errors", { count: notice.errors })}</span>}
       </p>
       <button
         type="button"
@@ -60,8 +46,8 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
 }
 
 // Toasts for background work that finished while the app was open: a story's
-// chapter list after an import, and a crawl. The job strip only tracks the story
-// currently open, so this is how those endings are noticed from anywhere else.
+// chapter list after an import, a saved login, an export. A crawl's ending is not
+// toasted — the story's own chapter list and status chip report it.
 export function NoticeStack({ notices, onDismiss }: { notices: Notice[]; onDismiss: (id: number) => void }) {
   if (notices.length === 0) return null;
   return (
