@@ -1,7 +1,8 @@
 import { ContentBlock } from "../types";
-import { ImportedBook, ImportedChapter } from "./epubImport";
+import { MAX_COVER_BYTES, sniffImageExtension } from "./coverStore";
+import { ImportedBook, ImportedChapter, parseEpub, StoreImage } from "./epubImport";
 import { t } from "./lang";
-import { CHAPTER_HEADING_RE, joinLine, MAX_PAGES, PAGES_PER_CHUNK, SENTENCE_END_RE } from "./pdfImport";
+import { CHAPTER_HEADING_RE, joinLine, MAX_PAGES, PAGES_PER_CHUNK, parsePdf, SENTENCE_END_RE } from "./pdfImport";
 
 // An Internet Archive item whose catalog entry marks it lending/access-restricted is
 // refused before any file is fetched. The app never borrows, signs in or decrypts.
@@ -306,4 +307,74 @@ function blocksFor(
   }
   flush();
   return blocks;
+}
+
+export interface ImportArchiveOptions {
+  fetchImpl?: typeof fetch;
+  storeImage?: StoreImage;
+  maxFileBytes?: number;
+}
+
+// The item's title/author/language come from the catalog when present; the parser's own
+// metadata is the fallback. The item image is only a cover if the book has none.
+async function withItemMeta(
+  book: ImportedBook,
+  item: ArchiveItem,
+  fetchImpl: typeof fetch,
+  maxBytes: number
+): Promise<ImportedBook> {
+  if (!book.cover) {
+    const bytes = await fetchBytes(
+      fetchImpl,
+      `https://archive.org/services/img/${encodeURIComponent(item.id)}`,
+      Math.min(maxBytes, MAX_COVER_BYTES)
+    );
+    const extension = bytes && sniffImageExtension(bytes);
+    if (bytes && extension) book.cover = { bytes, extension };
+  }
+  return {
+    ...book,
+    title: item.title || book.title,
+    author: item.author ?? book.author,
+    language: item.language ?? book.language,
+  };
+}
+
+// EPUB first (real chapters and images), then the OCR text (small, always there for a
+// scan), then the PDF (the image-bearing fallback for items with no text layer). A
+// source that fails or has nothing readable falls through to the next one.
+export async function importArchiveItem(id: string, options: ImportArchiveOptions = {}): Promise<ImportedBook> {
+  const fetchImpl = options.fetchImpl ?? fetch;
+  const maxBytes = options.maxFileBytes ?? MAX_ARCHIVE_FILE_BYTES;
+  const item = await fetchItem(fetchImpl, id);
+  const parseOptions = { fallbackTitle: item.title, storeImage: options.storeImage ?? (() => "") };
+
+  const epubFile = pickEpubFile(item.files, maxBytes);
+  if (epubFile) {
+    const bytes = await fetchBytes(fetchImpl, downloadUrl(id, epubFile.name), maxBytes);
+    if (bytes) {
+      const book = await parseEpub(bytes, parseOptions).catch(() => undefined);
+      if (book) return withItemMeta(book, item, fetchImpl, maxBytes);
+    }
+  }
+
+  const textFile = pickTextFile(item.files, maxBytes);
+  if (textFile) {
+    const bytes = await fetchBytes(fetchImpl, downloadUrl(id, textFile.name), maxBytes);
+    const text = bytes?.toString("utf8");
+    if (text && text.replace(/\s/g, "").length >= MIN_TEXT_CHARS) {
+      return withItemMeta(textToBook(text, item), item, fetchImpl, maxBytes);
+    }
+  }
+
+  const pdfFile = pickPdfFile(item.files, { degraded: item.pdfDegraded, maxBytes });
+  if (pdfFile) {
+    const bytes = await fetchBytes(fetchImpl, downloadUrl(id, pdfFile.name), maxBytes);
+    if (bytes) {
+      const book = await parsePdf(bytes, parseOptions).catch(() => undefined);
+      if (book) return withItemMeta(book, item, fetchImpl, maxBytes);
+    }
+  }
+
+  throw new ArchiveUnavailableError(`https://archive.org/details/${id}`);
 }
