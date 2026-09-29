@@ -3,6 +3,8 @@
  * src/services/siteSession.ts). Asianfanfics needs a login for rated-M and
  * subscribers-only stories; truyenfull.live pages sit behind a Cloudflare check the app
  * cannot pass by itself, so it reuses the pass the reader's browser already has.
+ * archive.org needs a login so borrow-only books can be imported through the reader's own
+ * session (see src/services/archiveBorrow.ts).
  *
  * The dialog copy lives here as i18n keys — the English source text, translated by
  * `t()` where it is rendered.
@@ -76,6 +78,30 @@ export const SESSION_SITES: SessionSite[] = [
     settingsConfiguredHint: "A saved browser session is in use to pass TruyenFull's Cloudflare check.",
     settingsEmptyHint: "TruyenFull needs a saved browser session to pass its Cloudflare check.",
     skipNote: "Skipping means adding a TruyenFull story will fail while the site blocks the app.",
+    showsExpiry: false,
+  },
+  {
+    slug: "archive",
+    domain: "archive.org",
+    label: "Internet Archive",
+    dialogTitle: "Internet Archive session",
+    dialogIntro:
+      "Borrow-only books need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.",
+    dialogSteps: [
+      "Log in to archive.org in your browser — the copy has to come from a page where you are already logged in.",
+      "Open DevTools: press F12, or ⌥⌘I on a Mac (Safari: turn the Develop menu on first).",
+      "Switch to the Network tab and reload the page (⌘R / Ctrl+R) so the request list fills up.",
+      'Right-click the first archive.org request (the details page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.',
+      "Paste it into the box below and save.",
+    ],
+    dialogNotes: [
+      "A wrong request (an image, an ad) carries no login cookies — the app says so instead of saving it.",
+      "The session lasts as long as archive.org keeps you signed in; import a fresh one when imports start failing.",
+    ],
+    placeholder: "curl 'https://archive.org/details/<id>' -H 'cookie: logged-in-user=…'",
+    settingsConfiguredHint: "A saved login is in use for borrow-only Internet Archive books.",
+    settingsEmptyHint: "Borrow-only Internet Archive books need a login saved from your own browser.",
+    skipNote: "You can skip this — public items still import.",
     showsExpiry: false,
   },
 ];
