@@ -552,5 +552,7 @@ export const en: Record<string, string> = {
   "Imported {title}": "Imported {title}",
   "EPUB file": "EPUB file",
   "PDF file": "PDF file",
+  "Internet Archive": "Internet Archive",
+  "Could not import from Internet Archive": "Could not import from Internet Archive",
   "Could not import the file": "Could not import the file",
 };

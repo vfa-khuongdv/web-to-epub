@@ -8,10 +8,12 @@ import {
   fetchSiteSession,
   fetchStories,
   fetchStory,
+  importArchive,
   importEpub,
   setStoryWatch,
 } from "../lib/api";
 import { Translate, useLang } from "../i18n";
+import { isArchiveItemUrl } from "../lib/archiveUrl";
 import { isSupportedUrl } from "../lib/isSupportedUrl";
 import { SessionSite, sessionSiteForUrl } from "../lib/siteSessions";
 import { timeAgo } from "../lib/timeAgo";
@@ -164,7 +166,7 @@ export default function LibraryView({
   const [storyUrl, setStoryUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
-  const [pendingImport, setPendingImport] = useState<File | null>(null);
+  const [pendingImport, setPendingImport] = useState<{ kind: "file"; file: File } | { kind: "url"; url: string } | null>(null);
   const [dragging, setDragging] = useState(false);
   const fileInput = useRef<HTMLInputElement>(null);
   const [loading, setLoading] = useState(true);
@@ -287,6 +289,10 @@ export default function LibraryView({
       setError(t("Paste a story URL first."));
       return;
     }
+    if (isArchiveItemUrl(url)) {
+      await importArchiveFrom(url);
+      return;
+    }
     if (!isSupportedUrl(url, supportedSites)) {
       setError(
         t("URL is not from a supported site. Supported: {sites}.", {
@@ -343,7 +349,26 @@ export default function LibraryView({
       setSelected(imported);
       pushNotice({ kind: "epub-imported", title: imported.title });
     } catch (err) {
-      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport(file);
+      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "file", file });
+      else setError((err as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  // Import an archive.org item by URL; a 409 asks before overwriting, like a file import.
+  async function importArchiveFrom(url: string, overwrite = false) {
+    setImportBusy(true);
+    setError(null);
+    try {
+      const imported = await importArchive(url, { overwrite });
+      setPendingImport(null);
+      setStoryUrl("");
+      await loadStories();
+      setSelected(imported);
+      pushNotice({ kind: "epub-imported", title: imported.title });
+    } catch (err) {
+      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
       else setError((err as Error).message);
     } finally {
       setImportBusy(false);
@@ -564,14 +589,20 @@ export default function LibraryView({
             <div className="banner banner-new mt-2">
               <Icon name="alert" size={14} />
               <p className="min-w-0">
-                {t("This book is already in the library. Overwrite it with “{name}”?", { name: pendingImport.name })}
+                {t("This book is already in the library. Overwrite it with “{name}”?", {
+                  name: pendingImport.kind === "file" ? pendingImport.file.name : pendingImport.url,
+                })}
               </p>
               <span className="ml-auto flex gap-1.5">
                 <button
                   type="button"
                   className="btn btn-tiny btn-danger"
                   disabled={importBusy}
-                  onClick={() => void handleImport(pendingImport, true)}
+                  onClick={() =>
+                    void (pendingImport.kind === "file"
+                      ? handleImport(pendingImport.file, true)
+                      : importArchiveFrom(pendingImport.url, true))
+                  }
                 >
                   {t("Overwrite")}
                 </button>
@@ -748,7 +779,15 @@ export default function LibraryView({
                         </span>
                       </button>
                     </td>
-                    <td className="dim">{s.site === "epub" ? (s.storyUrl.startsWith("pdf:") ? t("PDF file") : t("EPUB file")) : s.site}</td>
+                    <td className="dim">
+                      {s.site === "epub"
+                        ? s.storyUrl.startsWith("pdf:")
+                          ? t("PDF file")
+                          : s.storyUrl.startsWith("archive:")
+                            ? t("Internet Archive")
+                            : t("EPUB file")
+                        : s.site}
+                    </td>
                     <td className="num">{s.chapterCount}</td>
                     <td className="num">
                       <b>{s.done}</b>
