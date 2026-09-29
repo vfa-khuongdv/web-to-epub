@@ -15,6 +15,10 @@ export interface SupportedSite {
 // but unlike Asianfanfics its M-rated stories are publicly readable, no login.
 // truyenfull.live also needs an imported browser session, for the Cloudflare
 // check on its story and chapter pages (see services/cloudflare.ts).
+// vietmessenger.com has its own chapter fetcher: its chapter pages ship no text,
+// the site's script POSTs to gethtml.php for it (AES-obfuscated), which the fetcher
+// does directly. Books the site marks members-only are refused with a clear error —
+// the app never signs in.
 export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "xtruyen.vn", name: "XTruyện" },
   { domain: "truyenfull.vn", name: "TruyenFull" },
@@ -24,6 +28,7 @@ export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "wattpad.com", name: "Wattpad" }, // English site; paid chapters (Paid Stories) not supported
   { domain: "asianfanfics.com", name: "Asianfanfics" }, // English site; M-rated stories need a logged-in account with mature content enabled
   { domain: "fanfiction.net", name: "FanFiction.net" }, // English site
+  { domain: "vietmessenger.com", name: "Viet Messenger" }, // public-domain ebook library; members-only books are refused
 ];
 
 export function findSupportedSite(url: string): SupportedSite | undefined {

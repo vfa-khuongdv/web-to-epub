@@ -4,7 +4,17 @@ import multer from "multer";
 import os from "os";
 import path from "path";
 import { findSupportedSite } from "../config/supportedSites";
+import {
+  ArchiveNotBookError,
+  ArchiveNotFoundError,
+  ArchiveRestrictedError,
+  ArchiveTooManyPagesError,
+  ArchiveUnavailableError,
+  archiveItemId,
+  importArchiveItem,
+} from "../services/archiveImport";
 import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
+import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
 import { settingsStore } from "../services/settingsStore";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
@@ -60,6 +70,10 @@ storiesRouter.post("/stories", async (req, res) => {
     res.status(400).json({ message: t("url is required") });
     return;
   }
+  if (archiveItemId(url)) {
+    res.status(400).json({ message: t("Internet Archive books are imported, not crawled") });
+    return;
+  }
   const site = findSupportedSite(url);
   if (!site) {
     res.status(400).json({ message: t("This site is not yet supported: {url}", { url }) });
@@ -103,16 +117,19 @@ storiesRouter.post(
     if (!library) return;
     const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.alloc(0);
     if (bytes.length === 0) {
-      res.status(400).json({ message: t("Please choose an EPUB file") });
+      res.status(400).json({ message: t("Please choose an EPUB or PDF file") });
       return;
     }
     if (bytes.length > MAX_IMPORT_BYTES) {
-      res.status(400).json({ message: t("The EPUB file is too large (maximum {size} MB)", { size: 100 }) });
+      res.status(400).json({ message: t("The file is too large (maximum {size} MB)", { size: 100 }) });
       return;
     }
 
+    // A PDF is converted into chapters here and then lives on as an imported book like an
+    // EPUB (site "epub": no TOC, nothing to crawl); only its story URL tells them apart.
+    const pdf = isPdf(bytes);
     const hash = crypto.createHash("sha1").update(bytes).digest("hex");
-    const storyUrl = `epub:${hash}`;
+    const storyUrl = `${pdf ? "pdf" : "epub"}:${hash}`;
     const id = storyId(storyUrl);
     const overwrite = req.query.overwrite === "1";
     const existing = await library.stories.getOutline(id);
@@ -124,10 +141,11 @@ storiesRouter.post(
     const fallbackTitle = name ? path.parse(name).name : undefined;
 
     try {
-      const book = await parseEpub(bytes, {
+      const parseOptions = {
         fallbackTitle,
-        storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
-      });
+        storeImage: (imageBytes: Buffer, extension: string) => library.epubMedia.save(id, imageBytes, extension),
+      };
+      const book = pdf ? await parsePdf(bytes, parseOptions) : await parseEpub(bytes, parseOptions);
 
       let coverUrl = existing?.coverUrl;
       if (book.cover) {
@@ -166,13 +184,98 @@ storiesRouter.post(
       // (raw parser messages, FS/SQLite failures with absolute paths) gets the generic
       // wording instead of leaking internals.
       const message =
-        err instanceof NotEpubError || err instanceof EpubTooLargeError || err instanceof DrmError
+        err instanceof NotEpubError ||
+        err instanceof EpubTooLargeError ||
+        err instanceof DrmError ||
+        err instanceof NotPdfError ||
+        err instanceof PdfTooLargeError ||
+        err instanceof PdfLockedError
           ? err.message
-          : t("Could not import the EPUB file");
+          : t(pdf ? "Could not import the PDF file" : "Could not import the EPUB file");
       res.status(400).json({ message });
     }
   }
 );
+
+// Import an Internet Archive book. The item id is the story URL, so re-adding the same
+// item asks before overwriting, exactly like a file import. Only openly downloadable
+// items are ever read — lending/restricted items are refused in services/archiveImport.ts.
+storiesRouter.post("/stories/import-archive", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { url } = (req.body ?? {}) as { url?: string };
+  if (!url) {
+    res.status(400).json({ message: t("url is required") });
+    return;
+  }
+  const itemId = archiveItemId(url);
+  if (!itemId) {
+    res.status(400).json({
+      message: t(
+        "This is not an Internet Archive book page: {url} — paste a URL like https://archive.org/details/<id>",
+        { url }
+      ),
+    });
+    return;
+  }
+  const storyUrl = `archive:${itemId}`;
+  const id = storyId(storyUrl);
+  const overwrite = req.query.overwrite === "1";
+  const existing = await library.stories.getOutline(id);
+  if (existing && !overwrite) {
+    res.status(409).json({ code: "exists", message: t("This book is already in the library"), story: existing });
+    return;
+  }
+
+  try {
+    const book = await importArchiveItem(itemId, {
+      storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
+    });
+
+    let coverUrl = existing?.coverUrl;
+    if (book.cover) {
+      const saved = library.covers.saveBytes(id, book.cover.bytes);
+      if (saved) coverUrl = saved;
+    }
+
+    const defaults = settingsStore.get();
+    const now = new Date().toISOString();
+    const story: StoredStory = {
+      id,
+      storyUrl,
+      site: "epub",
+      title: book.title,
+      author: book.author ?? existing?.author ?? (defaults.defaultAuthor || undefined),
+      language: book.language ?? existing?.language ?? defaults.defaultBookLanguage,
+      coverUrl,
+      watching: false,
+      newChapterCount: 0,
+      chapters: book.chapters.map((chapter, index) => ({
+        order: index + 1,
+        url: `${storyUrl}#${index + 1}`,
+        title: chapter.title,
+        status: "done" as const,
+        blocks: chapter.blocks,
+      })),
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    };
+    await library.stories.save(story);
+    res.status(existing ? 200 : 201).json({ story: await library.stories.getOutline(id) });
+  } catch (err) {
+    // Only the service's own, already-translated errors are safe to echo; anything else
+    // (network failure, parser internals) gets the generic wording.
+    const message =
+      err instanceof ArchiveNotFoundError ||
+      err instanceof ArchiveNotBookError ||
+      err instanceof ArchiveRestrictedError ||
+      err instanceof ArchiveTooManyPagesError ||
+      err instanceof ArchiveUnavailableError
+        ? err.message
+        : t("Could not import from Internet Archive");
+    res.status(400).json({ message });
+  }
+});
 
 storiesRouter.get("/stories", async (req, res) => {
   const library = libraryFor(req, res);

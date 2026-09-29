@@ -98,6 +98,11 @@ const vi: Record<string, string> = {
     "Chương này đang bị website khóa nội dung (yêu cầu tắt/mở lại quảng cáo), không thể trích xuất: {url}",
   "This chapter is part of Wattpad's Paid Stories program and cannot be extracted: {url}":
     "Chương này thuộc chương trình trả phí (Paid Stories) của Wattpad, không thể trích xuất: {url}",
+  "This is not a Viet Messenger chapter page: {url}": "URL này không phải trang chương của Viet Messenger: {url}",
+  "Viet Messenger did not return chapter content — the chapter may have been removed or the site changed ({url})":
+    "Viet Messenger không trả về nội dung chương — chương có thể đã bị xoá hoặc trang đã đổi cấu trúc ({url})",
+  "Could not find the book's category on the Viet Messenger page ({url})":
+    "Không tìm thấy thể loại (cat) của sách trên trang Viet Messenger ({url})",
   "Could not find chapter content at {url} — the site may have changed structure or the chapter is locked":
     "Không tìm thấy nội dung chương tại {url} — trang có thể đã đổi cấu trúc hoặc chương bị khoá",
   "Cloudflare verification did not finish — try again in a moment ({url})":
@@ -126,6 +131,10 @@ const vi: Record<string, string> = {
   "xtruyen's chapter list API did not return JSON": "API danh sách chương của xtruyen trả về không phải JSON",
   "xtruyen's chapter list API returned the wrong format":
     "API danh sách chương của xtruyen trả về sai định dạng",
+  "This is not a Viet Messenger book page: {url} — paste a URL like https://vietmessenger.com/books/?title=<name>":
+    "URL này không phải trang truyện Viet Messenger: {url} — cần dán URL dạng https://vietmessenger.com/books/?title=<tên>",
+  "This book is members-only on Viet Messenger — it needs a member account, which this app cannot sign in to: {url}":
+    "Sách này trên Viet Messenger chỉ dành cho thành viên — cần tài khoản thành viên, app không tự đăng nhập được: {url}",
   "Story not found on Asianfanfics — check the story URL again ({url})":
     "Không tìm thấy truyện trên Asianfanfics — kiểm tra lại URL truyện ({url})",
   "This Asianfanfics content is for subscribers only — it needs an account subscribed to the author: {url}":
@@ -187,13 +196,35 @@ const vi: Record<string, string> = {
   "This file is not an EPUB book": "File này không phải là sách EPUB",
   "This EPUB file is too large to import": "File EPUB quá lớn để nhập",
   "This EPUB file is locked with DRM and cannot be imported": "File EPUB này bị khoá DRM, không thể nhập",
-  "Please choose an EPUB file": "Hãy chọn một file EPUB",
-  "The EPUB file is too large (maximum {size} MB)": "File EPUB quá lớn (tối đa {size} MB)",
+  "Please choose an EPUB or PDF file": "Hãy chọn một file EPUB hoặc PDF",
+  "The file is too large (maximum {size} MB)": "File quá lớn (tối đa {size} MB)",
   "This book is already in the library": "Truyện này đã có trong thư viện",
   "Could not import the EPUB file": "Không nhập được file EPUB",
+
+  // PDF import
+  "This file is not a readable PDF": "File này không phải PDF đọc được",
+  "This PDF has too many pages to import (maximum {count})": "File PDF có quá nhiều trang để nhập (tối đa {count})",
+  "This PDF is password-protected or does not allow copying, so it cannot be imported":
+    "File PDF này có mật khẩu hoặc không cho phép sao chép nội dung, không thể nhập",
+  "Could not import the PDF file": "Không nhập được file PDF",
+  "Pages {from}–{to}": "Trang {from}–{to}",
   "Book image not found": "Không tìm thấy ảnh của sách",
   "Imported books cannot be crawled": "Truyện nhập từ file không crawl được",
   "Imported books have no chapter list to watch": "Truyện nhập từ file không có danh sách chương để theo dõi",
+
+  // Internet Archive import
+  "This is not an Internet Archive book page: {url} — paste a URL like https://archive.org/details/<id>":
+    "URL này không phải trang sách Internet Archive: {url} — hãy dán URL dạng https://archive.org/details/<id>",
+  "Internet Archive item not found: {id}": "Không tìm thấy sách trên Internet Archive: {id}",
+  "This Internet Archive item is not a book: {url}": "Mục này trên Internet Archive không phải là sách: {url}",
+  "This Internet Archive item is access-restricted (borrow-only) and cannot be imported: {url}":
+    "Sách này trên Internet Archive bị giới hạn truy cập (phải mượn/đăng nhập), không thể nhập: {url}",
+  "No readable EPUB, PDF, or text file is available for this Internet Archive item: {url}":
+    "Không có file EPUB, PDF hay text đọc được cho sách này trên Internet Archive: {url}",
+  "This Internet Archive book has too many pages to import (maximum {count})":
+    "Sách từ Internet Archive có quá nhiều trang để nhập (tối đa {count})",
+  "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
+  "Internet Archive books are imported, not crawled": "Sách Internet Archive được nhập về, không crawl",
 };
 
 let current: Lang = DEFAULT_LANG;

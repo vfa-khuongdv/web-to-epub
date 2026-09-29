@@ -8,6 +8,16 @@ import { startTtsWorker } from "./workerClient";
 
 const FAKE_WORKER = path.join(__dirname, "__fixtures__", "fakeWorker.js");
 
+// A condition wait instead of a fixed sleep: the idle-close timer and the assertion run on
+// the same event loop, and on a loaded host either side can be delayed arbitrarily.
+async function waitFor(check: () => boolean | Promise<boolean>, timeoutMs = 2000): Promise<void> {
+  const start = Date.now();
+  while (!(await check())) {
+    if (Date.now() - start > timeoutMs) throw new Error("waitFor timed out");
+    await new Promise((r) => setTimeout(r, 10));
+  }
+}
+
 describe("TTS runtime", () => {
   let ttsDir: string;
   let runtime: TtsRuntime;
@@ -43,7 +53,9 @@ describe("TTS runtime", () => {
       }),
       // The real python in venv is a stub file: run the fake worker with node instead.
       startWorker: vi.fn((cmd, log) => startTtsWorker({ ...cmd, command: process.execPath }, log)),
-      idleMs: 50,
+      // The real production idle, so a slow or loaded test host cannot close the worker
+      // in the middle of an assertion. Only the idle test below shortens it on purpose.
+      idleMs: 10 * 60_000,
       log: () => {},
     };
     await fs.writeFile(deps.constraintsFile, "onnxruntime==1.24.4\n");
@@ -165,9 +177,10 @@ describe("TTS runtime", () => {
   });
 
   it("closes the worker after the idle delay and restarts it on demand", async () => {
+    // Its own runtime: this is the one test that wants the worker to age out.
+    runtime = createTtsRuntime({ ...deps, idleMs: 30 });
     await runtime.install("turbo");
-    await new Promise((r) => setTimeout(r, 120));
-    expect((await runtime.status()).running).toBe(false);
+    await waitFor(async () => (await runtime.status()).running === false);
     await runtime.withModel("turbo", async (_w, model) => expect(model.variant).toBe("turbo"));
     expect(deps.startWorker).toHaveBeenCalledTimes(2);
   });

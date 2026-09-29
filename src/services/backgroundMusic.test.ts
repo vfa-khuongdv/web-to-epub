@@ -257,8 +257,10 @@ describe("defaultMusicId", () => {
 
     const sun = (await music.list()).find((track) => track.name === "nắng")!;
     expect(await defaultMusicId(music, target, bundled)).toBe(sun.id);
-    // Not the first entry: the manifest marks which one, so order cannot change it.
-    expect(await defaultMusicId(music, target, bundled)).not.toBe((await music.list())[0].id);
+    // Not the other entry. Looked up by name, not by index: two tracks seeded in the same
+    // millisecond tie on createdAt, and list() then falls back to filesystem order.
+    const rain = (await music.list()).find((track) => track.name === "mưa")!;
+    expect(await defaultMusicId(music, target, bundled)).not.toBe(rain.id);
   });
 
   it("is null when nothing is marked, and when the user removed the marked track", async () => {

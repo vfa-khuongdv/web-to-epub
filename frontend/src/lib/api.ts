@@ -178,19 +178,43 @@ export async function createStory(url: string): Promise<StoredStory> {
   return data.story as StoredStory;
 }
 
-// Import an .epub file as a story. `overwrite` is the user confirming the "already in
+// Import an .epub or .pdf file as a story. `overwrite` is the user confirming the "already in
 // the library" dialog; without it the server answers 409 with code "exists".
 export async function importEpub(file: File, options: { overwrite?: boolean } = {}): Promise<StoredStory> {
   const params = new URLSearchParams({ name: file.name });
   if (options.overwrite) params.set("overwrite", "1");
   const res = await apiFetch(`/api/stories/import-epub?${params}`, {
     method: "POST",
-    headers: langHeaders({ "Content-Type": "application/epub+zip" }),
+    headers: langHeaders({ "Content-Type": file.type || "application/octet-stream" }),
     body: file,
   });
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw apiError(data?.message || tr("Could not import the EPUB file"), res.status, data?.code, data?.story);
+    throw apiError(data?.message || tr("Could not import the file"), res.status, data?.code, data?.story);
+  }
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
+// Import an archive.org book by item URL. `overwrite` is the user confirming the "already in
+// the library" dialog; without it the server answers 409 with code "exists".
+export async function importArchive(url: string, options: { overwrite?: boolean } = {}): Promise<StoredStory> {
+  const params = new URLSearchParams();
+  if (options.overwrite) params.set("overwrite", "1");
+  const query = params.toString();
+  const res = await apiFetch(`/api/stories/import-archive${query ? `?${query}` : ""}`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw apiError(
+      data?.message || tr("Could not import from Internet Archive"),
+      res.status,
+      data?.code,
+      data?.story
+    );
   }
   const data = await res.json();
   return data.story as StoredStory;
