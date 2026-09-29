@@ -11,7 +11,7 @@ import { t } from "./lang";
 export const MAX_TOTAL_UNCOMPRESSED_BYTES = 500 * 1024 * 1024;
 export const MAX_ENTRIES = 10_000;
 // One image kept from a book — the same cap as a cover.
-const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
+export const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export class NotEpubError extends Error {
   constructor() {
