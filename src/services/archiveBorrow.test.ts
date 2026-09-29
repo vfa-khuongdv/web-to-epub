@@ -77,7 +77,8 @@ describe("readerConfig", () => {
 
 describe("ensureLoan", () => {
   function loanMock(loanResponse?: () => Response) {
-    return vi.fn(async (input: RequestInfo | URL) => {
+    return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
       const url = String(input);
       if (url.startsWith("https://archive.org/services/loans/loan")) {
         return loanResponse ? loanResponse() : new Response(JSON.stringify({ success: true }), { status: 200 });
@@ -173,13 +174,13 @@ describe("loanExpiryEpoch", () => {
   });
 
   it("renewLoan posts renew_loan and returns merged cookies", async () => {
-    const fetchImpl = vi.fn(
-      async () =>
-        new Response(JSON.stringify({ success: true }), {
-          status: 200,
-          headers: { "set-cookie": "loan-testitem=1790999999-xyz; Path=/" },
-        })
-    );
+    const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+      void init;
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "set-cookie": "loan-testitem=1790999999-xyz; Path=/" },
+      });
+    });
     const session = await renewLoan(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
     const form = fetchImpl.mock.calls[0]?.[1]?.body as FormData;
     expect(form.get("action")).toBe("renew_loan");
@@ -188,10 +189,16 @@ describe("loanExpiryEpoch", () => {
 });
 
 it("returnLoan posts return_loan and ignores failures", async () => {
-  const fetchImpl = vi.fn(async () => new Response(JSON.stringify({ success: true }), { status: 200 }));
+  const fetchImpl = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
+    return new Response(JSON.stringify({ success: true }), { status: 200 });
+  });
   await expect(returnLoan(fetchImpl as unknown as typeof fetch, SESSION, "testitem")).resolves.toBeUndefined();
   const form = fetchImpl.mock.calls[0]?.[1]?.body as FormData;
   expect(form.get("action")).toBe("return_loan");
-  const failing = vi.fn(async () => new Response("", { status: 500 }));
+  const failing = vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
+    return new Response("", { status: 500 });
+  });
   await expect(returnLoan(failing as unknown as typeof fetch, SESSION, "testitem")).resolves.toBeUndefined();
 });
