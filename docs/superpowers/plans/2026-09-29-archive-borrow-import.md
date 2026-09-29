@@ -1390,6 +1390,7 @@ function withBorrow(fetchImpl: ReturnType<typeof archiveFetch>) {
     return fetchImpl(input);
   });
 }
+```
 
 ```ts
 describe("importArchiveItem with a session", () => {
