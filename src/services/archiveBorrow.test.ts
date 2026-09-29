@@ -187,6 +187,37 @@ describe("loanExpiryEpoch", () => {
     expect(form.get("action")).toBe("renew_loan");
     expect(loanExpiryEpoch(session, "testitem")).toBe(1790999999);
   });
+
+  it("replaces the saved loan cookie instead of appending a duplicate beside it", async () => {
+    const stale: SiteSession = {
+      cookies: [
+        { name: "loan-testitem", value: "1790656967-stale", domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+      ],
+      origins: [],
+    };
+    const fetchImpl = vi.fn(async () =>
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "set-cookie": "loan-testitem=1790999999-new; Path=/" },
+      })
+    );
+    const session = await renewLoan(fetchImpl as unknown as typeof fetch, stale, "testitem");
+    const loans = (session.cookies ?? []).filter((cookie) => cookie.name === "loan-testitem");
+    expect(loans).toHaveLength(1);
+    expect(loans[0]!.domain).toBe(".archive.org");
+    expect(loanExpiryEpoch(session, "testitem")).toBe(1790999999);
+  });
+
+  it("reads the newest epoch even when a duplicated pair is already in the session", () => {
+    const session: SiteSession = {
+      cookies: [
+        { name: "loan-testitem", value: "1790656967-stale", domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+        { name: "loan-testitem", value: "1790999999-fresh", domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+      ],
+      origins: [],
+    };
+    expect(loanExpiryEpoch(session, "testitem")).toBe(1790999999);
+  });
 });
 
 it("returnLoan posts return_loan and ignores failures", async () => {
@@ -334,6 +365,54 @@ describe("captureChapters", () => {
     await expect(
       captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F")
     ).rejects.toBeInstanceOf(ArchiveTooManyPagesError);
+  });
+
+  it("renews a nearly expired loan once, not on every remaining leaf", async () => {
+    const now = Math.floor(Date.now() / 1000);
+    const nearExpiry: SiteSession = {
+      cookies: [
+        { name: "loan-testitem", value: `${now + 5 * 60}-stale`, domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+      ],
+      origins: [],
+    };
+    const renew = () =>
+      new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { "set-cookie": `loan-testitem=${now + 2 * 3600}-fresh; Path=/` },
+      });
+    const fetchImpl = captureMock({ leafCount: 6, loan: renew });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, nearExpiry, "testitem");
+    const chapters = await captureChapters(fetchImpl as unknown as typeof fetch, nearExpiry, config, storeImage, "F");
+    expect(chapters.flatMap((chapter) => chapter.blocks)).toHaveLength(6);
+    // the merged cookie carries the fresh epoch, so the window check stops re-firing
+    const loans = fetchImpl.mock.calls.filter(([input]) => String(input).includes("/services/loans/loan"));
+    expect(loans).toHaveLength(1);
+  });
+
+  it("grants exactly the leaves the API reports when the answer omits the pair", async () => {
+    const fetchImpl = captureMock({
+      leafCount: 8,
+      grant: (leafNum) =>
+        new Response(JSON.stringify({ success: true, value: [leafNum] }), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        }),
+    });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const chapters = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F");
+    expect(chapters.flatMap((chapter) => chapter.blocks)).toHaveLength(8);
+    // leaf n+1 was never granted, so every leaf needs its own request_page call
+    const grants = fetchImpl.mock.calls.filter(([input]) => String(input).includes("request_page"));
+    expect(grants).toHaveLength(8);
+  });
+
+  it("covers the spread when the API reports both leaves of a pair", async () => {
+    const fetchImpl = captureMock({ leafCount: 8 });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const chapters = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F");
+    expect(chapters.flatMap((chapter) => chapter.blocks)).toHaveLength(8);
+    const grants = fetchImpl.mock.calls.filter(([input]) => String(input).includes("request_page"));
+    expect(grants).toHaveLength(4);
   });
 });
 

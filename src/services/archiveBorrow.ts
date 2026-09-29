@@ -85,11 +85,17 @@ export async function readerConfig(fetchImpl: typeof fetch, session: SiteSession
 
 const truthy = (value: unknown): boolean => value === true || value === "true";
 
-// The loan cookie carries its own expiry: loan-<id> = <epoch>-<signature>.
+// The loan cookie carries its own expiry: loan-<id> = <epoch>-<signature>. Duplicated
+// pairs (a stale one the merge could not replace) must not hide the newest epoch, so
+// every matching cookie is considered and the latest valid expiry wins.
 export function loanExpiryEpoch(session: SiteSession, id: string): number | undefined {
-  const cookie = (session.cookies ?? []).find((candidate) => candidate.name === `loan-${id}`);
-  const epoch = Number(cookie?.value.split("-")[0]);
-  return Number.isFinite(epoch) && epoch > 0 ? epoch : undefined;
+  let latest: number | undefined;
+  for (const cookie of session.cookies ?? []) {
+    if (cookie.name !== `loan-${id}`) continue;
+    const epoch = Number(cookie.value.split("-")[0]);
+    if (Number.isFinite(epoch) && epoch > 0 && (latest === undefined || epoch > latest)) latest = epoch;
+  }
+  return latest;
 }
 
 // Cookies the loans API sets, as storage-state cookies. Attributes are best effort:
@@ -103,7 +109,10 @@ function setCookieCookies(response: Response, fallbackDomain: string): NonNullab
     if (eq <= 0) continue;
     const name = pair.slice(0, eq).trim();
     if (!name) continue;
-    const domain = (/domain=([^;]+)/i.exec(raw)?.[1] ?? fallbackDomain).trim().replace(/^\./, "");
+    // Same convention as parseSessionCurl: the leading dot, so a renewed cookie
+    // replaces the saved one in mergeSessionCookies instead of appending beside it.
+    const bare = (/domain=([^;]+)/i.exec(raw)?.[1] ?? fallbackDomain).trim().replace(/^\./, "");
+    const domain = `.${bare}`;
     const cookiePath = /path=([^;]+)/i.exec(raw)?.[1]?.trim() ?? "/";
     cookies.push({
       name,
@@ -202,12 +211,13 @@ function chapterTitle(from: number, to: number, total: number, fallback: string)
   return total <= PAGES_PER_CHUNK ? fallback : t("Pages {from}–{to}", { from, to });
 }
 
+// The granted leaf set the API reports (spec §3.2.4), or undefined when refused.
 async function grantLeaf(
   fetchImpl: typeof fetch,
   session: SiteSession,
   config: ReaderConfig,
   leafNum: number
-): Promise<boolean> {
+): Promise<number[] | undefined> {
   const query = new URLSearchParams({
     id: config.bookId,
     subprefix: config.subPrefix,
@@ -216,7 +226,8 @@ async function grantLeaf(
   const url = `https://archive.org/services/bookreader/request_page?${query}`;
   const response = await fetchImpl(url, { headers: siteSessionHeaders(session, url) });
   const body = (await response.json().catch(() => null)) as { success?: boolean; value?: number[] } | null;
-  return !!response.ok && body?.success === true;
+  if (!response.ok || body?.success !== true) return undefined;
+  return Array.isArray(body.value) ? body.value.filter((value) => Number.isFinite(value)) : [];
 }
 
 // One leaf's JPEG: grant the spread if needed, then read the page. Access that went
@@ -238,11 +249,12 @@ async function fetchLeaf(
     }
     let grantedNow = granted.has(leaf.leafNum);
     if (!grantedNow) {
-      grantedNow = await grantLeaf(fetchImpl, holder.current, config, leaf.leafNum);
-      if (grantedNow) {
-        // the grant covers this leaf and its spread partner (the API answers [n, n+1])
+      const grantedValues = await grantLeaf(fetchImpl, holder.current, config, leaf.leafNum);
+      if (grantedValues) {
+        // the grant covers this leaf plus exactly what the API reported (usually [n, n+1])
+        grantedNow = true;
         granted.add(leaf.leafNum);
-        granted.add(leaf.leafNum + 1);
+        for (const value of grantedValues) granted.add(value);
       }
     }
     if (!grantedNow) {
