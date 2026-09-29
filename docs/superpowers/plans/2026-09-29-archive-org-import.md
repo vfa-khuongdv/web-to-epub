@@ -525,6 +525,7 @@ git commit -m "feat(archive): pick and download openly available item files"
 
 Change line 13 from `const PAGES_PER_CHUNK = 20;` to `export const PAGES_PER_CHUNK = 20;`
 Change line 69 from `const CHAPTER_HEADING_RE = …` to `export const CHAPTER_HEADING_RE = …` (keep the regex unchanged).
+Change line 70 from `const SENTENCE_END_RE = …` to `export const SENTENCE_END_RE = …` (keep the regex unchanged).
 Change line 197 from `function joinLine(` to `export function joinLine(`.
 
 - [ ] **Step 2: Write the failing tests**
@@ -596,7 +597,7 @@ Add the imports at the top of the file (merge with the existing `import { t } fr
 import { ContentBlock } from "../types";
 import { ImportedBook, ImportedChapter } from "./epubImport";
 import { t } from "./lang";
-import { CHAPTER_HEADING_RE, joinLine, MAX_PAGES, PAGES_PER_CHUNK } from "./pdfImport";
+import { CHAPTER_HEADING_RE, joinLine, MAX_PAGES, PAGES_PER_CHUNK, SENTENCE_END_RE } from "./pdfImport";
 ```
 
 Then append:
@@ -607,7 +608,6 @@ Then append:
 export const MIN_TEXT_CHARS = 200;
 
 const PAGE_NUMBER_RE = /^[-–—\s]*\d+[-–—\s]*$/;
-const SENTENCE_END_RE = /[.!?…:;"'”’»)\]]$/;
 
 interface FlatLine {
   text: string;
