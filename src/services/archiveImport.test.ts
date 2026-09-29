@@ -2,6 +2,9 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { buildEpubFixture, TINY_PNG } from "./__fixtures__/epubFixtures";
+import type { SiteSession } from "./siteSession";
+import { ArchiveLoginRequiredError } from "./archiveErrors";
+import { detailsHtml, jsiaBody, JPEG } from "./__fixtures__/archiveBorrowFixtures";
 import {
   archiveItemId,
   ArchiveNotBookError,
@@ -355,5 +358,102 @@ describe("importArchiveItem", () => {
       ],
     });
     await expect(importArchiveItem("x", { fetchImpl })).rejects.toBeInstanceOf(ArchiveUnavailableError);
+  });
+});
+
+const SESSION: SiteSession = {
+  cookies: [
+    { name: "logged-in-user", value: "me%40x.com", domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+  ],
+  origins: [],
+};
+
+// The same endpoints the borrow path hits, on top of the catalog stub.
+function withBorrow(fetchImpl: ReturnType<typeof archiveFetch>) {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init; // the catalog stub ignores init; the borrow branches build their own Responses
+    const url = String(input);
+    if (url.startsWith("https://archive.org/details/")) {
+      return new Response(detailsHtml(), { status: 200, headers: { "content-type": "text/html" } });
+    }
+    if (url.includes("BookReaderJSIA.php")) {
+      return new Response(JSON.stringify(jsiaBody({ leafCount: 2 })), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.includes("/services/bookreader/request_page")) {
+      const leafNum = Number(new URL(url).searchParams.get("leafNum"));
+      return new Response(JSON.stringify({ success: true, value: [leafNum, leafNum + 1] }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    if (url.includes("BookReaderPreview.php")) {
+      return new Response(new Uint8Array(JPEG), { status: 200, headers: { "content-type": "image/jpeg" } });
+    }
+    return fetchImpl(input);
+  });
+}
+
+describe("importArchiveItem with a session", () => {
+  it("refuses a restricted item without a session with the login message", async () => {
+    const fetchImpl = archiveFetch({ metadata: { "access-restricted-item": "true" } });
+    const error = await importArchiveItem("x", { fetchImpl: fetchImpl as unknown as typeof fetch }).catch(
+      (err: unknown) => err
+    );
+    expect(error).toBeInstanceOf(ArchiveLoginRequiredError);
+    expect((error as Error).message).toMatch(/Sign in to archive\.org/);
+  });
+
+  it("captures the borrow pages when a session is saved", async () => {
+    const catalog = archiveFetch({
+      metadata: { title: "Namiya", creator: "Keigo", "access-restricted-item": "true" },
+      cover: undefined,
+    });
+    const fetchImpl = withBorrow(catalog);
+    const stored: string[] = [];
+    const book = await importArchiveItem("testitem", {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: SESSION,
+      storeImage: (_bytes, extension) => `media/${stored.push(extension)}.jpg`,
+    });
+    expect(book.title).toBe("Namiya");
+    expect(book.chapters).toHaveLength(1);
+    expect(book.chapters[0].blocks).toHaveLength(2);
+    expect(book.chapters[0].blocks[0].type).toBe("image");
+    // the public candidates are never fetched for a restricted item
+    const downloads = fetchImpl.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/download/"));
+    expect(downloads).toEqual([]);
+  });
+
+  it("still refuses an item that is not lendable at all", async () => {
+    const catalog = archiveFetch({ metadata: { "access-restricted-item": "true" } });
+    const fetchImpl = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.startsWith("https://archive.org/details/")) {
+        return new Response(detailsHtml(), { status: 200, headers: { "content-type": "text/html" } });
+      }
+      if (url.includes("BookReaderJSIA.php")) {
+        return new Response(JSON.stringify(jsiaBody({ lendingStatus: { is_lendable: false } })), {
+          status: 200,
+          headers: { "content-type": "application/json" },
+        });
+      }
+      return catalog(input);
+    });
+    const error = await importArchiveItem("x", {
+      fetchImpl: fetchImpl as unknown as typeof fetch,
+      session: SESSION,
+    }).catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(ArchiveRestrictedError);
+  });
+
+  it("ignores the session for an open item", async () => {
+    const fetchImpl = archiveFetch({ metadata: { title: "Open" }, files: [{ name: "book_djvu.txt", format: "DjVuTXT" }], bodies: { "book_djvu.txt": "x".repeat(300) } });
+    const book = await importArchiveItem("open", { fetchImpl: fetchImpl as unknown as typeof fetch, session: SESSION });
+    const urls = fetchImpl.mock.calls.map(([input]) => String(input));
+    expect(urls.some((url) => url.includes("BookReaderJSIA"))).toBe(false);
+    expect(book.chapters.length).toBeGreaterThan(0);
   });
 });

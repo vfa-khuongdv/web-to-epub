@@ -219,6 +219,16 @@ const vi: Record<string, string> = {
   "This Internet Archive item is not a book: {url}": "Mục này trên Internet Archive không phải là sách: {url}",
   "This Internet Archive item is access-restricted (borrow-only) and cannot be imported: {url}":
     "Sách này trên Internet Archive bị giới hạn truy cập (phải mượn/đăng nhập), không thể nhập: {url}",
+  "This Internet Archive item is borrow-only. Sign in to archive.org (Settings → Site sessions) and import again: {url}":
+    "Sách này trên Internet Archive chỉ cho mượn. Hãy đăng nhập archive.org (Cài đặt → Phiên trang web) rồi import lại: {url}",
+  "No copy of this Internet Archive book is available to borrow right now — try again later: {url}":
+    "Hiện không còn bản nào của sách này để mượn trên Internet Archive — thử lại sau: {url}",
+  "The saved archive.org session is not logged in — import a fresh one (Settings → Site sessions).":
+    "Phiên archive.org đã lưu chưa đăng nhập — hãy nhập phiên mới (Cài đặt → Phiên trang web).",
+  "The archive.org loan ended while importing — run the import again: {url}":
+    "Phiên mượn trên archive.org hết hạn giữa chừng — hãy chạy import lại: {url}",
+  "Could not read page {page} of this Internet Archive book: {url}":
+    "Không đọc được trang {page} của sách Internet Archive này: {url}",
   "No readable EPUB, PDF, or text file is available for this Internet Archive item: {url}":
     "Không có file EPUB, PDF hay text đọc được cho sách này trên Internet Archive: {url}",
   "This Internet Archive book has too many pages to import (maximum {count})":

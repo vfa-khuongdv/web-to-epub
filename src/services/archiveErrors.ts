@@ -1,7 +1,8 @@
 import { t } from "./lang";
 
 // An Internet Archive item whose catalog entry marks it lending/access-restricted is
-// refused before any file is fetched. The app never borrows, signs in or decrypts.
+// refused before any file is fetched unless a saved session can start a browse for it
+// (see archiveBorrow.ts). The app never decrypts anything.
 export class ArchiveNotFoundError extends Error {
   constructor(id: string) {
     super(t("Internet Archive item not found: {id}", { id }));

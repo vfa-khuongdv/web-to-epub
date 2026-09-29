@@ -3,6 +3,8 @@ import { MAX_COVER_BYTES, sniffImageExtension } from "./coverStore";
 import { ImportedBook, ImportedChapter, parseEpub, StoreImage } from "./epubImport";
 import { t } from "./lang";
 import { CHAPTER_HEADING_RE, joinLine, MAX_PAGES, PAGES_PER_CHUNK, parsePdf, SENTENCE_END_RE } from "./pdfImport";
+import { SiteSession } from "./siteSession";
+import { importBorrowedBook } from "./archiveBorrow";
 
 import {
   ArchiveLoginRequiredError,
@@ -37,6 +39,7 @@ export interface ArchiveItem {
   author?: string;
   language?: string;
   pdfDegraded: boolean;
+  restricted: boolean;
   files: ArchiveFile[];
 }
 
@@ -71,7 +74,11 @@ function metaString(value: unknown): string | undefined {
 // A network failure propagates as the raw fetch error (the route turns that into the
 // generic message); an unknown id answers 404/410 or an empty body, both "not found".
 // Any other status is a server failure, not a missing item.
-export async function fetchItem(fetchImpl: typeof fetch, id: string): Promise<ArchiveItem> {
+export async function fetchItem(
+  fetchImpl: typeof fetch,
+  id: string,
+  options: { allowRestricted?: boolean } = {}
+): Promise<ArchiveItem> {
   const res = await fetchImpl(`https://archive.org/metadata/${encodeURIComponent(id)}`);
   if (!res.ok) {
     if (res.status === 404 || res.status === 410) throw new ArchiveNotFoundError(id);
@@ -85,9 +92,8 @@ export async function fetchItem(fetchImpl: typeof fetch, id: string): Promise<Ar
   const url = `https://archive.org/details/${id}`;
   const mediatype = metaString(metadata.mediatype);
   if (mediatype && mediatype !== "texts") throw new ArchiveNotBookError(url);
-  if (metadata["access-restricted-item"] === "true" || metadata["access-restricted-item"] === true) {
-    throw new ArchiveRestrictedError(url);
-  }
+  const restricted = metadata["access-restricted-item"] === "true" || metadata["access-restricted-item"] === true;
+  if (restricted && !options.allowRestricted) throw new ArchiveRestrictedError(url);
   const catalogTitle = metaString(metadata.title);
   return {
     id,
@@ -96,6 +102,7 @@ export async function fetchItem(fetchImpl: typeof fetch, id: string): Promise<Ar
     author: metaString(metadata.creator),
     language: metaString(metadata.language),
     pdfDegraded: metadata.pdf_degraded === true || !!metaString(metadata.pdf_degraded),
+    restricted,
     files: Array.isArray(data.files) ? (data.files as ArchiveFile[]) : [],
   };
 }
@@ -306,6 +313,7 @@ export interface ImportArchiveOptions {
   fetchImpl?: typeof fetch;
   storeImage?: StoreImage;
   maxFileBytes?: number;
+  session?: SiteSession;
 }
 
 // The item's title/author/language come from the catalog when present; the parser's own
@@ -339,8 +347,14 @@ async function withItemMeta(
 export async function importArchiveItem(id: string, options: ImportArchiveOptions = {}): Promise<ImportedBook> {
   const fetchImpl = options.fetchImpl ?? fetch;
   const maxBytes = options.maxFileBytes ?? MAX_ARCHIVE_FILE_BYTES;
-  const item = await fetchItem(fetchImpl, id);
+  const item = await fetchItem(fetchImpl, id, { allowRestricted: true });
   const parseOptions = { fallbackTitle: item.title, storeImage: options.storeImage ?? (() => "") };
+
+  if (item.restricted) {
+    if (!options.session) throw new ArchiveLoginRequiredError(`https://archive.org/details/${id}`);
+    const book = await importBorrowedBook(fetchImpl, options.session, id, item, options.storeImage ?? (() => ""));
+    return withItemMeta(book, item, fetchImpl, maxBytes);
+  }
 
   const epubFile = pickEpubFile(item.files, maxBytes);
   if (epubFile) {
