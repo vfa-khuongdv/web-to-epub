@@ -19,6 +19,9 @@ export interface SupportedSite {
 // the site's script POSTs to gethtml.php for it (AES-obfuscated), which the fetcher
 // does directly. Books the site marks members-only are refused with a clear error —
 // the app never signs in.
+// scribd.com has its own TOC adapter and chapter fetcher: the viewer page lists every
+// page's payload URL, and a document the account cannot view fully is refused instead
+// of partially imported (services/toc/scribd.ts).
 export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "xtruyen.vn", name: "XTruyện" },
   { domain: "truyenfull.vn", name: "TruyenFull" },
@@ -29,6 +32,7 @@ export const SUPPORTED_SITES: SupportedSite[] = [
   { domain: "asianfanfics.com", name: "Asianfanfics" }, // English site; M-rated stories need a logged-in account with mature content enabled
   { domain: "fanfiction.net", name: "FanFiction.net" }, // English site
   { domain: "vietmessenger.com", name: "Viet Messenger" }, // public-domain ebook library; members-only books are refused
+  { domain: "scribd.com", name: "Scribd" }, // document pages; pages the account cannot view are refused
 ];
 
 export function findSupportedSite(url: string): SupportedSite | undefined {

@@ -21,6 +21,9 @@ const VALID_CURL =
 // The Cloudflare pass truyenfull.live needs: no login token, just the clearance cookie.
 const TRUYENFULL_CURL =
   `curl 'https://truyenfull.live/huyet-mach-khong-the-danh-trao-free/' -H 'cookie: cf_clearance=tf-clearance; _ga=GA1.1.123' -H 'user-agent: UA-MAC'`;
+// Scribd's session cookie is an opaque value (no JWT), so there is no account name to show.
+const SCRIBD_CURL =
+  `curl 'https://www.scribd.com/document/571686127/%E3%83%8A%E3%83%9F' -H 'cookie: _scribd_session=scribd-session-value; spv_571686127=view-token' -H 'user-agent: UA-MAC'`;
 
 describe("site session routes", () => {
   let server: Server;
@@ -138,6 +141,32 @@ describe("site session routes", () => {
       configured: boolean;
       savedAt?: string;
       // cf_clearance is not a JWT, so there is no readable expiry to report.
+      expiresAt?: string;
+    };
+    expect(status.configured).toBe(true);
+    expect(status.expiresAt).toBeUndefined();
+    expect(typeof status.savedAt).toBe("string");
+  });
+
+  it("scribd dùng file phiên riêng, không lưu giá trị cookie", async () => {
+    const empty = await fetch(`${base}/api/site-sessions/scribd`);
+    expect(await empty.json()).toEqual({ configured: false });
+
+    const res = await fetch(`${base}/api/site-sessions/scribd`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curl: SCRIBD_CURL }),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { cookieCount: number; username?: string };
+    expect(body.cookieCount).toBe(2);
+    expect(body.username).toBeUndefined();
+    expect(JSON.stringify(body)).not.toContain("scribd-session-value");
+    expect(existsSync(path.join(DATA_DIR, "sessions", "scribd.com.json"))).toBe(true);
+
+    const status = (await (await fetch(`${base}/api/site-sessions/scribd`)).json()) as {
+      configured: boolean;
+      savedAt?: string;
       expiresAt?: string;
     };
     expect(status.configured).toBe(true);

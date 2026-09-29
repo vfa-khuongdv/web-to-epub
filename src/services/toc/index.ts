@@ -1,5 +1,6 @@
 import { asianfanficsAdapter } from "./asianfanfics";
 import { fanfictionAdapter } from "./fanfiction";
+import { scribdAdapter } from "./scribd";
 import { truyenfullTemplateAdapter } from "./truyenfullTemplate";
 import { TocAdapter } from "./types";
 import { vietmessengerAdapter } from "./vietmessenger";
@@ -15,6 +16,7 @@ const ADAPTERS: TocAdapter[] = [
   asianfanficsAdapter,
   fanfictionAdapter,
   vietmessengerAdapter,
+  scribdAdapter,
 ];
 
 export function getTocAdapter(url: string): TocAdapter | undefined {

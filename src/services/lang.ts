@@ -141,6 +141,24 @@ const vi: Record<string, string> = {
     "Nội dung Asianfanfics này chỉ dành cho người đăng ký — cần tài khoản đã đăng ký theo dõi tác giả: {url}",
   "This Asianfanfics content is rated M (mature) — it needs a logged-in account with mature content enabled. Turn off Settings → Content filter → \"Filter mature content\" on asianfanfics.com, then retry: {url}":
     "Nội dung Asianfanfics này được đánh dấu M (người lớn) — cần tài khoản đã đăng nhập và bật nội dung người lớn. Hãy tắt Cài đặt → Content filter → \"Filter mature content\" trên asianfanfics.com rồi thử lại: {url}",
+  "This is not a Scribd document page: {url} — paste a URL like https://www.scribd.com/document/<id>":
+    "URL này không phải trang tài liệu Scribd: {url} — hãy dán URL dạng https://www.scribd.com/document/<id>",
+  "Scribd's bot check did not finish — try again in a moment ({url})":
+    "Scribd chưa xác minh xong bước kiểm tra bot — thử lại sau một lát ({url})",
+  "This Scribd document needs a login — import a Scribd session from your browser (Settings → Site sessions), then try again: {url}":
+    "Tài liệu Scribd này cần đăng nhập — hãy nhập phiên Scribd từ trình duyệt của bạn (Cài đặt → Phiên theo trang) rồi thử lại: {url}",
+  "No document viewer found at {url} — check the document URL again; if it needs a login, import a Scribd session first":
+    "Không tìm thấy trình xem tài liệu tại {url} — kiểm tra lại URL; nếu tài liệu cần đăng nhập, hãy nhập phiên Scribd trước",
+  "No document viewer found at {url}": "Không tìm thấy trình xem tài liệu tại {url}",
+  "This Scribd document is only partly viewable (page {page} is locked) — import a Scribd session from an account that can view it, then try again: {url}":
+    "Tài liệu Scribd này chỉ xem được một phần (trang {page} bị khoá) — hãy nhập phiên của tài khoản xem được toàn bộ tài liệu rồi thử lại: {url}",
+  "Scribd returned an unreadable page ({page}) — try again": "Scribd trả về trang không đọc được ({page}) — thử lại",
+  "This is not a Scribd chapter URL: {url} — add the document again to refresh its chapter list":
+    "URL này không phải chương của Scribd: {url} — hãy thêm lại tài liệu để làm mới danh sách chương",
+  "No pages found for this Scribd chapter range ({from}–{to}): {url}":
+    "Không tìm thấy trang nào trong khoảng chương Scribd ({from}–{to}): {url}",
+  "Could not read any content from this Scribd chapter: {url}":
+    "Không đọc được nội dung nào từ chương Scribd này: {url}",
 
   // Saved site sessions
   "Saved login session is unreadable — delete {file} and log in again":

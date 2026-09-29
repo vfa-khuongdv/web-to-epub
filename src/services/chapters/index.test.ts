@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { getChapterFetcher } from "./index";
 import { fetchAsianfanficsChapter } from "./asianfanfics";
+import { fetchScribdChapter } from "./scribd";
 import { fetchTruyenfullChapter } from "./truyenfull";
 import { fetchVietmessengerChapter } from "./vietmessenger";
 import { fetchWattpadChapter } from "./wattpad";
@@ -13,6 +14,9 @@ describe("getChapterFetcher", () => {
     );
     expect(getChapterFetcher("https://vietmessenger.com/books/?title=2030&page=2")?.fetchChapter).toBe(
       fetchVietmessengerChapter
+    );
+    expect(getChapterFetcher("https://www.scribd.com/document/571686127#pages=1-20")?.fetchChapter).toBe(
+      fetchScribdChapter
     );
   });
 

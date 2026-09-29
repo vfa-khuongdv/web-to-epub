@@ -41,7 +41,9 @@ export interface ParsePdfOptions {
   fallbackTitle?: string;
 }
 
-interface Line {
+// Shared with services/chapters/scribd.ts, which builds the same line records from a
+// Scribd text layer and reuses the block heuristics below.
+export interface Line {
   page: number;
   x: number;
   y: number;
@@ -180,7 +182,7 @@ async function outlineStarts(pdf: PdfDocument): Promise<ChapterStart[]> {
   return starts.sort((a, b) => a.page - b.page || b.top - a.top);
 }
 
-function mostCommonSize(lines: Line[]): number {
+export function mostCommonSize(lines: Line[]): number {
   const weight = new Map<number, number>();
   for (const line of lines) {
     const size = Math.round(line.size * 2) / 2;
@@ -204,7 +206,7 @@ export function joinLine(text: string, next: string): string {
 // size, or a line that finishes a sentence well short of the right margin (the only signal
 // left when every paragraph is one line); across a page break it continues unless the last
 // line finished a sentence.
-function linesToBlocks(lines: Line[], bodySize: number, lineGap: number, margins: Margins): ContentBlock[] {
+export function linesToBlocks(lines: Line[], bodySize: number, lineGap: number, margins: Margins): ContentBlock[] {
   const blocks: ContentBlock[] = [];
   let paragraph: string | undefined;
   let previous: Line | undefined;
@@ -249,9 +251,9 @@ function linesToBlocks(lines: Line[], bodySize: number, lineGap: number, margins
 }
 
 // Left and right edges of the body text on each page.
-type Margins = Map<number, { left: number; right: number }>;
+export type Margins = Map<number, { left: number; right: number }>;
 
-function lineGapOf(lines: Line[], bodySize: number): number {
+export function lineGapOf(lines: Line[], bodySize: number): number {
   const gaps: number[] = [];
   for (let i = 1; i < lines.length; i++) {
     const [a, b] = [lines[i - 1], lines[i]];

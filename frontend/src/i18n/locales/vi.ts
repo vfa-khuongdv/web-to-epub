@@ -412,6 +412,23 @@ export const vi: Record<string, string> = {
     "TruyenFull cần phiên trình duyệt đã lưu để qua bước kiểm tra Cloudflare.",
   "Skipping means adding a TruyenFull story will fail while the site blocks the app.":
     "Bỏ qua thì việc thêm truyện TruyenFull sẽ thất bại khi site còn chặn app.",
+  "Scribd session": "Phiên đăng nhập Scribd",
+  "Some Scribd documents only show their full content to a logged-in account. The tool never sees your password — you log in there and paste a copy of the request.":
+    "Một số tài liệu Scribd chỉ hiện đầy đủ nội dung cho tài khoản đã đăng nhập. Công cụ không bao giờ thấy mật khẩu — bạn đăng nhập ở đó rồi dán bản copy của request.",
+  "Log in to scribd.com in your browser — the copy has to come from a page where you are already logged in.":
+    "Đăng nhập scribd.com trên trình duyệt của bạn — bản copy phải lấy từ trang mà bạn đã đăng nhập.",
+  "Open the document you want to add and let it load fully, so the copied request carries the login cookies.":
+    "Mở tài liệu bạn muốn thêm và để nó tải xong, để request copy được có kèm cookie đăng nhập.",
+  'Right-click the first request (the scribd.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Chuột phải vào request đầu tiên (trang scribd.com) → Copy → Copy as cURL. Nếu chỉ có "Copy as cURL (bash)" thì bản đó cũng dùng được.',
+  "Pages the document keeps locked for your account are refused, never fetched — import a session from an account that can view the whole document.":
+    "Những trang tài liệu khoá với tài khoản của bạn sẽ bị từ chối, không bao giờ tải — hãy nhập phiên của tài khoản xem được toàn bộ tài liệu.",
+  "A saved login is in use for Scribd documents that need it.":
+    "Đang dùng phiên đăng nhập đã lưu cho các tài liệu Scribd cần đăng nhập.",
+  "Scribd documents that only load for a logged-in account need a login saved from your own browser.":
+    "Tài liệu Scribd chỉ tải được bằng tài khoản đã đăng nhập cần phiên đăng nhập lấy từ chính trình duyệt của bạn.",
+  "You can skip this — documents that are viewable without an account still load.":
+    "Có thể bỏ qua — tài liệu xem được không cần tài khoản vẫn tải bình thường.",
 
   // Narration (Settings)
   "Narration": "Giọng đọc",
