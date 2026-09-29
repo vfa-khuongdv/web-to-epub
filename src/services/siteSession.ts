@@ -28,6 +28,9 @@ export interface ParsedSiteSession {
   cookies: NonNullable<SiteSession["cookies"]>;
 }
 
+/** A session file that exists but cannot be parsed — the fix is deleting that file. */
+export class SiteSessionUnreadableError extends Error {}
+
 export function sessionHostname(url: string): string | undefined {
   try {
     return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
@@ -46,7 +49,7 @@ function loadSessionByHostname(hostname: string): SiteSession | undefined {
   try {
     return JSON.parse(readFileSync(file, "utf8")) as SiteSession;
   } catch {
-    throw new Error(t("Saved login session is unreadable — delete {file} and log in again", { file }));
+    throw new SiteSessionUnreadableError(t("Saved login session is unreadable — delete {file} and log in again", { file }));
   }
 }
 

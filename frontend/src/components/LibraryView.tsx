@@ -185,8 +185,7 @@ export default function LibraryView({
   const [page, setPage] = useState(1);
   const [checking, setChecking] = useState(false);
   const checkedOnOpen = useRef(false);
-  // The URL waiting behind the site session dialog, with the site it belongs to: sites
-  // whose crawls need a saved browser session (Asianfanfics, truyenfull.live).
+  // The URL waiting behind the site session dialog: sites that need a saved browser session (Asianfanfics, TruyenFull, Internet Archive).
   const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite; action: "story" | "archive" } | null>(
     null
   );

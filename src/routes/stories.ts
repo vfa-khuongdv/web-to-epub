@@ -18,7 +18,7 @@ import {
 import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
 import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
 import { settingsStore } from "../services/settingsStore";
-import { loadSiteSession } from "../services/siteSession";
+import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
@@ -276,7 +276,8 @@ storiesRouter.post("/stories/import-archive", async (req, res) => {
       err instanceof ArchiveTooManyPagesError ||
       err instanceof ArchiveUnavailableError ||
       err instanceof ArchiveLoginRequiredError ||
-      err instanceof ArchiveLoanError
+      err instanceof ArchiveLoanError ||
+      err instanceof SiteSessionUnreadableError
         ? err.message
         : t("Could not import from Internet Archive");
     res.status(400).json({ message });
