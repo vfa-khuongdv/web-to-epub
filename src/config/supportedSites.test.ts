@@ -66,6 +66,14 @@ describe("findSupportedSite", () => {
     expect(findSupportedSite("https://www.vietmessenger.com/books/?title=a")?.domain).toBe("vietmessenger.com");
   });
 
+  it("nhận scribd.com", () => {
+    expect(findSupportedSite("https://www.scribd.com/document/571686127/%E3%83%8A%E3%83%9F")).toEqual({
+      domain: "scribd.com",
+      name: "Scribd",
+    });
+    expect(findSupportedSite("https://scribd.com/document/123")?.domain).toBe("scribd.com");
+  });
+
   it("nhận subdomain con của supported site", () => {
     expect(findSupportedSite("https://m.wattpad.com/story/123")?.domain).toBe("wattpad.com");
   });

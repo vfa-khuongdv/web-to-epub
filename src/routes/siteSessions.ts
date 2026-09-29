@@ -12,11 +12,13 @@ export const siteSessionsRouter = Router();
 
 // The sites whose crawls need a session saved from the reader's own browser: Asianfanfics
 // for its rated-M / subscribers-only stories, truyenfull.live for the Cloudflare check its
-// story pages sit behind. Kept as a slug allowlist rather than a :domain parameter so no
-// request can name a file to write.
+// story pages sit behind, Scribd for documents that only load for a logged-in account.
+// Kept as a slug allowlist rather than a :domain parameter so no request can name a file
+// to write.
 const SESSION_SITES: Record<string, string> = {
   asianfanfics: "asianfanfics.com",
   truyenfull: "truyenfull.live",
+  scribd: "scribd.com",
 };
 
 siteSessionsRouter.get("/site-sessions/:site", (req, res) => {

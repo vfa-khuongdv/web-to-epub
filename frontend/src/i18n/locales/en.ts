@@ -410,6 +410,23 @@ export const en: Record<string, string> = {
     "TruyenFull needs a saved browser session to pass its Cloudflare check.",
   "Skipping means adding a TruyenFull story will fail while the site blocks the app.":
     "Skipping means adding a TruyenFull story will fail while the site blocks the app.",
+  "Scribd session": "Scribd session",
+  "Some Scribd documents only show their full content to a logged-in account. The tool never sees your password — you log in there and paste a copy of the request.":
+    "Some Scribd documents only show their full content to a logged-in account. The tool never sees your password — you log in there and paste a copy of the request.",
+  "Log in to scribd.com in your browser — the copy has to come from a page where you are already logged in.":
+    "Log in to scribd.com in your browser — the copy has to come from a page where you are already logged in.",
+  "Open the document you want to add and let it load fully, so the copied request carries the login cookies.":
+    "Open the document you want to add and let it load fully, so the copied request carries the login cookies.",
+  'Right-click the first request (the scribd.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Right-click the first request (the scribd.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.',
+  "Pages the document keeps locked for your account are refused, never fetched — import a session from an account that can view the whole document.":
+    "Pages the document keeps locked for your account are refused, never fetched — import a session from an account that can view the whole document.",
+  "A saved login is in use for Scribd documents that need it.":
+    "A saved login is in use for Scribd documents that need it.",
+  "Scribd documents that only load for a logged-in account need a login saved from your own browser.":
+    "Scribd documents that only load for a logged-in account need a login saved from your own browser.",
+  "You can skip this — documents that are viewable without an account still load.":
+    "You can skip this — documents that are viewable without an account still load.",
 
   // Narration (Settings)
   "Narration": "Narration",

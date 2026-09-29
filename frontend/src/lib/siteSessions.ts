@@ -2,7 +2,8 @@
  * Sites whose crawls need a session saved from the reader's own browser (see
  * src/services/siteSession.ts). Asianfanfics needs a login for rated-M and
  * subscribers-only stories; truyenfull.live pages sit behind a Cloudflare check the app
- * cannot pass by itself, so it reuses the pass the reader's browser already has.
+ * cannot pass by itself, so it reuses the pass the reader's browser already has; Scribd
+ * documents that only load for a logged-in account need that account's cookies.
  *
  * The dialog copy lives here as i18n keys — the English source text, translated by
  * `t()` where it is rendered.
@@ -76,6 +77,32 @@ export const SESSION_SITES: SessionSite[] = [
     settingsConfiguredHint: "A saved browser session is in use to pass TruyenFull's Cloudflare check.",
     settingsEmptyHint: "TruyenFull needs a saved browser session to pass its Cloudflare check.",
     skipNote: "Skipping means adding a TruyenFull story will fail while the site blocks the app.",
+    showsExpiry: false,
+  },
+  {
+    slug: "scribd",
+    domain: "scribd.com",
+    label: "Scribd",
+    dialogTitle: "Scribd session",
+    dialogIntro:
+      "Some Scribd documents only show their full content to a logged-in account. The tool never sees your password — you log in there and paste a copy of the request.",
+    dialogSteps: [
+      "Log in to scribd.com in your browser — the copy has to come from a page where you are already logged in.",
+      "Open the document you want to add and let it load fully, so the copied request carries the login cookies.",
+      "Open DevTools: press F12, or ⌥⌘I on a Mac (Safari: turn the Develop menu on first).",
+      "Switch to the Network tab and reload the page (⌘R / Ctrl+R) so the request list fills up.",
+      'Right-click the first request (the scribd.com page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.',
+      "Paste it into the box below and save.",
+    ],
+    dialogNotes: [
+      "A wrong request (an image, an ad) carries no login cookies — the app says so instead of saving it.",
+      "Pages the document keeps locked for your account are refused, never fetched — import a session from an account that can view the whole document.",
+    ],
+    placeholder: "curl 'https://www.scribd.com/document/571686127/…' -H 'cookie: _scribd_session=…'",
+    settingsConfiguredHint: "A saved login is in use for Scribd documents that need it.",
+    settingsEmptyHint:
+      "Scribd documents that only load for a logged-in account need a login saved from your own browser.",
+    skipNote: "You can skip this — documents that are viewable without an account still load.",
     showsExpiry: false,
   },
 ];
