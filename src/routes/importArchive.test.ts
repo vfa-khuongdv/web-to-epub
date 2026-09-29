@@ -89,40 +89,39 @@ describe("POST /stories/import-archive", () => {
   }
 
   function stubArchive(options: StubOptions) {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        const url = String(input);
-        if (url.startsWith("https://archive.org/metadata/")) {
-          const identifier = decodeURIComponent(url.split("/metadata/")[1]);
-          return new Response(
-            JSON.stringify({
-              metadata: {
-                identifier,
-                title: "Sách Archive",
-                creator: "Tác giả",
-                language: "eng",
-                mediatype: "texts",
-                ...(options.restricted ? { "access-restricted-item": "true" } : {}),
-              },
-              files: options.files ?? [],
-            }),
-            { status: 200, headers: { "content-type": "application/json" } }
-          );
-        }
-        if (url.startsWith("https://archive.org/download/")) {
-          const name = decodeURIComponent(url.split("/download/")[1].split("/").slice(1).join("/"));
-          const body = options.bodies?.[name];
-          if (body === undefined) return new Response("", { status: 404 });
-          if (typeof body === "number") return new Response("", { status: body });
-          return new Response(new Uint8Array(typeof body === "string" ? Buffer.from(body) : body));
-        }
-        if (url.startsWith("https://archive.org/services/img/")) {
-          return options.cover ? new Response(new Uint8Array(options.cover)) : new Response("", { status: 404 });
-        }
-        return realFetch(input, init);
-      })
-    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.startsWith("https://archive.org/metadata/")) {
+        const identifier = decodeURIComponent(url.split("/metadata/")[1]);
+        return new Response(
+          JSON.stringify({
+            metadata: {
+              identifier,
+              title: "Sách Archive",
+              creator: "Tác giả",
+              language: "eng",
+              mediatype: "texts",
+              ...(options.restricted ? { "access-restricted-item": "true" } : {}),
+            },
+            files: options.files ?? [],
+          }),
+          { status: 200, headers: { "content-type": "application/json" } }
+        );
+      }
+      if (url.startsWith("https://archive.org/download/")) {
+        const name = decodeURIComponent(url.split("/download/")[1].split("/").slice(1).join("/"));
+        const body = options.bodies?.[name];
+        if (body === undefined) return new Response("", { status: 404 });
+        if (typeof body === "number") return new Response("", { status: body });
+        return new Response(new Uint8Array(typeof body === "string" ? Buffer.from(body) : body));
+      }
+      if (url.startsWith("https://archive.org/services/img/")) {
+        return options.cover ? new Response(new Uint8Array(options.cover)) : new Response("", { status: 404 });
+      }
+      return realFetch(input, init);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
   }
 
   function importArchive(
@@ -189,7 +188,7 @@ describe("POST /stories/import-archive", () => {
   });
 
   it("refuses a lending item with the translated message", async () => {
-    stubArchive({
+    const fetchMock = stubArchive({
       restricted: true,
       files: [{ name: "book_djvu.txt", format: "DjVuTXT" }],
       bodies: { "book_djvu.txt": TEXT },
@@ -197,6 +196,8 @@ describe("POST /stories/import-archive", () => {
     const res = await importArchive("", { url: "https://archive.org/details/testitem" }, { "X-Lang": "vi" });
     expect(res.status).toBe(400);
     expect((await res.json()).message).toContain("giới hạn truy cập");
+    const downloads = fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/download/"));
+    expect(downloads).toEqual([]);
   });
 
   it("refuses a URL that is not an archive.org item page", async () => {
