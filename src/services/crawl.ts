@@ -1,5 +1,6 @@
 import { ChapterErrorKind, ExtractedChapter } from "../types";
 import { getChapterFetcher } from "./chapters";
+import type { ChapterFetchContext } from "./chapters/types";
 import { extractChapter, LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
@@ -46,7 +47,8 @@ function retryDelayMs(err: unknown, attempt: number): number {
 // than silently dropping it from the result set.
 export async function extractWithRetry(
   url: string,
-  onAttempt?: (attempt: number) => void
+  onAttempt?: (attempt: number) => void,
+  context?: ChapterFetchContext
 ): Promise<ExtractedChapter> {
   let lastError = "Unknown error";
   let errorKind: ChapterErrorKind = "other";
@@ -56,7 +58,7 @@ export async function extractWithRetry(
     try {
       // Sites that server-render content (e.g., Wattpad) have their own fetcher:
       // load HTML directly, much faster than opening a browser per chapter.
-      if (siteFetcher) return await siteFetcher.fetchChapter(url);
+      if (siteFetcher) return await siteFetcher.fetchChapter(url, context);
       const html = await renderPageHtml(url);
       return extractChapter(url, html);
     } catch (err) {

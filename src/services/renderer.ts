@@ -1,4 +1,4 @@
-import { Browser, chromium } from "playwright";
+import { Browser, BrowserContext, chromium, Page } from "playwright";
 import browserConfig from "../config/browser.json";
 import { t } from "./lang";
 import { loadSiteSession, persistRenderedCookies } from "./siteSession";
@@ -97,14 +97,22 @@ type PageState = { blanked: boolean; height: number; textLength: number };
  */
 export class BlankedPageError extends Error {}
 
+export interface RenderSession {
+  page: Page;
+  close(): Promise<void>;
+}
+
 /**
- * Renders a URL like a real browser (executes JS/CSS) and returns the fully
- * rendered DOM as serialized HTML. Since this reads page.content() directly
- * from the DOM tree rather than going through the browser's selection/
- * clipboard pipeline, CSS `user-select: none`, `oncopy`/`oncontextmenu`
- * handlers and similar copy-blocking scripts have no effect on it.
+ * Opens a rendered page on the shared browser, with the saved session for that site, for
+ * callers that need to drive the page themselves (Scribd's scrambled-font documents are
+ * captured page by page). Runtime- and cookie bookkeeping matches renderPageHtml: while a
+ * session is open the browser is not considered idle, and cookies the site refreshes along
+ * the way are written back on close.
  */
-export async function renderPageHtml(url: string): Promise<string> {
+export async function openRenderSession(
+  url: string,
+  options: { deviceScaleFactor?: number; viewport?: { width: number; height: number } } = {}
+): Promise<RenderSession> {
   // Increment before await: while waiting for browser and opening page, another
   // thread shouldn't consider it idle and swap/close browser immediately.
   openPages++;
@@ -112,6 +120,8 @@ export async function renderPageHtml(url: string): Promise<string> {
     clearTimeout(idleTimer);
     idleTimer = null;
   }
+  let context: BrowserContext | undefined;
+  let handedOff = false;
   try {
     const browser = await getBrowser();
     rendersOnBrowser++;
@@ -120,117 +130,145 @@ export async function renderPageHtml(url: string): Promise<string> {
     // The session carries the user agent it was captured with, because the site's bot
     // protection binds its cookies to it.
     const session = loadSiteSession(url);
-    const context = await browser.newContext({
+    const ctx = await browser.newContext({
       userAgent: session?.userAgent ?? BROWSER_USER_AGENT,
       storageState: session ? { cookies: session.cookies, origins: session.origins } : undefined,
+      ...(options.deviceScaleFactor ? { deviceScaleFactor: options.deviceScaleFactor } : {}),
+      ...(options.viewport ? { viewport: options.viewport } : {}),
     });
-    try {
-      const page = await context.newPage();
-      // "networkidle" is unreliable in practice: sites with continuous
-      // background traffic (ads, analytics beacons, chat widgets) never reach
-      // it and the navigation just times out, even though the actual chapter
-      // content rendered almost immediately. "domcontentloaded" plus the
-      // bounded settle loop below is faster and more robust across sites.
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
+    context = ctx;
+    const page = await ctx.newPage();
+    // "networkidle" is unreliable in practice: sites with continuous background traffic
+    // (ads, analytics beacons, chat widgets) never reach it and the navigation just times
+    // out, even though the actual content rendered almost immediately.
+    await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
 
-      // Asianfanfics gates every page behind an "Are you over 18?" click-through that is
-      // independent of login: it sets a cookie only when a real click happens (a plain
-      // request to the same href does not), so a session captured from a pasted cURL never
-      // carries it. Click it once per render so rendering behaves like an already-verified
-      // browser, same as the user's own.
-      if (/(^|\.)asianfanfics\.com$/.test(new URL(url).hostname)) {
-        const ageGate = page.locator('a[href="/htmx/story/verify_age"]');
-        if (await ageGate.count().catch(() => 0)) {
-          await ageGate.first().click().catch(() => {});
-          // The click reloads the page; without this the settle loop below starts
-          // polling mid-navigation and reads a transient blank document as a real
-          // BlankedPageError instead of waiting for the unlocked content.
-          await page.waitForLoadState("domcontentloaded").catch(() => {});
+    let closed = false;
+    handedOff = true;
+    return {
+      page,
+      close: async () => {
+        if (closed) return;
+        closed = true;
+        // The site's own scripts refresh its short-lived login token while the page runs;
+        // keep those cookies, or the next render starts from the pasted snapshot and the
+        // site serves a guest page again. Never allowed to fail the render.
+        if (session) {
+          try {
+            persistRenderedCookies(url, (await ctx.storageState()).cookies);
+          } catch {
+            // Best effort: the session file is a cache of the login, not part of the render.
+          }
         }
-      }
-
-      // Scrolls to the bottom repeatedly so lazy-loaded / infinite-scroll
-      // content mounts into the DOM, stopping once the page height settles.
-      // Runs for at most SETTLE_MAX_MS so a stalled page can't hang the crawl.
-      const start = Date.now();
-      let lastHeight = -1;
-      let lastTextLength = -1;
-      let stableRounds = 0;
-      // Snapshot with most text ever seen; kept to rescue load blanked by script.
-      let snapshot = "";
-      let snapshotTextLength = 0;
-      let blanked = false;
-
-      while (Date.now() - start < SETTLE_MAX_MS) {
-        const state: PageState = await page
-          .evaluate((): PageState => {
-            if (location.href === "about:blank" || !document.body || document.body.childElementCount === 0) {
-              return { blanked: true, height: 0, textLength: 0 };
-            }
-            return {
-              blanked: false,
-              height: document.body.scrollHeight,
-              textLength: document.body.innerText.length,
-            };
-          })
-          .catch(() => ({ blanked: true, height: 0, textLength: 0 }));
-
-        if (state.blanked) {
-          blanked = true;
-          break;
-        }
-
-        // Check both text length and height, not just height: page may have enough text
-        // but images/ads still loading growing height — height growth is not reason to wait.
-        if (state.height === lastHeight && state.textLength === lastTextLength) stableRounds++;
-        else stableRounds = 0;
-        lastHeight = state.height;
-        lastTextLength = state.textLength;
-
-        const hasContent = state.textLength >= MIN_SETTLED_TEXT;
-
-        // Only snapshot when text length has STOPPED GROWING. Snapshotting while text
-        // is still arriving gives a truncated chapter, and saving a truncated chapter is
-        // far worse than retrying — errors are visible, truncated chapters are not.
-        if (hasContent && stableRounds >= 1 && state.textLength > snapshotTextLength) {
-          snapshot = await page.content().catch(() => snapshot);
-          snapshotTextLength = state.textLength;
-        }
-
-        if (hasContent && stableRounds >= 1 && Date.now() - start >= SETTLE_MIN_MS) break;
-
-        await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
-        await page.waitForTimeout(300);
-      }
-
-      // Page may still be blanked right now, so longer version is trustworthy —
-      // blanked page has only the shell in page.content().
-      const finalHtml = blanked ? "" : await page.content().catch(() => "");
-      const html = finalHtml.length >= snapshot.length ? finalHtml : snapshot;
-
-      if (html.length < MIN_RENDERED_HTML_LENGTH) {
-        if (blanked) {
-          throw new BlankedPageError(
-            t("Page blanked before content could be read (temporary error, can retry): {url}", { url })
-          );
-        }
-        throw new Error(t("Page loaded empty (temporary error, can retry): {url}", { url }));
-      }
-      return html;
-    } finally {
-      // The site's own scripts refresh its short-lived login token while the page runs;
-      // keep those cookies, or the next render starts from the pasted snapshot and the
-      // site serves a guest page again. Never allowed to fail the render.
-      if (session) {
-        try {
-          persistRenderedCookies(url, (await context.storageState()).cookies);
-        } catch {
-          // Best effort: the session file is a cache of the login, not part of the render.
-        }
-      }
-      await context.close();
-    }
+        await ctx.close().catch(() => {});
+        await releasePage();
+      },
+    };
+  } catch (err) {
+    if (context) await context.close().catch(() => {});
+    throw err;
   } finally {
-    await releasePage();
+    if (!handedOff) await releasePage();
+  }
+}
+
+/**
+ * Renders a URL like a real browser (executes JS/CSS) and returns the fully
+ * rendered DOM as serialized HTML. Since this reads page.content() directly
+ * from the DOM tree rather than going through the browser's selection/
+ * clipboard pipeline, CSS `user-select: none`, `oncopy`/`oncontextmenu`
+ * handlers and similar copy-blocking scripts have no effect on it.
+ */
+export async function renderPageHtml(url: string): Promise<string> {
+  const session = await openRenderSession(url);
+  try {
+    const page = session.page;
+
+    // Asianfanfics gates every page behind an "Are you over 18?" click-through that is
+    // independent of login: it sets a cookie only when a real click happens (a plain
+    // request to the same href does not), so a session captured from a pasted cURL never
+    // carries it. Click it once per render so rendering behaves like an already-verified
+    // browser, same as the user's own.
+    if (/(^|\.)asianfanfics\.com$/.test(new URL(url).hostname)) {
+      const ageGate = page.locator('a[href="/htmx/story/verify_age"]');
+      if (await ageGate.count().catch(() => 0)) {
+        await ageGate.first().click().catch(() => {});
+        // The click reloads the page; without this the settle loop below starts
+        // polling mid-navigation and reads a transient blank document as a real
+        // BlankedPageError instead of waiting for the unlocked content.
+        await page.waitForLoadState("domcontentloaded").catch(() => {});
+      }
+    }
+
+    // Scrolls to the bottom repeatedly so lazy-loaded / infinite-scroll
+    // content mounts into the DOM, stopping once the page height settles.
+    // Runs for at most SETTLE_MAX_MS so a stalled page can't hang the crawl.
+    const start = Date.now();
+    let lastHeight = -1;
+    let lastTextLength = -1;
+    let stableRounds = 0;
+    // Snapshot with most text ever seen; kept to rescue load blanked by script.
+    let snapshot = "";
+    let snapshotTextLength = 0;
+    let blanked = false;
+
+    while (Date.now() - start < SETTLE_MAX_MS) {
+      const state: PageState = await page
+        .evaluate((): PageState => {
+          if (location.href === "about:blank" || !document.body || document.body.childElementCount === 0) {
+            return { blanked: true, height: 0, textLength: 0 };
+          }
+          return {
+            blanked: false,
+            height: document.body.scrollHeight,
+            textLength: document.body.innerText.length,
+          };
+        })
+        .catch(() => ({ blanked: true, height: 0, textLength: 0 }));
+
+      if (state.blanked) {
+        blanked = true;
+        break;
+      }
+
+      // Check both text length and height, not just height: page may have enough text
+      // but images/ads still loading growing height — height growth is not reason to wait.
+      if (state.height === lastHeight && state.textLength === lastTextLength) stableRounds++;
+      else stableRounds = 0;
+      lastHeight = state.height;
+      lastTextLength = state.textLength;
+
+      const hasContent = state.textLength >= MIN_SETTLED_TEXT;
+
+      // Only snapshot when text length has STOPPED GROWING. Snapshotting while text
+      // is still arriving gives a truncated chapter, and saving a truncated chapter is
+      // far worse than retrying — errors are visible, truncated chapters are not.
+      if (hasContent && stableRounds >= 1 && state.textLength > snapshotTextLength) {
+        snapshot = await page.content().catch(() => snapshot);
+        snapshotTextLength = state.textLength;
+      }
+
+      if (hasContent && stableRounds >= 1 && Date.now() - start >= SETTLE_MIN_MS) break;
+
+      await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight)).catch(() => {});
+      await page.waitForTimeout(300);
+    }
+
+    // Page may still be blanked right now, so longer version is trustworthy —
+    // blanked page has only the shell in page.content().
+    const finalHtml = blanked ? "" : await page.content().catch(() => "");
+    const html = finalHtml.length >= snapshot.length ? finalHtml : snapshot;
+
+    if (html.length < MIN_RENDERED_HTML_LENGTH) {
+      if (blanked) {
+        throw new BlankedPageError(
+          t("Page blanked before content could be read (temporary error, can retry): {url}", { url })
+        );
+      }
+      throw new Error(t("Page loaded empty (temporary error, can retry): {url}", { url }));
+    }
+    return html;
+  } finally {
+    await session.close();
   }
 }

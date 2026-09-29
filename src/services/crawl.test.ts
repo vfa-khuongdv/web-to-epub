@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { fetchWattpadChapter } from "./chapters/wattpad";
+import type { ChapterFetchContext } from "./chapters/types";
 import { estimateRemainingMs, extractWithRetry, MAX_ATTEMPTS } from "./crawl";
+import type { EpubMediaStore } from "./epubMedia";
 import { LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
@@ -38,8 +40,22 @@ describe("extractWithRetry", () => {
     const chapter = await extractWithRetry(WATTPAD_URL);
 
     expect(chapter.title).toBe("CHAPTER TWO: Visiting Valentine");
-    expect(fetchWattpadChapter).toHaveBeenCalledWith(WATTPAD_URL);
+    expect(fetchWattpadChapter).toHaveBeenCalledWith(WATTPAD_URL, undefined);
     expect(renderPageHtml).not.toHaveBeenCalled();
+  });
+
+  it("passes the media context through to a site's chapter fetcher", async () => {
+    vi.mocked(fetchWattpadChapter).mockResolvedValue({
+      sourceUrl: WATTPAD_URL,
+      title: "x",
+      blocks: [],
+    });
+    const media = { save: vi.fn(), find: vi.fn(), remove: vi.fn() } as unknown as EpubMediaStore;
+    const context: ChapterFetchContext = { storyId: "0123456789abcdef", media };
+
+    await extractWithRetry(WATTPAD_URL, undefined, context);
+
+    expect(fetchWattpadChapter).toHaveBeenCalledWith(WATTPAD_URL, context);
   });
 
   it("uses shared renderer + extractor for site without dedicated fetcher", async () => {

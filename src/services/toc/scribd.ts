@@ -61,6 +61,10 @@ export interface ScribdDocument {
   coverUrl?: string;
   pages: ScribdPage[];
   outline: ScribdOutlineEntry[];
+  // Scribd serves these documents' text through scrambled fonts (an anti-extraction
+  // measure): the DOM text is not the visible text, so their pages are captured as
+  // images instead (see services/chapters/scribd.ts).
+  scrambled: boolean;
 }
 
 // The page ships the viewer's data twice: a docInfo JSON fragment (metadata) and one
@@ -181,6 +185,7 @@ export function parseScribdDocument(html: string, pageUrl: string): ScribdDocume
     coverUrl: /"originalImageUrl":"([^"]+)"/.exec(html)?.[1],
     pages,
     outline: parseOutline(html, pages.length),
+    scrambled: /"hasScrambledFonts":\s*true/.test(html),
   };
 }
 
@@ -226,7 +231,7 @@ function toError(err: unknown): Error {
 const DOCUMENT_CACHE_TTL_MS = 10 * 60_000;
 const documentCache = new Map<string, { sessionSavedAt?: string; at: number; document: ScribdDocument }>();
 
-function currentSessionSavedAt(url: string): string | undefined {
+export function currentSessionSavedAt(url: string): string | undefined {
   try {
     return loadSiteSession(url)?.savedAt;
   } catch {

@@ -23,6 +23,7 @@ const extract = vi.hoisted(() => {
   let startedCall: (() => void) | null = null;
   return {
     calls: [] as string[],
+    contexts: [] as unknown[],
     started: new Promise<void>((resolve) => {
       startedCall = resolve;
     }),
@@ -33,6 +34,7 @@ const extract = vi.hoisted(() => {
     resolveRelease: () => releaseCall?.(),
     reset() {
       this.calls = [];
+      this.contexts = [];
       this.started = new Promise<void>((resolve) => {
         startedCall = resolve;
       });
@@ -47,8 +49,9 @@ vi.mock("../services/crawl", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../services/crawl")>();
   return {
     ...actual,
-    extractWithRetry: vi.fn(async (url: string): Promise<ExtractedChapter> => {
+    extractWithRetry: vi.fn(async (url: string, _onAttempt?: unknown, context?: unknown): Promise<ExtractedChapter> => {
       extract.calls.push(url);
+      extract.contexts.push(context);
       extract.resolveStarted();
       await extract.release;
       return { sourceUrl: url, title: "T", blocks: [{ type: "paragraph", text: "ok" }] };
@@ -126,6 +129,10 @@ describe("POST /stories/:id/crawl/stop", () => {
     // Wait for chapter 1's extractWithRetry call to be in flight before stopping.
     await extract.started;
     expect(extract.calls).toEqual([`https://www.fanfiction.net/s/14575449/1/Reluctant-Cultivator-in-Konoha`]);
+    // The library's media store travels with the request, so a site fetcher can save
+    // page images (Scribd's scrambled-font documents).
+    expect(extract.contexts[0]).toMatchObject({ storyId: id });
+    expect(typeof (extract.contexts[0] as { media: { save: unknown } }).media.save).toBe("function");
 
     const stopRes = await fetch(`${base}/api/stories/${id}/crawl/stop`, { method: "POST" });
     expect(stopRes.status).toBe(200);

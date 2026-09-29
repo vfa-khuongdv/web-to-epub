@@ -159,6 +159,12 @@ const vi: Record<string, string> = {
     "Không tìm thấy trang nào trong khoảng chương Scribd ({from}–{to}): {url}",
   "Could not read any content from this Scribd chapter: {url}":
     "Không đọc được nội dung nào từ chương Scribd này: {url}",
+  "Could not load page {page} of this Scribd document — try again ({url})":
+    "Không tải được trang {page} của tài liệu Scribd này — thử lại ({url})",
+  "Page {page} of this Scribd document is locked for your account — import a session from an account that can view the whole document, then retry: {url}":
+    "Trang {page} của tài liệu Scribd này bị khoá với tài khoản của bạn — hãy nhập phiên của tài khoản xem được toàn bộ tài liệu rồi thử lại: {url}",
+  "Could not store this Scribd document's page images — retry the crawl ({url})":
+    "Không lưu được ảnh các trang của tài liệu Scribd này — hãy chạy lại crawl ({url})",
 
   // Saved site sessions
   "Saved login session is unreadable — delete {file} and log in again":

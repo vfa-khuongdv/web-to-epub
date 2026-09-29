@@ -80,10 +80,16 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
         etaMs: estimateRemainingMs({ startedAt, completed: i, total: plan.length }),
       });
       const chapter = plan[i];
-      const extracted = await extractWithRetry(chapter.url, (attempt) => {
-        const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
-        send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: t("Loading & extracting…{attempt}", { attempt: attemptSuffix }) });
-      });
+      const extracted = await extractWithRetry(
+        chapter.url,
+        (attempt) => {
+          const attemptSuffix = attempt > 1 ? ` (attempt ${attempt}/${MAX_ATTEMPTS})` : "";
+          send({ type: "progress", index: i, cursor: i + 1, total: plan.length, url: chapter.url, message: t("Loading & extracting…{attempt}", { attempt: attemptSuffix }) });
+        },
+        // A fetcher may need to save page images into the story's media folder (Scribd's
+        // scrambled-font documents); the media store keeps them per library.
+        { storyId: story.id, media: library.epubMedia }
+      );
 
       const stored = story.chapters.find((c) => c.order === chapter.order);
       if (stored) {

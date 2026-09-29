@@ -1,8 +1,19 @@
 import { JSDOM } from "jsdom";
+import type { ElementHandle, Page } from "playwright";
 import { ContentBlock, ExtractedChapter } from "../../types";
+import { LockedContentError } from "../extractor";
 import { Line, Margins, lineGapOf, linesToBlocks, mostCommonSize } from "../pdfImport";
+import { openRenderSession, RenderSession } from "../renderer";
 import { fetchText } from "../toc/http";
-import { loadScribdDocument, parseScribdDocumentId } from "../toc/scribd";
+import {
+  currentSessionSavedAt,
+  loadScribdDocument,
+  normalizeScribdStoryUrl,
+  parseScribdDocumentId,
+  ScribdDocument,
+  ScribdPage,
+} from "../toc/scribd";
+import { ChapterFetchContext } from "./types";
 import { t } from "../lang";
 
 export const SCRIBD_DOMAINS = ["scribd.com"];
@@ -169,12 +180,167 @@ type ChapterItem =
   | { kind: "line"; page: number; top: number; line: Line }
   | { kind: "image"; page: number; top: number; src: string };
 
+// Scrambled-font documents are captured from the rendered viewer instead of parsed: their
+// DOM carries cipher text (Scribd scrambles the glyph mapping), only the drawn glyphs are
+// right. Each page becomes one JPEG in the story's media folder, which the reader and the
+// EPUB export resolve exactly like images imported from an EPUB/PDF.
+const SCREENSHOT_SCALE = 2;
+const SCREENSHOT_QUALITY = 82;
+// The viewer keeps a toolbar at the top and a banner at the bottom of the window, painted
+// over whatever is under them. A tall viewport with the page scrolled to its center leaves
+// room above and below the page, so no viewer chrome ends up in the screenshot.
+const CAPTURE_VIEWPORT = { width: 1400, height: 1600 };
+const SCROLL_STEP_PX = 1800;
+const MOUNT_ATTEMPTS_PER_PAGE = 40;
+const MOUNT_POLL_MS = 350;
+const PAGE_READY_TIMEOUT_MS = 8000;
+const PAGE_SETTLE_MS = 200;
+// The capture page is kept between a document's chapters — scrolling back to the top for
+// every chapter would re-render everything scrolled past — and closed when it goes unused.
+const CAPTURE_IDLE_CLOSE_MS = 60_000;
+
+interface CaptureSession {
+  docId: string;
+  sessionSavedAt?: string;
+  render: RenderSession;
+  lastPage: number;
+}
+
+let captureSession: CaptureSession | null = null;
+let captureIdleTimer: NodeJS.Timeout | null = null;
+
+async function closeCaptureSession(): Promise<void> {
+  if (captureIdleTimer) {
+    clearTimeout(captureIdleTimer);
+    captureIdleTimer = null;
+  }
+  const session = captureSession;
+  captureSession = null;
+  if (session) await session.render.close();
+}
+
+function armCaptureIdle(): void {
+  if (captureIdleTimer) clearTimeout(captureIdleTimer);
+  captureIdleTimer = setTimeout(() => {
+    captureIdleTimer = null;
+    void closeCaptureSession();
+  }, CAPTURE_IDLE_CLOSE_MS);
+  // Must not keep the process alive.
+  captureIdleTimer.unref();
+}
+
+// The capture page is reused while the same document is being crawled (chapters are
+// crawled in order, so the viewer only ever scrolls forward) and reopened when the
+// requested pages go backwards, when the saved session changed, or for another document.
+async function captureSessionFor(docId: string, canonical: string, fromPage: number): Promise<RenderSession> {
+  if (captureIdleTimer) {
+    clearTimeout(captureIdleTimer);
+    captureIdleTimer = null;
+  }
+  const savedAt = currentSessionSavedAt(canonical);
+  if (
+    captureSession &&
+    captureSession.docId === docId &&
+    captureSession.sessionSavedAt === savedAt &&
+    fromPage >= captureSession.lastPage
+  ) {
+    return captureSession.render;
+  }
+  await closeCaptureSession();
+  const render = await openRenderSession(canonical, {
+    deviceScaleFactor: SCREENSHOT_SCALE,
+    viewport: CAPTURE_VIEWPORT,
+  });
+  captureSession = { docId, sessionSavedAt: savedAt, render, lastPage: fromPage };
+  return render;
+}
+
+/**
+ * Mount one viewer page (scrolling the document until it renders) and screenshot it. A
+ * page the account cannot view is refused, never captured unblurred — that blur is the
+ * document's view limit, not a rendering glitch.
+ */
+export async function captureScribdPage(page: Page, pageNum: number, url: string): Promise<Buffer> {
+  const selector = `#outer_page_${pageNum}`;
+  let element: ElementHandle<Element> | null = null;
+  for (let attempt = 0; attempt < MOUNT_ATTEMPTS_PER_PAGE && !element; attempt++) {
+    element = await page.$(selector);
+    if (element) break;
+    await page
+      .evaluate((step) => {
+        const scroller = document.querySelector(".document_scroller");
+        if (scroller) scroller.scrollTop += step;
+        else window.scrollBy(0, step);
+      }, SCROLL_STEP_PX)
+      .catch(() => {});
+    await page.waitForTimeout(MOUNT_POLL_MS);
+  }
+  if (!element) {
+    throw new Error(
+      t("Could not load page {page} of this Scribd document — try again ({url})", { page: pageNum, url })
+    );
+  }
+
+  await element.evaluate((el) => el.scrollIntoView({ block: "center" })).catch(() => {});
+  // Wait for the page's layer (text or image) to render, so the screenshot is not taken
+  // of the empty placeholder the viewer shows while a page loads.
+  await page
+    .waitForFunction(
+      (sel) => {
+        const el = document.querySelector(sel);
+        return !!el && !!el.querySelector(".text_layer, .image_layer");
+      },
+      selector,
+      { timeout: PAGE_READY_TIMEOUT_MS }
+    )
+    .catch(() => {});
+  await page.waitForTimeout(PAGE_SETTLE_MS);
+
+  const blurred = await element.evaluate((el) => el.classList.contains("blurred_page"));
+  if (blurred) {
+    throw new LockedContentError(
+      t(
+        "Page {page} of this Scribd document is locked for your account — import a session from an account that can view the whole document, then retry: {url}",
+        { page: pageNum, url }
+      )
+    );
+  }
+  return element.screenshot({ type: "jpeg", quality: SCREENSHOT_QUALITY });
+}
+
+async function captureScrambledChapter(
+  document: ScribdDocument,
+  ref: ScribdChapterRef,
+  url: string,
+  pages: ScribdPage[],
+  context: ChapterFetchContext | undefined
+): Promise<ExtractedChapter> {
+  if (!context) {
+    throw new Error(t("Could not store this Scribd document's page images — retry the crawl ({url})", { url }));
+  }
+  const render = await captureSessionFor(ref.docId, normalizeScribdStoryUrl(url), ref.from);
+  const blocks: ContentBlock[] = [];
+  try {
+    for (const page of pages) {
+      const bytes = await captureScribdPage(render.page, page.pageNum, url);
+      blocks.push({ type: "image", src: context.media.save(context.storyId, bytes, "jpg"), alt: "" });
+      if (captureSession?.docId === ref.docId) captureSession.lastPage = page.pageNum;
+    }
+  } finally {
+    armCaptureIdle();
+  }
+  return { sourceUrl: url, title: t("Pages {from}–{to}", { from: ref.from, to: ref.to }), blocks };
+}
+
 /**
  * Fetch one chapter: the pages of its range, each from the payload URL the viewer page
  * listed. Scanned pages become image blocks, text pages are rebuilt into paragraphs with
  * the same heuristics used for PDF imports.
  */
-export async function fetchScribdChapter(url: string): Promise<ExtractedChapter> {
+export async function fetchScribdChapter(
+  url: string,
+  context?: ChapterFetchContext
+): Promise<ExtractedChapter> {
   const ref = parseScribdChapterRef(url);
   if (!ref) {
     throw new Error(
@@ -192,6 +358,10 @@ export async function fetchScribdChapter(url: string): Promise<ExtractedChapter>
         url,
       })
     );
+  }
+
+  if (document.scrambled) {
+    return captureScrambledChapter(document, ref, url, pages, context);
   }
 
   const items: ChapterItem[] = [];

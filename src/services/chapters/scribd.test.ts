@@ -1,21 +1,25 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { renderPageHtml } from "../renderer";
+import { LockedContentError } from "../extractor";
+import { openRenderSession, renderPageHtml, RenderSession } from "../renderer";
+import type { EpubMediaStore } from "../epubMedia";
 import { fetchText } from "../toc/http";
 import { ScribdLockedError } from "../toc/scribd";
 import { parseScribdChapterRef, parseScribdPagePayload, fetchScribdChapter } from "./scribd";
 
-vi.mock("../renderer", () => ({ renderPageHtml: vi.fn() }));
+vi.mock("../renderer", () => ({ renderPageHtml: vi.fn(), openRenderSession: vi.fn() }));
 vi.mock("../toc/http", () => ({ fetchText: vi.fn(), sleep: vi.fn() }));
 vi.mock("../siteSession", () => ({ loadSiteSession: vi.fn().mockReturnValue(undefined) }));
 
 const mockedRender = vi.mocked(renderPageHtml);
 const mockedFetch = vi.mocked(fetchText);
+const mockedOpenSession = vi.mocked(openRenderSession);
 
 beforeEach(() => {
   mockedRender.mockReset();
   mockedFetch.mockReset();
+  mockedOpenSession.mockReset();
 });
 
 const readFixture = (name: string) =>
@@ -24,7 +28,7 @@ const readFixture = (name: string) =>
 const docUrl = (id: number) => `https://www.scribd.com/document/${id}`;
 
 // Same inline structures as a real viewer page, for the chapter tests' own documents.
-const documentPage = (pages: { pageNum: number; blur?: boolean }[]) => {
+const documentPage = (pages: { pageNum: number; blur?: boolean }[], options: { scrambled?: boolean } = {}) => {
   const blocks = pages
     .map(
       (p) => `docManager.addPage({
@@ -39,10 +43,50 @@ const documentPage = (pages: { pageNum: number; blur?: boolean }[]) => {
     )
     .join("\n");
   return `<!doctype html><html><head><title>Doc</title></head><body>
-<script type="application/json" data-hypernova-key="doc_page"><!--{"docInfo":{"page_count":${pages.length},"title":"Doc"}}--></script>
+<script type="application/json" data-hypernova-key="doc_page"><!--{"docInfo":{"page_count":${pages.length},"hasScrambledFonts":${options.scrambled ? "true" : "false"},"title":"Doc"}}--></script>
 <script>${blocks}</script>
 </body></html>`;
 };
+
+// A viewer page whose `#outer_page_N` elements mount after a few scroll steps, unless
+// listed as missing; blurred pages report Scribd's preview lock.
+const capturePage = (options: { blurred?: number[]; missing?: number[] } = {}) => {
+  let scrollCalls = 0;
+  return {
+    $: vi.fn(async (selector: string) => {
+      scrollCalls += 1;
+      const num = Number(/#outer_page_(\d+)/.exec(selector)?.[1]);
+      if (options.missing?.includes(num) || scrollCalls < 2) return null;
+      return {
+        evaluate: vi.fn(async (fn: (el: unknown) => unknown) =>
+          fn({
+            classList: { contains: (cls: string) => cls === "blurred_page" && !!options.blurred?.includes(num) },
+            scrollIntoView: () => undefined,
+          })
+        ),
+        screenshot: vi.fn(async () => Buffer.from(`page-${num}`)),
+      };
+    }),
+    evaluate: vi.fn(async () => undefined),
+    waitForFunction: vi.fn(async () => undefined),
+    waitForTimeout: vi.fn(async () => undefined),
+  };
+};
+
+const mediaStore = () => {
+  let saved = 0;
+  return {
+    save: vi.fn(() => {
+      saved += 1;
+      return `epub-media/0123456789abcdef/${String(saved).padStart(12, "0")}.jpg`;
+    }),
+    find: vi.fn(),
+    remove: vi.fn(),
+  } as unknown as EpubMediaStore;
+};
+
+const sessionFor = (page: unknown) =>
+  ({ page, close: vi.fn() }) as unknown as RenderSession;
 
 describe("parseScribdChapterRef", () => {
   it("đọc id tài liệu và khoảng trang từ fragment", () => {
@@ -179,5 +223,80 @@ describe("fetchScribdChapter", () => {
     );
 
     await expect(fetchScribdChapter(`${docUrl(777)}#pages=1-1`)).rejects.toThrow(/Could not read any content/);
+  });
+});
+
+describe("fetchScribdChapter — tài liệu mã hoá font", () => {
+  const context = (media: EpubMediaStore) => ({ storyId: "0123456789abcdef", media });
+
+  it("chụp từng trang thành ảnh lưu vào media store", async () => {
+    mockedRender.mockResolvedValue(
+      documentPage([{ pageNum: 1 }, { pageNum: 2 }], { scrambled: true })
+    );
+    mockedOpenSession.mockResolvedValue(sessionFor(capturePage()));
+    const media = mediaStore();
+
+    const chapter = await fetchScribdChapter(`${docUrl(901)}#pages=1-2`, context(media));
+
+    expect(chapter.title).toBe("Pages 1–2");
+    expect(chapter.error).toBeUndefined();
+    expect(chapter.blocks).toEqual([
+      { type: "image", src: "epub-media/0123456789abcdef/000000000001.jpg", alt: "" },
+      { type: "image", src: "epub-media/0123456789abcdef/000000000002.jpg", alt: "" },
+    ]);
+    expect(media.save).toHaveBeenNthCalledWith(1, "0123456789abcdef", Buffer.from("page-1"), "jpg");
+    expect(media.save).toHaveBeenNthCalledWith(2, "0123456789abcdef", Buffer.from("page-2"), "jpg");
+    expect(mockedOpenSession).toHaveBeenCalledWith(docUrl(901), {
+      deviceScaleFactor: 2,
+      viewport: { width: 1400, height: 1600 },
+    });
+    expect(mockedFetch).not.toHaveBeenCalled();
+  });
+
+  it("trang bị khoá (blurred_page) thì dừng với LockedContentError, không lưu ảnh đó", async () => {
+    mockedRender.mockResolvedValue(
+      documentPage([{ pageNum: 1 }, { pageNum: 2 }], { scrambled: true })
+    );
+    mockedOpenSession.mockResolvedValue(sessionFor(capturePage({ blurred: [2] })));
+    const media = mediaStore();
+
+    await expect(fetchScribdChapter(`${docUrl(902)}#pages=1-2`, context(media))).rejects.toThrow(
+      LockedContentError
+    );
+    expect(media.save).toHaveBeenCalledTimes(1);
+    expect(media.save).toHaveBeenCalledWith("0123456789abcdef", Buffer.from("page-1"), "jpg");
+  });
+
+  it("dùng lại trang viewer giữa các chương của cùng tài liệu", async () => {
+    mockedRender.mockResolvedValue(
+      documentPage(
+        [{ pageNum: 1 }, { pageNum: 2 }, { pageNum: 3 }, { pageNum: 4 }],
+        { scrambled: true }
+      )
+    );
+    mockedOpenSession.mockResolvedValue(sessionFor(capturePage()));
+    const media = mediaStore();
+
+    await fetchScribdChapter(`${docUrl(903)}#pages=1-2`, context(media));
+    await fetchScribdChapter(`${docUrl(903)}#pages=3-4`, context(media));
+
+    expect(mockedOpenSession).toHaveBeenCalledTimes(1);
+    expect(media.save).toHaveBeenCalledTimes(4);
+  });
+
+  it("không mount được trang thì báo lỗi thử lại được", async () => {
+    mockedRender.mockResolvedValue(documentPage([{ pageNum: 1 }], { scrambled: true }));
+    mockedOpenSession.mockResolvedValue(sessionFor(capturePage({ missing: [1] })));
+
+    await expect(fetchScribdChapter(`${docUrl(904)}#pages=1-1`, context(mediaStore()))).rejects.toThrow(
+      /Could not load page 1/
+    );
+  });
+
+  it("thiếu media store thì báo lỗi rõ thay vì lưu ảnh thất lạc", async () => {
+    mockedRender.mockResolvedValue(documentPage([{ pageNum: 1 }], { scrambled: true }));
+
+    await expect(fetchScribdChapter(`${docUrl(905)}#pages=1-1`)).rejects.toThrow(/Could not store/);
+    expect(mockedOpenSession).not.toHaveBeenCalled();
   });
 });

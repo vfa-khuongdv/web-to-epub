@@ -34,6 +34,7 @@ const documentPage = (options: {
   outlineData?: string;
   pageCount?: number;
   pages?: { pageNum: number; blur?: boolean }[];
+  scrambled?: boolean;
 } = {}) => {
   const pages = options.pages ?? [
     { pageNum: 1 },
@@ -54,7 +55,7 @@ const documentPage = (options: {
     )
     .join("\n");
   return `<!doctype html><html><head><title>${options.title ?? "Some Document"} | PDF</title></head><body>
-<script type="application/json" data-hypernova-key="doc_page"><!--{"assetEnvironment":"production","docInfo":{"is_downloadable":true,"originalImageUrl":"https://imgv2-2-f.scribdassets.com/img/document/1/original/abc/1?v=1","outlineData":${options.outlineData ?? "[]"},"page_count":${options.pageCount ?? pages.length},"title":"${options.title ?? "Some Document"}"}}--></script>
+<script type="application/json" data-hypernova-key="doc_page"><!--{"assetEnvironment":"production","docInfo":{"is_downloadable":true,"originalImageUrl":"https://imgv2-2-f.scribdassets.com/img/document/1/original/abc/1?v=1","outlineData":${options.outlineData ?? "[]"},"page_count":${options.pageCount ?? pages.length},"hasScrambledFonts":${options.scrambled ? "true" : "false"},"title":"${options.title ?? "Some Document"}"}}--></script>
 <script>${blocks}</script>
 </body></html>`;
 };
@@ -98,6 +99,12 @@ describe("parseScribdDocument", () => {
       contentUrl: "https://html.scribdassets.com/2l1p15luww9r1sb0/pages/1-7046cd0c3a.jsonp",
     });
     expect(doc.pages.every((page) => page.blur === false)).toBe(true);
+    expect(doc.scrambled).toBe(false);
+  });
+
+  it("đánh dấu tài liệu dùng font mã hoá (hasScrambledFonts)", () => {
+    const doc = parseScribdDocument(documentPage({ scrambled: true }), DOC_URL);
+    expect(doc.scrambled).toBe(true);
   });
 
   it("báo LockedContent khi có trang bị blur", () => {
