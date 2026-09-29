@@ -554,5 +554,7 @@ export const vi: Record<string, string> = {
   "Imported {title}": "Đã nhập {title}",
   "EPUB file": "File EPUB",
   "PDF file": "File PDF",
+  "Internet Archive": "Internet Archive",
+  "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
   "Could not import the file": "Không nhập được file",
 };

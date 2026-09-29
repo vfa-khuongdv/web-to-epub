@@ -196,6 +196,30 @@ export async function importEpub(file: File, options: { overwrite?: boolean } = 
   return data.story as StoredStory;
 }
 
+// Import an archive.org book by item URL. `overwrite` is the user confirming the "already in
+// the library" dialog; without it the server answers 409 with code "exists".
+export async function importArchive(url: string, options: { overwrite?: boolean } = {}): Promise<StoredStory> {
+  const params = new URLSearchParams();
+  if (options.overwrite) params.set("overwrite", "1");
+  const query = params.toString();
+  const res = await apiFetch(`/api/stories/import-archive${query ? `?${query}` : ""}`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ url }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw apiError(
+      data?.message || tr("Could not import from Internet Archive"),
+      res.status,
+      data?.code,
+      data?.story
+    );
+  }
+  const data = await res.json();
+  return data.story as StoredStory;
+}
+
 export async function fetchStory(id: string): Promise<StoredStory> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}`, { headers: langHeaders() });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load story")));
