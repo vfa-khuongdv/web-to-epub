@@ -119,7 +119,11 @@ export default function ReaderOverlay({
   });
   const [index, setIndex] = useState(resume.index);
   const [prefs, setPrefs] = useState<ReaderPrefs>(readPrefs);
-  const [html, setHtml] = useState<string | null>(null);
+  // The HTML is kept with the chapter it belongs to: on a chapter turn the first render
+  // already has the new chapter while the old HTML is still in state, and building the
+  // page from both showed the new title over the previous chapter's content (the iframe
+  // could stay on that mixed document when the right one followed straight after).
+  const [loaded, setLoaded] = useState<{ order: number; html: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [textOpen, setTextOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -153,6 +157,7 @@ export default function ReaderOverlay({
   const chapterChars = useRef(0);
 
   const chapter = chapters[index];
+  const html = loaded && loaded.order === chapter?.order ? loaded.html : null;
   highlightsRef.current = highlights;
   chapterRef.current = chapter?.order ?? 0;
 
@@ -169,18 +174,18 @@ export default function ReaderOverlay({
     if (!chapter) return;
     const cached = cache.current.get(chapter.order);
     if (cached !== undefined) {
-      setHtml(cached);
+      setLoaded({ order: chapter.order, html: cached });
       setError(null);
       return;
     }
     let cancelled = false;
-    setHtml(null);
+    setLoaded(null);
     setError(null);
     loadChapterHtml(chapter.order)
       .then((content) => {
         if (cancelled) return;
         cache.current.set(chapter.order, content);
-        setHtml(content);
+        setLoaded({ order: chapter.order, html: content });
       })
       .catch((err) => {
         if (!cancelled) setError((err as Error).message);

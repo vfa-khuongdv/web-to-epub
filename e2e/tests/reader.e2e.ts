@@ -34,6 +34,43 @@ test("opens the preview and navigates between chapters", async ({ page }) => {
   await expect(frame.getByText("Chương reader-1")).toBeVisible();
 });
 
+test("never builds a page from one chapter's title and another's content", async ({ page }) => {
+  await readerStory("Turn story", "turn");
+  // Every document the iframe is given, including ones replaced right away: in the app
+  // (Electron) the page could stay on such a short-lived document.
+  await page.addInitScript(() => {
+    const docs: string[] = [];
+    (window as unknown as { __srcdocs: string[] }).__srcdocs = docs;
+    const record = () =>
+      document.querySelectorAll("iframe.reader-page").forEach((f) => {
+        const doc = f.getAttribute("srcdoc");
+        if (doc && docs[docs.length - 1] !== doc) docs.push(doc);
+      });
+    new MutationObserver(record).observe(document, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["srcdoc"],
+    });
+  });
+  await page.goto("/");
+  await openReader(page, "Turn story");
+
+  const frame = page.frameLocator("iframe.reader-page");
+  await expect(frame.getByText("Chương turn-1")).toBeVisible();
+  // Chapter 2 is prefetched by now, so the turn takes the cached path.
+  await page.getByRole("button", { name: "Next" }).click();
+  await expect(frame.getByText("Chương turn-2")).toBeVisible();
+  await page.getByRole("button", { name: "Previous" }).click();
+  await expect(frame.getByText("Chương turn-1")).toBeVisible();
+
+  const docs = await page.evaluate(() => (window as unknown as { __srcdocs: string[] }).__srcdocs);
+  const mixed = docs.filter(
+    (doc) => (doc.includes("Chương 2") && doc.includes("turn-1")) || (doc.includes("Chương 1") && doc.includes("turn-2"))
+  );
+  expect(mixed).toEqual([]);
+});
+
 test("saves and restores the reading position", async ({ page }) => {
   const story = await readerStory("Position story", "position", 40);
   await page.goto("/");
