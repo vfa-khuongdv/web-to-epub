@@ -1,12 +1,18 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
+import { buildEpubFixture, TINY_PNG } from "./__fixtures__/epubFixtures";
 import {
   archiveItemId,
   ArchiveNotBookError,
   ArchiveNotFoundError,
   ArchiveRestrictedError,
   ArchiveTooManyPagesError,
+  ArchiveUnavailableError,
+  downloadUrl,
   fetchBytes,
   fetchItem,
+  importArchiveItem,
   MAX_ARCHIVE_FILE_BYTES,
   pickEpubFile,
   pickPdfFile,
@@ -238,5 +244,90 @@ describe("textToBook", () => {
   it("refuses a book past the page cap", () => {
     const text = Array.from({ length: MAX_PAGES + 1 }, () => "text").join("\n\f");
     expect(() => textToBook(text, { title: "Sách" })).toThrow(ArchiveTooManyPagesError);
+  });
+});
+
+describe("downloadUrl", () => {
+  it("encodes the item id and each path segment", () => {
+    expect(downloadUrl("a b", "folder/book one.epub")).toBe("https://archive.org/download/a%20b/folder/book%20one.epub");
+  });
+});
+
+describe("importArchiveItem", () => {
+  const epubBytes = buildEpubFixture({
+    title: "EPUB title",
+    chapters: [{ id: "ch1", file: "OEBPS/ch1.xhtml", title: "Một", html: "<p>Nội dung.</p>" }],
+  });
+
+  it("prefers the public EPUB and takes catalog metadata", async () => {
+    const fetchImpl = archiveFetch({
+      metadata: { title: "Catalog title", creator: "Pearson, Tracey Campbell", language: "eng" },
+      files: [
+        { name: "book.epub", format: "EPUB", source: "original" },
+        { name: "book_djvu.txt", format: "DjVuTXT" },
+      ],
+      bodies: { "book.epub": epubBytes, "book_djvu.txt": "Chapter 1\ntext" },
+    });
+    const book = await importArchiveItem("x", { fetchImpl });
+    expect(book).toMatchObject({ title: "Catalog title", author: "Pearson, Tracey Campbell", language: "eng" });
+    expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Một"]);
+  });
+
+  it("falls back to the OCR text when there is no EPUB", async () => {
+    // Past MIN_TEXT_CHARS (200 non-space characters), or the PDF fallback would run.
+    const text = [
+      "Chapter 1",
+      "It was a dark night, and the wind howled through the narrow streets.",
+      "Nobody was outside, so the storekeeper locked the door early.",
+      "She counted the till twice before turning off the lamps.",
+      "Chapter 2",
+      "Morning came slow, with the first light creeping over the rooftops.",
+      "The cat was already waiting by the back door.",
+    ].join("\n");
+    const fetchImpl = archiveFetch({
+      files: [{ name: "book_djvu.txt", format: "DjVuTXT" }],
+      bodies: { "book_djvu.txt": text },
+    });
+    const book = await importArchiveItem("x", { fetchImpl });
+    expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Chapter 1", "Chapter 2"]);
+  });
+
+  it("uses the PDF when the text layer is too thin", async () => {
+    const pdf = readFileSync(path.join(__dirname, "__fixtures__", "pdf-scan.pdf"));
+    const fetchImpl = archiveFetch({
+      files: [
+        { name: "book_djvu.txt", format: "DjVuTXT" },
+        { name: "book.pdf", format: "Text PDF" },
+      ],
+      bodies: { "book_djvu.txt": "nearly nothing", "book.pdf": pdf },
+    });
+    const book = await importArchiveItem("x", {
+      fetchImpl,
+      storeImage: (bytes, extension) => `media/${extension}/${bytes.length}`,
+    });
+    const image = book.chapters.flatMap((chapter) => chapter.blocks).find((block) => block.type === "image");
+    expect(image?.src).toMatch(/^media\/jpg\//);
+  });
+
+  it("adds the item image as the cover", async () => {
+    // 20 lines: past MIN_TEXT_CHARS, so the text source is used.
+    const text = Array.from({ length: 20 }, (_, index) => `Line ${index} of text.`).join("\n");
+    const fetchImpl = archiveFetch({
+      files: [{ name: "book_djvu.txt", format: "DjVuTXT" }],
+      bodies: { "book_djvu.txt": text },
+      cover: TINY_PNG,
+    });
+    const book = await importArchiveItem("x", { fetchImpl });
+    expect(book.cover?.bytes.equals(TINY_PNG)).toBe(true);
+  });
+
+  it("answers unavailable when every source is private or missing", async () => {
+    const fetchImpl = archiveFetch({
+      files: [
+        { name: "book.epub", format: "EPUB", private: "true" },
+        { name: "book_djvu.txt", format: "DjVuTXT", private: "true" },
+      ],
+    });
+    await expect(importArchiveItem("x", { fetchImpl })).rejects.toBeInstanceOf(ArchiveUnavailableError);
   });
 });
