@@ -4,7 +4,12 @@ import {
   ArchiveNotBookError,
   ArchiveNotFoundError,
   ArchiveRestrictedError,
+  fetchBytes,
   fetchItem,
+  MAX_ARCHIVE_FILE_BYTES,
+  pickEpubFile,
+  pickPdfFile,
+  pickTextFile,
 } from "./archiveImport";
 
 type FakeFile = { name: string; format: string; source?: string; private?: string | boolean; size?: string };
@@ -96,5 +101,89 @@ describe("fetchItem", () => {
   it("refuses a non-text mediatype", async () => {
     const fetchImpl = archiveFetch({ metadata: { mediatype: "audio" } });
     await expect(fetchItem(fetchImpl, "song")).rejects.toBeInstanceOf(ArchiveNotBookError);
+  });
+});
+
+describe("archive file picking", () => {
+  it("prefers an original EPUB and skips LCP, private and oversized files", () => {
+    const files: FakeFile[] = [
+      { name: "book_lcp.epub", format: "EPUB" },
+      { name: "book.epub", format: "EPUB", source: "derivative", size: "1000" },
+      { name: "book_orig.epub", format: "EPUB", source: "original", size: "2000" },
+      { name: "big.epub", format: "EPUB", source: "original", size: String(MAX_ARCHIVE_FILE_BYTES + 1) },
+      { name: "secret.epub", format: "EPUB", private: "true" },
+    ];
+    expect(pickEpubFile(files, MAX_ARCHIVE_FILE_BYTES)?.name).toBe("book_orig.epub");
+  });
+
+  it("prefers the OCR text file and the derivative Text PDF", () => {
+    const text = pickTextFile(
+      [
+        { name: "book_hocr_searchtext.txt.gz", format: "OCR Search Text" },
+        { name: "book_djvu.txt", format: "DjVuTXT" },
+      ],
+      MAX_ARCHIVE_FILE_BYTES
+    );
+    expect(text?.name).toBe("book_djvu.txt");
+
+    const pdf = pickPdfFile(
+      [
+        { name: "book_encrypted.pdf", format: "ACS Encrypted PDF" },
+        { name: "book_orig.pdf", format: "Text PDF" },
+        { name: "book.pdf", format: "Additional Text PDF" },
+      ],
+      { degraded: false, maxBytes: MAX_ARCHIVE_FILE_BYTES }
+    );
+    expect(pdf?.name).toBe("book_orig.pdf");
+  });
+
+  it("gives up on a degraded PDF", () => {
+    expect(pickPdfFile([{ name: "book.pdf", format: "Text PDF" }], { degraded: true })).toBeUndefined();
+  });
+});
+
+describe("fetchBytes", () => {
+  const impl = (res: Response | Error) =>
+    vi.fn(async () => {
+      if (res instanceof Error) throw res;
+      return res;
+    }) as unknown as typeof fetch;
+
+  it("returns the body bytes", async () => {
+    const bytes = await fetchBytes(impl(new Response(new Uint8Array(Buffer.from("hello")))), "https://x", 1024);
+    expect(bytes?.toString()).toBe("hello");
+  });
+
+  it("returns undefined for HTTP errors and network failures", async () => {
+    expect(await fetchBytes(impl(new Response("", { status: 403 })), "https://x", 1024)).toBeUndefined();
+    expect(await fetchBytes(impl(new TypeError("fetch failed")), "https://x", 1024)).toBeUndefined();
+  });
+
+  it("cuts a response that runs past the cap", async () => {
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(new Uint8Array(8));
+        controller.enqueue(new Uint8Array(8));
+        controller.close();
+      },
+    });
+    expect(await fetchBytes(impl(new Response(stream)), "https://x", 10)).toBeUndefined();
+  });
+
+  it("refuses a declared size over the cap without reading it", async () => {
+    let pulls = 0;
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(4));
+      },
+    });
+    // A default stream runs its first pull on a microtask at construction, before
+    // fetchBytes is called; wait that out, then require that fetchBytes pulls none.
+    await Promise.resolve();
+    const pullsBefore = pulls;
+    const res = { ok: true, headers: new Headers({ "content-length": "999" }), body: stream } as unknown as Response;
+    expect(await fetchBytes(impl(res), "https://x", 100)).toBeUndefined();
+    expect(pulls).toBe(pullsBefore);
   });
 });
