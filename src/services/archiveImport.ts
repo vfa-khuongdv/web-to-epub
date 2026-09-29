@@ -1,4 +1,7 @@
+import { ContentBlock } from "../types";
+import { ImportedBook, ImportedChapter } from "./epubImport";
 import { t } from "./lang";
+import { CHAPTER_HEADING_RE, joinLine, MAX_PAGES, PAGES_PER_CHUNK, SENTENCE_END_RE } from "./pdfImport";
 
 // An Internet Archive item whose catalog entry marks it lending/access-restricted is
 // refused before any file is fetched. The app never borrows, signs in or decrypts.
@@ -186,4 +189,121 @@ export async function fetchBytes(fetchImpl: typeof fetch, url: string, cap: numb
     chunks.push(result.value);
   }
   return total > 0 ? Buffer.concat(chunks) : undefined;
+}
+
+// A text file with less than this is a scan without a text layer (or a picture book):
+// the PDF source is tried instead, which keeps the page images.
+export const MIN_TEXT_CHARS = 200;
+
+const PAGE_NUMBER_RE = /^[-–—\s]*\d+[-–—\s]*$/;
+
+interface FlatLine {
+  text: string;
+  indented: boolean;
+  page: number;
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+// One page of a DjVuTXT file: trailing spaces gone, bare leading/trailing page numbers
+// dropped, empty lines gone. Leading indentation is kept — it marks a new paragraph.
+function pageLines(page: string): string[] {
+  const lines = page.split("\n").map((line) => line.replace(/\s+$/, ""));
+  while (lines.length && !lines[0].trim()) lines.shift();
+  while (lines.length && !lines[lines.length - 1].trim()) lines.pop();
+  const kept = lines.filter((line) => line.trim());
+  return kept.filter((line, index) => {
+    const edge = index === 0 || index === kept.length - 1;
+    return !(edge && PAGE_NUMBER_RE.test(line.trim()));
+  });
+}
+
+// Turn OCR text into a book: pages split on form feeds, chapters from heading lines
+// (otherwise 20-page chunks), paragraphs from indentation, sentence ends and the page's
+// own line width — there are no coordinates to use, unlike a PDF.
+export function textToBook(text: string, meta: { title: string; author?: string; language?: string }): ImportedBook {
+  const pages = text.split("\f").map(pageLines).filter((lines) => lines.length > 0);
+  if (pages.length > MAX_PAGES) throw new ArchiveTooManyPagesError(MAX_PAGES);
+
+  const flat: FlatLine[] = [];
+  const pageWidth = new Map<number, number>();
+  pages.forEach((lines, page) => {
+    for (const raw of lines) {
+      const line = raw.trim();
+      flat.push({ text: line, indented: /^\s/.test(raw), page });
+      pageWidth.set(page, Math.max(pageWidth.get(page) ?? 0, line.length));
+    }
+  });
+
+  const starts: { index: number; title: string }[] = [];
+  flat.forEach((line, index) => {
+    if (line.text.length <= 120 && CHAPTER_HEADING_RE.test(line.text)) starts.push({ index, title: line.text });
+  });
+
+  const chapters: ImportedChapter[] = [];
+  if (starts.length >= 2) {
+    const segments = [
+      { start: 0, end: starts[0].index, title: meta.title, skipHeading: false },
+      ...starts.map((start, index) => ({
+        start: start.index,
+        end: starts[index + 1]?.index ?? flat.length,
+        title: start.title,
+        skipHeading: true,
+      })),
+    ];
+    for (const segment of segments) {
+      const blocks = blocksFor(flat, pageWidth, segment.start, segment.end, segment.skipHeading);
+      if (blocks.length) chapters.push({ title: segment.title, blocks });
+    }
+  } else {
+    for (let page = 0; page < pages.length; page += PAGES_PER_CHUNK) {
+      const last = Math.min(page + PAGES_PER_CHUNK, pages.length);
+      const start = flat.findIndex((line) => line.page === page);
+      const end = flat.findIndex((line) => line.page === last);
+      const title = pages.length <= PAGES_PER_CHUNK ? meta.title : t("Pages {from}–{to}", { from: page + 1, to: last });
+      const blocks = blocksFor(flat, pageWidth, start, end === -1 ? flat.length : end, false);
+      if (blocks.length) chapters.push({ title, blocks });
+    }
+  }
+
+  return { title: meta.title, author: meta.author, language: meta.language, chapters };
+}
+
+function blocksFor(
+  flat: FlatLine[],
+  pageWidth: Map<number, number>,
+  from: number,
+  to: number,
+  skipHeading: boolean
+): ContentBlock[] {
+  const blocks: ContentBlock[] = [];
+  let paragraph: string | undefined;
+  let previous: FlatLine | undefined;
+  const flush = () => {
+    if (paragraph) blocks.push({ type: "paragraph", text: escapeHtml(paragraph) });
+    paragraph = undefined;
+  };
+  for (let i = skipHeading ? from + 1 : from; i < to; i++) {
+    const line = flat[i];
+    const endsSentence = previous ? SENTENCE_END_RE.test(previous.text) : true;
+    let breaks = !paragraph || !previous || line.indented;
+    if (!breaks && previous) {
+      const width = pageWidth.get(previous.page) ?? previous.text.length;
+      breaks =
+        previous.page !== line.page
+          ? endsSentence
+          : endsSentence && (previous.text.length < width * 0.9 || line.text.length < width * 0.9);
+    }
+    if (breaks) {
+      flush();
+      paragraph = line.text;
+    } else {
+      paragraph = joinLine(paragraph ?? "", line.text);
+    }
+    previous = line;
+  }
+  flush();
+  return blocks;
 }
