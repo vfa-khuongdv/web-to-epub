@@ -2,10 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { SiteSession } from "./siteSession";
 import { detailsHtml, jsiaBody, JPEG } from "./__fixtures__/archiveBorrowFixtures";
 import { readerConfig } from "./archiveBorrow";
-import { ArchiveLoanError } from "./archiveErrors";
+import { ArchiveLoanError, ArchiveRestrictedError, ArchiveTooManyPagesError } from "./archiveErrors";
 import { ensureLoan, loanExpiryEpoch, renewLoan, returnLoan } from "./archiveBorrow";
 import { captureChapters, importBorrowedBook } from "./archiveBorrow";
-import { ArchiveRestrictedError, ArchiveTooManyPagesError } from "./archiveErrors";
 
 const SESSION: SiteSession = {
   cookies: [
