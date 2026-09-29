@@ -99,6 +99,19 @@ describe("parsePdf", () => {
     expect(sink.stored[0].bytes.subarray(0, 3)).toEqual(Buffer.from([0xff, 0xd8, 0xff]));
   });
 
+  it("takes the first image of the first page as the cover", async () => {
+    const sink = imageSink();
+    const book = await parsePdf(fixture("pdf-scan.pdf"), { storeImage: sink.store });
+
+    expect(book.cover).toEqual({ bytes: sink.stored[0].bytes, extension: "jpg" });
+  });
+
+  it("has no cover when the first page holds no image", async () => {
+    const book = await parsePdf(fixture("pdf-outline.pdf"));
+
+    expect(book.cover).toBeUndefined();
+  });
+
   it("reads a title drawn three times at one spot once, and joins a drop cap to its word", async () => {
     const book = await parsePdf(fixture("pdf-typeset.pdf"), { fallbackTitle: "Sách" });
 

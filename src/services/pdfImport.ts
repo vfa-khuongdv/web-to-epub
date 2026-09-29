@@ -1,7 +1,7 @@
 import sharp from "sharp";
 import { extractImages, getDocumentProxy } from "unpdf";
 import { ContentBlock } from "../types";
-import { ImportedBook, ImportedChapter, StoreImage } from "./epubImport";
+import { ImportedBook, ImportedChapter, StoredImage, StoreImage } from "./epubImport";
 import { t } from "./lang";
 
 // Past any real novel; a PDF claiming more is a mistake or built to exhaust the parser.
@@ -137,8 +137,9 @@ async function readLines(pdf: PdfDocument, pageNumber: number): Promise<{ width:
   return { width: right - left, lines: kept };
 }
 
-async function readScan(pdf: PdfDocument, pageNumber: number, storeImage: StoreImage): Promise<string[]> {
-  const stored: string[] = [];
+// The page's images as JPEGs, in the order the page paints them.
+async function readScan(pdf: PdfDocument, pageNumber: number): Promise<Buffer[]> {
+  const encoded: Buffer[] = [];
   const seen = new Set<string>();
   for (const image of await extractImages(pdf, pageNumber)) {
     // Tiny images on an otherwise empty page are decoration, not the scanned page; the
@@ -151,9 +152,9 @@ async function readScan(pdf: PdfDocument, pageNumber: number, storeImage: StoreI
       .resize({ width: SCAN_MAX_WIDTH, withoutEnlargement: true })
       .jpeg({ quality: 80 })
       .toBuffer();
-    if (bytes.length <= MAX_IMAGE_BYTES) stored.push(storeImage(bytes, "jpg"));
+    if (bytes.length <= MAX_IMAGE_BYTES) encoded.push(bytes);
   }
-  return stored;
+  return encoded;
 }
 
 async function outlineStarts(pdf: PdfDocument): Promise<ChapterStart[]> {
@@ -296,13 +297,15 @@ export async function parsePdf(bytes: Buffer, options: ParsePdfOptions = {}): Pr
 
     const storeImage = options.storeImage ?? (() => "");
     const pages: PageContent[] = [];
+    let cover: StoredImage | undefined;
     for (let page = 1; page <= pdf.numPages; page++) {
       const { width, lines } = await readLines(pdf, page);
+      // A book's first page is its cover: its first image becomes the book's cover, even
+      // when the page also carries text.
+      const images = !lines.length || page === 1 ? await readScan(pdf, page) : [];
+      if (page === 1 && images.length) cover = { bytes: images[0], extension: "jpg" };
       if (lines.length) pages.push({ page, width, lines });
-      else {
-        const images = await readScan(pdf, page, storeImage);
-        if (images.length) pages.push({ page, images });
-      }
+      else if (images.length) pages.push({ page, images: images.map((bytes) => storeImage(bytes, "jpg")) });
     }
 
     const allLines = pages.flatMap((content) => ("lines" in content ? content.lines : []));
@@ -378,7 +381,7 @@ export async function parsePdf(bytes: Buffer, options: ParsePdfOptions = {}): Pr
       chapters.push({ title: start.title, blocks });
     });
 
-    return { title, author, chapters };
+    return { title, author, cover, chapters };
   } finally {
     await pdf.loadingTask.destroy();
   }
