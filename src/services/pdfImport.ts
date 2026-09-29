@@ -10,7 +10,7 @@ export const MAX_PAGES = 5000;
 const SCAN_MAX_WIDTH = 1600;
 const MAX_IMAGE_BYTES = 8 * 1024 * 1024;
 // Without an outline or chapter headings, the book is cut into chunks of this many pages.
-const PAGES_PER_CHUNK = 20;
+export const PAGES_PER_CHUNK = 20;
 // pdf.js permission flag for copying text and graphics (PDF spec, table 22, bit 5).
 const PERMISSION_COPY = 16;
 
@@ -66,8 +66,8 @@ type PageContent = { page: number; width: number; lines: Line[] } | { page: numb
 type PdfDocument = Awaited<ReturnType<typeof getDocumentProxy>>;
 type TextItem = { str: string; transform: number[]; width: number; hasEOL: boolean };
 
-const CHAPTER_HEADING_RE = /^(chương|chapter|hồi|quyển|phần|tập|part)\s+([0-9]+|[ivxlc]+)\b/i;
-const SENTENCE_END_RE = /[.!?…:;"'”’»)\]]$/;
+export const CHAPTER_HEADING_RE = /^(chương|chapter|hồi|quyển|phần|tập|part)\s+([0-9]+|[ivxlc]+)\b/i;
+export const SENTENCE_END_RE = /[.!?…:;"'”’»)\]]$/;
 
 function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -194,7 +194,7 @@ function mostCommonSize(lines: Line[]): number {
   return best;
 }
 
-function joinLine(text: string, next: string): string {
+export function joinLine(text: string, next: string): string {
   if (/[A-Za-zÀ-ỹ]-$/.test(text) && /^[a-zà-ỹ]/.test(next)) return text.slice(0, -1) + next;
   return `${text} ${next}`;
 }

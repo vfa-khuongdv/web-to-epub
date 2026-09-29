@@ -4,13 +4,16 @@ import {
   ArchiveNotBookError,
   ArchiveNotFoundError,
   ArchiveRestrictedError,
+  ArchiveTooManyPagesError,
   fetchBytes,
   fetchItem,
   MAX_ARCHIVE_FILE_BYTES,
   pickEpubFile,
   pickPdfFile,
   pickTextFile,
+  textToBook,
 } from "./archiveImport";
+import { MAX_PAGES } from "./pdfImport";
 
 type FakeFile = { name: string; format: string; source?: string; private?: string | boolean; size?: string };
 
@@ -185,5 +188,55 @@ describe("fetchBytes", () => {
     const res = { ok: true, headers: new Headers({ "content-length": "999" }), body: stream } as unknown as Response;
     expect(await fetchBytes(impl(res), "https://x", 100)).toBeUndefined();
     expect(pulls).toBe(pullsBefore);
+  });
+});
+
+describe("textToBook", () => {
+  it("splits on chapter headings and rebuilds paragraphs", () => {
+    const text = ["Chapter 1", "It was a dark night.", "The wind howled.", "Chapter 2", "Morning came slow."].join("\n");
+    const book = textToBook(text, { title: "Sách" });
+    expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Chapter 1", "Chapter 2"]);
+    expect(book.chapters[0].blocks).toEqual([
+      { type: "paragraph", text: "It was a dark night." },
+      { type: "paragraph", text: "The wind howled." },
+    ]);
+  });
+
+  it("keeps the text before the first chapter as its own chapter", () => {
+    const text = ["Title page words.", "Chapter 1", "Body line.", "Chapter 2", "More body."].join("\n");
+    const book = textToBook(text, { title: "Sách" });
+    expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Sách", "Chapter 1", "Chapter 2"]);
+  });
+
+  it("starts a new paragraph on an indented line", () => {
+    const text = [
+      "Chapter 1",
+      "First line of the page continues here.",
+      "   Indented new paragraph starts here.",
+      "Chapter 2",
+      "End.",
+    ].join("\n");
+    const book = textToBook(text, { title: "Sách" });
+    expect(book.chapters[0].blocks).toEqual([
+      { type: "paragraph", text: "First line of the page continues here." },
+      { type: "paragraph", text: "Indented new paragraph starts here." },
+    ]);
+  });
+
+  it("joins hyphen-broken words and drops bare page numbers at page edges", () => {
+    const text = "1\nsome-\nthing continued here\n42";
+    const book = textToBook(text, { title: "Sách" });
+    expect(book.chapters[0].blocks).toEqual([{ type: "paragraph", text: "something continued here" }]);
+  });
+
+  it("falls back to 20-page chunks when there are no chapter headings", () => {
+    const text = Array.from({ length: 25 }, (_, index) => `Page ${index + 1} has text.`).join("\n\f");
+    const book = textToBook(text, { title: "Sách" });
+    expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Pages 1–20", "Pages 21–25"]);
+  });
+
+  it("refuses a book past the page cap", () => {
+    const text = Array.from({ length: MAX_PAGES + 1 }, () => "text").join("\n\f");
+    expect(() => textToBook(text, { title: "Sách" })).toThrow(ArchiveTooManyPagesError);
   });
 });
