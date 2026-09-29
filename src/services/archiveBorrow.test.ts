@@ -11,7 +11,8 @@ const SESSION: SiteSession = {
 };
 
 function baseMock(options: { html?: string; jsia?: unknown } = {}) {
-  return vi.fn(async (input: RequestInfo | URL) => {
+  return vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+    void init;
     const url = String(input);
     if (url.startsWith("https://archive.org/details/testitem")) {
       return new Response(options.html ?? detailsHtml(), {
@@ -21,7 +22,6 @@ function baseMock(options: { html?: string; jsia?: unknown } = {}) {
     }
     if (url.includes("BookReaderJSIA.php")) {
       const body = options.jsia ?? jsiaBody({});
-      if (body === null) return new Response("not found", { status: 404 });
       return new Response(typeof body === "string" ? body : JSON.stringify(body), {
         status: 200,
         headers: { "content-type": "application/json" },
