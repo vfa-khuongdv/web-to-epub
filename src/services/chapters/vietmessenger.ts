@@ -82,6 +82,30 @@ export function decodeChapterHtml(raw: string, url: string): string {
 
 export function parseChapterHtml(html: string, url: string): ExtractedChapter {
   const doc = new JSDOM(html).window.document;
+
+  // The page ends with a bare "----" text node (no element) separating the story from its
+  // footnotes, and the footnotes themselves are a two-column table. walkToBlocks reads
+  // only elements and never joins a row's cells, so normalize both into paragraphs:
+  // without this the separator vanishes and each footnote number lands on its own line.
+  for (const node of Array.from(doc.body.childNodes)) {
+    if (node.nodeType === 3 && node.textContent?.trim()) {
+      const paragraph = doc.createElement("p");
+      paragraph.textContent = node.textContent.trim();
+      node.replaceWith(paragraph);
+    }
+  }
+  doc.querySelectorAll("table").forEach((table) => {
+    const rows = Array.from(table.querySelectorAll("tr")).map((row) => {
+      const paragraph = doc.createElement("p");
+      paragraph.innerHTML = Array.from(row.querySelectorAll("td, th"))
+        .map((cell) => cell.innerHTML.trim())
+        .filter(Boolean)
+        .join(" ");
+      return paragraph;
+    });
+    table.replaceWith(...rows);
+  });
+
   // The chapter's own heading is the one carrying the <a name="n"> anchor; page 1 also
   // holds front matter under its own headings, so "first heading" would name the wrong thing.
   const title =

@@ -72,6 +72,34 @@ describe("parseChapterHtml", () => {
       { type: "paragraph", text: "Nội dung chương một." },
     ]);
   });
+
+  it("giữ dòng kẻ phân cách: nó là text node trần, không nằm trong thẻ nào", () => {
+    const html = `<p align="justify">Hết truyện.</p>
+--------------------------------<br />
+<table><tr><td>1</td><td>chú thích</td></tr></table>`;
+    const chapter = parseChapterHtml(html, "https://vietmessenger.com/books/?title=x&page=6");
+
+    expect(chapter.blocks).toEqual([
+      { type: "paragraph", text: "Hết truyện." },
+      { type: "paragraph", text: "--------------------------------" },
+      { type: "paragraph", text: "1 chú thích" },
+    ]);
+  });
+
+  it("bảng chú thích: mỗi hàng thành một đoạn (số và nghĩa cùng dòng)", () => {
+    const html = `<p align="justify">Hết.</p>
+<table cellpadding="2" class="bfont">
+<tr valign="top"><td align="right"><a name="n1" href="#t1">1</a></td><td>người chèo ghe</td></tr>
+<tr valign="top"><td align="right"><a name="n2" href="#t2">2</a></td><td>định thời hạn</td></tr>
+</table>`;
+    const chapter = parseChapterHtml(html, "https://vietmessenger.com/books/?title=x&page=6");
+
+    expect(chapter.blocks).toEqual([
+      { type: "paragraph", text: "Hết." },
+      { type: "paragraph", text: '<a name="n1" href="#t1">1</a> người chèo ghe' },
+      { type: "paragraph", text: '<a name="n2" href="#t2">2</a> định thời hạn' },
+    ]);
+  });
 });
 
 describe("fetchVietmessengerChapter", () => {
