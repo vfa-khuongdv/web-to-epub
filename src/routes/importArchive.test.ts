@@ -1,9 +1,10 @@
-import { mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { rm } from "node:fs/promises";
 import type { Server } from "node:http";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { detailsHtml, jsiaBody, JPEG } from "../services/__fixtures__/archiveBorrowFixtures";
 import { buildEpubFixture, TINY_PNG } from "../services/__fixtures__/epubFixtures";
 
 /**
@@ -70,6 +71,7 @@ describe("POST /stories/import-archive", () => {
     await privateStore.remove(id);
     await rm(path.join(DATA_DIR, "epub-media"), { recursive: true, force: true });
     await rm(path.join(DATA_DIR, "covers"), { recursive: true, force: true });
+    await rm(path.join(DATA_DIR, "sessions"), { recursive: true, force: true });
   });
 
   afterEach(() => {
@@ -86,6 +88,7 @@ describe("POST /stories/import-archive", () => {
     files?: { name: string; format: string; private?: string }[];
     bodies?: Record<string, Buffer | string | number>;
     cover?: Buffer;
+    borrow?: boolean;
   }
 
   function stubArchive(options: StubOptions) {
@@ -118,6 +121,30 @@ describe("POST /stories/import-archive", () => {
       if (url.startsWith("https://archive.org/services/img/")) {
         return options.cover ? new Response(new Uint8Array(options.cover)) : new Response("", { status: 404 });
       }
+      if (options.borrow) {
+        if (url.startsWith("https://archive.org/details/")) {
+          return new Response(detailsHtml(), { status: 200, headers: { "content-type": "text/html" } });
+        }
+        if (url.includes("BookReaderJSIA.php")) {
+          return new Response(JSON.stringify(jsiaBody({ leafCount: 2, bookTitle: "Sách Archive" })), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.includes("/services/bookreader/request_page")) {
+          const leafNum = Number(new URL(url).searchParams.get("leafNum"));
+          return new Response(JSON.stringify({ success: true, value: [leafNum, leafNum + 1] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+        }
+        if (url.includes("BookReaderPreview.php")) {
+          return new Response(new Uint8Array(JPEG), { status: 200, headers: { "content-type": "image/jpeg" } });
+        }
+        if (url.startsWith("https://archive.org/services/loans/loan")) {
+          return new Response(JSON.stringify({ success: true }), { status: 200 });
+        }
+      }
       return realFetch(input, init);
     });
     vi.stubGlobal("fetch", fetchMock);
@@ -134,6 +161,18 @@ describe("POST /stories/import-archive", () => {
       headers: { "Content-Type": "application/json", ...headers },
       body: JSON.stringify(body),
     });
+  }
+
+  function saveArchiveSession() {
+    const dir = path.join(DATA_DIR, "sessions");
+    mkdirSync(dir, { recursive: true });
+    writeFileSync(
+      path.join(dir, "archive.org.json"),
+      JSON.stringify({
+        cookies: [{ name: "logged-in-user", value: "me%40example.com", domain: ".archive.org", path: "/" }],
+        origins: [],
+      })
+    );
   }
 
   it("imports an open item as an EPUB-style book", async () => {
@@ -187,7 +226,31 @@ describe("POST /stories/import-archive", () => {
     expect(overwrite.status).toBe(200);
   });
 
-  it("refuses a lending item with the translated message", async () => {
+  it("imports a borrow-only item as image chapters when a session is saved", async () => {
+    stubArchive({ restricted: true, borrow: true });
+    saveArchiveSession();
+    const res = await importArchive();
+    expect(res.status).toBe(201);
+
+    const { story } = await res.json();
+    expect(story).toMatchObject({ id, site: "epub", storyUrl: "archive:testitem", title: "Sách Archive" });
+    expect(story.chapters).toHaveLength(1);
+    // The route answers with the outline (no blocks), so the chapter content is read
+    // from the store, like importEpub.test.ts does.
+    const stored = await stories.get(id);
+    expect(stored?.chapters).toHaveLength(1);
+    expect(stored?.chapters[0].blocks).toHaveLength(2);
+    expect(stored?.chapters[0].blocks?.[0].type).toBe("image");
+  });
+
+  it("asks for a login when a borrow-only item has no saved session", async () => {
+    stubArchive({ restricted: true, borrow: true });
+    const res = await importArchive("", { url: "https://archive.org/details/testitem" }, { "X-Lang": "vi" });
+    expect(res.status).toBe(400);
+    expect((await res.json()).message).toContain("Hãy đăng nhập archive.org");
+  });
+
+  it("refuses a lending item without a session and says how to sign in", async () => {
     const fetchMock = stubArchive({
       restricted: true,
       files: [{ name: "book_djvu.txt", format: "DjVuTXT" }],
@@ -195,7 +258,7 @@ describe("POST /stories/import-archive", () => {
     });
     const res = await importArchive("", { url: "https://archive.org/details/testitem" }, { "X-Lang": "vi" });
     expect(res.status).toBe(400);
-    expect((await res.json()).message).toContain("giới hạn truy cập");
+    expect((await res.json()).message).toContain("Hãy đăng nhập archive.org");
     const downloads = fetchMock.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/download/"));
     expect(downloads).toEqual([]);
   });
