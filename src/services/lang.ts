@@ -211,6 +211,20 @@ const vi: Record<string, string> = {
   "Book image not found": "Không tìm thấy ảnh của sách",
   "Imported books cannot be crawled": "Truyện nhập từ file không crawl được",
   "Imported books have no chapter list to watch": "Truyện nhập từ file không có danh sách chương để theo dõi",
+
+  // Internet Archive import
+  "This is not an Internet Archive book page: {url} — paste a URL like https://archive.org/details/<id>":
+    "URL này không phải trang sách Internet Archive: {url} — hãy dán URL dạng https://archive.org/details/<id>",
+  "Internet Archive item not found: {id}": "Không tìm thấy sách trên Internet Archive: {id}",
+  "This Internet Archive item is not a book: {url}": "Mục này trên Internet Archive không phải là sách: {url}",
+  "This Internet Archive item is access-restricted (borrow-only) and cannot be imported: {url}":
+    "Sách này trên Internet Archive bị giới hạn truy cập (phải mượn/đăng nhập), không thể nhập: {url}",
+  "No readable EPUB, PDF, or text file is available for this Internet Archive item: {url}":
+    "Không có file EPUB, PDF hay text đọc được cho sách này trên Internet Archive: {url}",
+  "This Internet Archive book has too many pages to import (maximum {count})":
+    "Sách từ Internet Archive có quá nhiều trang để nhập (tối đa {count})",
+  "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
+  "Internet Archive books are imported, not crawled": "Sách Internet Archive được nhập về, không crawl",
 };
 
 let current: Lang = DEFAULT_LANG;
