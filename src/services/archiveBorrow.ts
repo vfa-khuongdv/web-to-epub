@@ -1,6 +1,10 @@
 import { JSDOM } from "jsdom";
+import { ContentBlock } from "../types";
 import { ArchiveLoanError } from "./archiveErrors";
+import { ArchiveRestrictedError, ArchiveTooManyPagesError } from "./archiveErrors";
+import { ImportedBook, ImportedChapter, MAX_IMAGE_BYTES, StoreImage } from "./epubImport";
 import { t } from "./lang";
+import { MAX_PAGES, PAGES_PER_CHUNK } from "./pdfImport";
 import { mergeSessionCookies, SiteSession, siteSessionHeaders } from "./siteSession";
 
 /**
@@ -175,4 +179,151 @@ export async function renewLoan(fetchImpl: typeof fetch, session: SiteSession, i
 // Best effort: a loan that cannot be returned still expires on IA's own clock.
 export async function returnLoan(fetchImpl: typeof fetch, session: SiteSession, id: string): Promise<void> {
   await postLoan(fetchImpl, session, id, "return_loan").catch(() => undefined);
+}
+
+const GRANT_RENEW_WINDOW_MS = 10 * 60_000;
+const JPEG_MAGIC = [0xff, 0xd8, 0xff];
+
+const loanEndedError = (id: string) =>
+  new ArchiveLoanError(
+    t("The archive.org loan ended while importing — run the import again: {url}", {
+      url: `https://archive.org/details/${id}`,
+    })
+  );
+
+const pageReadError = (page: number, id: string) =>
+  new ArchiveLoanError(
+    t("Could not read page {page} of this Internet Archive book: {url}", {
+      page,
+      url: `https://archive.org/details/${id}`,
+    })
+  );
+
+function chapterTitle(from: number, to: number, total: number, fallback: string): string {
+  return total <= PAGES_PER_CHUNK ? fallback : t("Pages {from}–{to}", { from, to });
+}
+
+async function grantLeaf(
+  fetchImpl: typeof fetch,
+  session: SiteSession,
+  config: ReaderConfig,
+  leafNum: number
+): Promise<boolean> {
+  const query = new URLSearchParams({
+    id: config.bookId,
+    subprefix: config.subPrefix,
+    leafNum: String(leafNum),
+  });
+  const url = `https://archive.org/services/bookreader/request_page?${query}`;
+  const response = await fetchImpl(url, { headers: siteSessionHeaders(session, url) });
+  const body = (await response.json().catch(() => null)) as { success?: boolean; value?: number[] } | null;
+  return !!response.ok && body?.success === true;
+}
+
+// One leaf's JPEG: grant the spread if needed, then read the page. Access that went
+// away (expired loan) is renewed once and retried; a refusal that survives the retry
+// means the loan is over, while a granted page that still will not read is a broken
+// page — the two failures say different things to the reader (spec §3.4).
+async function fetchLeaf(
+  fetchImpl: typeof fetch,
+  holder: { current: SiteSession },
+  config: ReaderConfig,
+  leaf: ReaderLeaf,
+  granted: Set<number>
+): Promise<Buffer> {
+  let refused = true;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    if (attempt > 0) {
+      holder.current = await renewLoan(fetchImpl, holder.current, config.bookId).catch(() => holder.current);
+      granted.clear();
+    }
+    let grantedNow = granted.has(leaf.leafNum);
+    if (!grantedNow) {
+      grantedNow = await grantLeaf(fetchImpl, holder.current, config, leaf.leafNum);
+      if (grantedNow) {
+        // the grant covers this leaf and its spread partner (the API answers [n, n+1])
+        granted.add(leaf.leafNum);
+        granted.add(leaf.leafNum + 1);
+      }
+    }
+    if (!grantedNow) {
+      refused = true;
+      continue;
+    }
+    refused = false;
+    const response = await fetchImpl(leaf.uri, { headers: siteSessionHeaders(holder.current, leaf.uri) });
+    // A real fetch follows the redirect to preview-unavailable (visible in response.url);
+    // an unfollowed 302 (as in the test mocks) still carries it in Location.
+    const location = response.headers.get("location") ?? "";
+    const unavailable = response.url.includes("preview-unavailable") || location.includes("preview-unavailable");
+    if (!response.ok || unavailable) {
+      refused = unavailable || response.status === 401 || response.status === 403;
+      continue;
+    }
+    const bytes = Buffer.from(await response.arrayBuffer());
+    if (bytes.length >= 3 && JPEG_MAGIC.every((byte, index) => bytes[index] === byte)) return bytes;
+    refused = false;
+  }
+  if (refused) throw loanEndedError(config.bookId);
+  throw pageReadError(leaf.leafNum, config.bookId);
+}
+
+export async function captureChapters(
+  fetchImpl: typeof fetch,
+  initialSession: SiteSession,
+  config: ReaderConfig,
+  storeImage: StoreImage,
+  fallbackTitle: string
+): Promise<ImportedChapter[]> {
+  const leaves = [...config.leaves].sort((a, b) => a.leafNum - b.leafNum);
+  if (leaves.length > MAX_PAGES) throw new ArchiveTooManyPagesError(MAX_PAGES);
+
+  const holder = { current: initialSession };
+  const granted = new Set<number>();
+  const chapters: ImportedChapter[] = [];
+  let current: ContentBlock[] | undefined;
+
+  for (let index = 0; index < leaves.length; index++) {
+    // Renew before the loan window runs out; the capture of a long book outlives it.
+    const expiry = loanExpiryEpoch(holder.current, config.bookId);
+    if (expiry && expiry * 1000 - Date.now() < GRANT_RENEW_WINDOW_MS) {
+      holder.current = await renewLoan(fetchImpl, holder.current, config.bookId).catch(() => holder.current);
+    }
+
+    const leaf = leaves[index];
+    if (index % PAGES_PER_CHUNK === 0) {
+      current = [];
+      chapters.push({
+        title: chapterTitle(index + 1, Math.min(index + PAGES_PER_CHUNK, leaves.length), leaves.length, config.bookTitle || fallbackTitle),
+        blocks: current,
+      });
+    }
+    const bytes = await fetchLeaf(fetchImpl, holder, config, leaf, granted);
+    if (bytes.length > MAX_IMAGE_BYTES) continue;
+    current!.push({ type: "image", src: storeImage(bytes, "jpg"), alt: "" });
+  }
+  return chapters;
+}
+
+export async function importBorrowedBook(
+  fetchImpl: typeof fetch,
+  session: SiteSession,
+  id: string,
+  item: { title: string },
+  storeImage: StoreImage
+): Promise<ImportedBook> {
+  const config = await readerConfig(fetchImpl, session, id);
+  const lendable = config.lendingStatus.is_lendable;
+  if (lendable === false || lendable === "false") {
+    throw new ArchiveRestrictedError(`https://archive.org/details/${id}`);
+  }
+  const loan = await ensureLoan(fetchImpl, session, id, config.lendingStatus);
+  try {
+    const chapters = await captureChapters(fetchImpl, loan.session, config, storeImage, item.title);
+    return { title: config.bookTitle || item.title, chapters };
+  } finally {
+    // Only a borrow this import started is handed back (spec §3.3); a browse expires
+    // on its own and the reader's own loan is theirs to keep.
+    if (loan.startedBorrow) await returnLoan(fetchImpl, loan.session, id);
+  }
 }

@@ -4,6 +4,8 @@ import { detailsHtml, jsiaBody, JPEG } from "./__fixtures__/archiveBorrowFixture
 import { readerConfig } from "./archiveBorrow";
 import { ArchiveLoanError } from "./archiveErrors";
 import { ensureLoan, loanExpiryEpoch, renewLoan, returnLoan } from "./archiveBorrow";
+import { captureChapters, importBorrowedBook } from "./archiveBorrow";
+import { ArchiveRestrictedError, ArchiveTooManyPagesError } from "./archiveErrors";
 
 const SESSION: SiteSession = {
   cookies: [
@@ -201,4 +203,154 @@ it("returnLoan posts return_loan and ignores failures", async () => {
     return new Response("", { status: 500 });
   });
   await expect(returnLoan(failing as unknown as typeof fetch, SESSION, "testitem")).resolves.toBeUndefined();
+});
+
+const STORED: string[] = [];
+const storeImage = (bytes: Buffer, extension: string) => {
+  STORED.push(`${bytes.length}:${extension}`);
+  return `epub-media/test/${STORED.length}.jpg`;
+};
+
+// One mock for the whole capture: JSIA (config) + grant + page image.
+function captureMock(options: {
+  leafCount?: number;
+  lendingStatus?: Record<string, unknown>;
+  grant?: (leafNum: number) => Response;
+  preview?: (leafNum: number) => Response;
+  loan?: () => Response;
+} = {}) {
+  return vi.fn(async (input: RequestInfo | URL) => {
+    const url = String(input);
+    if (url.startsWith("https://archive.org/details/testitem")) {
+      return new Response(detailsHtml(), { status: 200, headers: { "content-type": "text/html" } });
+    }
+    if (url.includes("BookReaderJSIA.php")) {
+      return new Response(
+        JSON.stringify(jsiaBody({ leafCount: options.leafCount, lendingStatus: options.lendingStatus })),
+        { status: 200, headers: { "content-type": "application/json" } }
+      );
+    }
+    if (url.startsWith("https://archive.org/services/loans/loan")) {
+      return options.loan
+        ? options.loan()
+        : new Response(JSON.stringify({ success: true }), { status: 200 });
+    }
+    if (url.includes("/services/bookreader/request_page")) {
+      const leafNum = Number(new URL(url).searchParams.get("leafNum"));
+      return options.grant
+        ? options.grant(leafNum)
+        : new Response(JSON.stringify({ success: true, value: [leafNum, leafNum + 1] }), {
+            status: 200,
+            headers: { "content-type": "application/json" },
+          });
+    }
+    if (url.includes("BookReaderPreview.php")) {
+      const leafNum = Number(/page=leaf(\d+)/.exec(url)?.[1] ?? 0);
+      return options.preview
+        ? options.preview(leafNum)
+        : new Response(new Uint8Array(JPEG), { status: 200, headers: { "content-type": "image/jpeg" } });
+    }
+    return new Response("", { status: 404 });
+  });
+}
+
+describe("captureChapters", () => {
+  it("grants each spread once, stores every page and chunks 45 leaves into 3 chapters", async () => {
+    STORED.length = 0;
+    const fetchImpl = captureMock({ leafCount: 45 });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const chapters = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "Fallback");
+
+    expect(chapters.map((chapter) => chapter.title)).toEqual(["Pages 1–20", "Pages 21–40", "Pages 41–45"]);
+    expect(chapters.flatMap((chapter) => chapter.blocks)).toHaveLength(45);
+    expect(chapters[0].blocks[0]).toEqual({ type: "image", src: "epub-media/test/1.jpg", alt: "" });
+    expect(STORED).toHaveLength(45);
+
+    // one grant covers the pair: 45 leaves → ceil(45/2) request_page calls
+    const grants = fetchImpl.mock.calls.filter(([input]) => String(input).includes("request_page"));
+    expect(grants).toHaveLength(23);
+  });
+
+  it("keeps a book that fits one chunk under the book's title", async () => {
+    const fetchImpl = captureMock({ leafCount: 3 });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const chapters = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "Fallback");
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].title).toBe("Namiya zakkaten no kiseki");
+  });
+
+  it("retries a refused page once after renewing, then reports the loan as ended", async () => {
+    const unavailable = () =>
+      new Response("", { status: 302, headers: { location: "https://archive.org/bookreader/static/preview-unavailable.png" } });
+    const fetchImpl = captureMock({
+      leafCount: 3,
+      lendingStatus: { active_browses: 0, available_to_browse: true },
+      preview: unavailable,
+    });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const error = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F").catch(
+      (err: unknown) => err
+    );
+    expect(error).toBeInstanceOf(ArchiveLoanError);
+    expect((error as Error).message).toMatch(/loan ended/);
+    // the reactive renewal was attempted before giving up
+    const loans = fetchImpl.mock.calls.filter(([input]) => String(input).includes("/services/loans/loan"));
+    expect(loans.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("names the page when a granted page still cannot be read", async () => {
+    const fetchImpl = captureMock({
+      leafCount: 2,
+      preview: () => new Response("", { status: 500 }),
+    });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const error = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F").catch(
+      (err: unknown) => err
+    );
+    expect(error).toBeInstanceOf(ArchiveLoanError);
+    expect((error as Error).message).toMatch(/page 1/);
+  });
+
+  it("skips an oversized page image but keeps the chapter structure", async () => {
+    const fetchImpl = captureMock({
+      leafCount: 3,
+      preview: (leafNum: number) => {
+        if (leafNum !== 1) return new Response(new Uint8Array(JPEG), { status: 200, headers: { "content-type": "image/jpeg" } });
+        const big = Buffer.alloc(8 * 1024 * 1024 + 1, 0x41);
+        big[0] = 0xff;
+        big[1] = 0xd8;
+        big[2] = 0xff;
+        return new Response(new Uint8Array(big));
+      },
+    });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    const chapters = await captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F");
+    expect(chapters).toHaveLength(1);
+    expect(chapters[0].blocks).toHaveLength(2);
+  });
+
+  it("refuses a book with more than MAX_PAGES leaves", async () => {
+    const fetchImpl = captureMock({ leafCount: 5001 });
+    const config = await readerConfig(fetchImpl as unknown as typeof fetch, SESSION, "testitem");
+    await expect(
+      captureChapters(fetchImpl as unknown as typeof fetch, SESSION, config, storeImage, "F")
+    ).rejects.toBeInstanceOf(ArchiveTooManyPagesError);
+  });
+});
+
+describe("importBorrowedBook", () => {
+  it("refuses an item the catalog marks not lendable", async () => {
+    const fetchImpl = captureMock({ lendingStatus: { is_lendable: false } });
+    await expect(
+      importBorrowedBook(fetchImpl as unknown as typeof fetch, SESSION, "testitem", { title: "Fallback" }, storeImage)
+    ).rejects.toBeInstanceOf(ArchiveRestrictedError);
+  });
+
+  it("returns a book whose chapters are image blocks", async () => {
+    const fetchImpl = captureMock({ leafCount: 2 });
+    const book = await importBorrowedBook(fetchImpl as unknown as typeof fetch, SESSION, "testitem", { title: "Fallback" }, storeImage);
+    expect(book.title).toBe("Namiya zakkaten no kiseki");
+    expect(book.chapters).toHaveLength(1);
+    expect(book.chapters[0].blocks.every((block) => block.type === "image")).toBe(true);
+  });
 });
