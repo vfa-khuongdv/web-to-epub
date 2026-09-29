@@ -47,6 +47,7 @@ export interface ArchiveFile {
 export interface ArchiveItem {
   id: string;
   title: string;
+  titleFromCatalog: boolean;
   author?: string;
   language?: string;
   pdfDegraded: boolean;
@@ -82,10 +83,14 @@ function metaString(value: unknown): string | undefined {
 }
 
 // A network failure propagates as the raw fetch error (the route turns that into the
-// generic message); an unknown id answers 404 or an empty body, both "not found".
+// generic message); an unknown id answers 404/410 or an empty body, both "not found".
+// Any other status is a server failure, not a missing item.
 export async function fetchItem(fetchImpl: typeof fetch, id: string): Promise<ArchiveItem> {
   const res = await fetchImpl(`https://archive.org/metadata/${encodeURIComponent(id)}`);
-  if (!res.ok) throw new ArchiveNotFoundError(id);
+  if (!res.ok) {
+    if (res.status === 404 || res.status === 410) throw new ArchiveNotFoundError(id);
+    throw new Error(`archive metadata request failed (${res.status})`);
+  }
   const data = (await res.json().catch(() => null)) as
     | { metadata?: Record<string, unknown>; files?: unknown }
     | null;
@@ -97,12 +102,14 @@ export async function fetchItem(fetchImpl: typeof fetch, id: string): Promise<Ar
   if (metadata["access-restricted-item"] === "true" || metadata["access-restricted-item"] === true) {
     throw new ArchiveRestrictedError(url);
   }
+  const catalogTitle = metaString(metadata.title);
   return {
     id,
-    title: metaString(metadata.title) ?? id,
+    title: catalogTitle ?? id,
+    titleFromCatalog: catalogTitle !== undefined,
     author: metaString(metadata.creator),
     language: metaString(metadata.language),
-    pdfDegraded: !!metaString(metadata.pdf_degraded),
+    pdfDegraded: metadata.pdf_degraded === true || !!metaString(metadata.pdf_degraded),
     files: Array.isArray(data.files) ? (data.files as ArchiveFile[]) : [],
   };
 }
@@ -334,7 +341,7 @@ async function withItemMeta(
   }
   return {
     ...book,
-    title: item.title || book.title,
+    title: item.titleFromCatalog ? item.title : book.title,
     author: item.author ?? book.author,
     language: item.language ?? book.language,
   };

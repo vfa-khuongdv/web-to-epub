@@ -284,6 +284,7 @@ export default function LibraryView({
   }
 
   async function handleCreate() {
+    if (busy || importBusy) return;
     const url = storyUrl.trim();
     if (!url) {
       setError(t("Paste a story URL first."));
@@ -357,8 +358,9 @@ export default function LibraryView({
   }
 
   // Import an archive.org item by URL; a 409 asks before overwriting, like a file import.
+  // Runs on the "Load chapters" busy state: that button launched it and must show it.
   async function importArchiveFrom(url: string, overwrite = false) {
-    setImportBusy(true);
+    setBusy(true);
     setError(null);
     try {
       const imported = await importArchive(url, { overwrite });
@@ -371,7 +373,7 @@ export default function LibraryView({
       if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
       else setError((err as Error).message);
     } finally {
-      setImportBusy(false);
+      setBusy(false);
     }
   }
 
@@ -597,7 +599,7 @@ export default function LibraryView({
                 <button
                   type="button"
                   className="btn btn-tiny btn-danger"
-                  disabled={importBusy}
+                  disabled={busy || importBusy}
                   onClick={() =>
                     void (pendingImport.kind === "file"
                       ? handleImport(pendingImport.file, true)

@@ -57,7 +57,7 @@ export function archiveFetch(options: ArchiveFetchOptions = {}) {
       if (cover) return new Response(new Uint8Array(cover));
     }
     return new Response("", { status: 404 });
-  }) as unknown as typeof fetch;
+  });
 }
 
 describe("archiveItemId", () => {
@@ -99,12 +99,28 @@ describe("fetchItem", () => {
       files: [{ name: "x_djvu.txt", format: "DjVuTXT" }],
     });
     await expect(fetchItem(fetchImpl, "x")).rejects.toBeInstanceOf(ArchiveRestrictedError);
+    const downloads = fetchImpl.mock.calls.map(([input]) => String(input)).filter((url) => url.includes("/download/"));
+    expect(downloads).toEqual([]);
   });
 
   it("answers not-found for an unknown item", async () => {
     await expect(fetchItem(archiveFetch({ metadata: null }), "missing")).rejects.toBeInstanceOf(ArchiveNotFoundError);
     const empty = vi.fn(async () => new Response("{}", { status: 200, headers: { "content-type": "application/json" } }));
     await expect(fetchItem(empty as unknown as typeof fetch, "missing")).rejects.toBeInstanceOf(ArchiveNotFoundError);
+  });
+
+  it("reports a metadata server failure as a generic error, not not-found", async () => {
+    const fetchImpl = vi.fn(async () => new Response("", { status: 500 }));
+    const error = await fetchItem(fetchImpl as unknown as typeof fetch, "x").catch((err: unknown) => err);
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(ArchiveNotFoundError);
+    expect((error as Error).message).toBe("archive metadata request failed (500)");
+  });
+
+  it("reads a boolean pdf_degraded flag", async () => {
+    const fetchImpl = archiveFetch({ metadata: { title: "X", pdf_degraded: true } });
+    const item = await fetchItem(fetchImpl, "x");
+    expect(item.pdfDegraded).toBe(true);
   });
 
   it("refuses a non-text mediatype", async () => {
@@ -271,6 +287,16 @@ describe("importArchiveItem", () => {
     const book = await importArchiveItem("x", { fetchImpl });
     expect(book).toMatchObject({ title: "Catalog title", author: "Pearson, Tracey Campbell", language: "eng" });
     expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Một"]);
+  });
+
+  it("falls back to the parser's title when the catalog has none", async () => {
+    const fetchImpl = archiveFetch({
+      metadata: {},
+      files: [{ name: "book.epub", format: "EPUB", source: "original" }],
+      bodies: { "book.epub": epubBytes },
+    });
+    const book = await importArchiveItem("x", { fetchImpl });
+    expect(book.title).toBe("EPUB title");
   });
 
   it("falls back to the OCR text when there is no EPUB", async () => {
