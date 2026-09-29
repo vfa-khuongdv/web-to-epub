@@ -137,9 +137,11 @@ wins when it exists; a failed cover fetch is not fatal.
 
 ### 3.4 Frontend
 
-- `SUPPORTED_SITES` gains `{ domain: "archive.org", name: "Internet Archive" }`
-  so the URL passes `isSupportedUrl` and shows in the hint (comment updated:
-  this entry is import-only).
+- `handleCreate` checks `archiveItemId(url)` **before** `isSupportedUrl` and calls
+  `importArchive` — archive.org is deliberately not in `SUPPORTED_SITES`, because
+  that list renders as "Auto-loading sites" in the hint and an archive.org item
+  does not auto-load chapters; the add box accepts its URL directly. The server
+  route is the trust boundary, not this check.
 - `frontend/src/lib/archiveUrl.ts`: `archiveItemId(url)` (same shapes as §3.1,
   shared by the add box), plus `isArchiveItemUrl`.
 - `LibraryView.handleCreate`: archive.org URL → `importArchive(url)` instead of
@@ -165,7 +167,6 @@ wins when it exists; a failed cover fetch is not fatal.
 - `This Internet Archive item is access-restricted (borrow-only) and cannot be imported: {url}`
   — wording states plainly the app does not borrow or bypass; never partial.
 - `No readable EPUB, PDF, or text file is available for this Internet Archive item: {url}`
-- `The Internet Archive file is too large to import (maximum {size} MB)`
 - `This Internet Archive book has too many pages to import (maximum {count})`
 - `Could not import from Internet Archive` (network/parse failures, so raw
   upstream errors never reach the user)
@@ -210,8 +211,10 @@ wins when it exists; a failed cover fetch is not fatal.
   chapters done; 409 `exists`; overwrite 200 keeps `createdAt`; restricted →
   400 with the translated message; non-archive URL → 400; private library works
   via `X-Vault-Token`.
-- Guards: `POST /stories` with an archive.org URL answers the new message;
-  crawl/watch already covered by `site === "epub"` tests.
+- `POST /stories` answers the specific guard message for an archive.org URL
+  (the host is not on the allowlist, so without the guard it would read
+  "site not yet supported"); crawl/watch already covered by `site === "epub"`
+  tests.
 - `npm test`, `npm run build:backend`, `npx tsc -p frontend --noEmit`; no E2E.
 
 ## 6. Build order
@@ -220,5 +223,5 @@ wins when it exists; a failed cover fetch is not fatal.
 2. Route `POST /stories/import-archive` + `POST /stories` guard + route tests.
 3. Frontend: `archiveUrl.ts`, `api.ts` helper, `handleCreate` branch,
    overwrite dialog, labels, i18n key.
-4. `SUPPORTED_SITES` entry + comment; AGENTS.md note.
+4. `POST /stories` guard + AGENTS.md note.
 5. `npm test` + both typechecks.
