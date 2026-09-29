@@ -427,6 +427,20 @@ export const vi: Record<string, string> = {
     "Tài liệu Scribd chỉ tải được bằng tài khoản đã đăng nhập cần phiên đăng nhập lấy từ chính trình duyệt của bạn.",
   "You can skip this — documents that are viewable without an account still load.":
     "Có thể bỏ qua — tài liệu xem được không cần tài khoản vẫn tải bình thường.",
+  "Internet Archive session": "Phiên Internet Archive",
+  "Borrow-only books need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.":
+    "Sách cho mượn cần một đăng nhập lưu từ chính trình duyệt của bạn. Công cụ không bao giờ thấy mật khẩu — bạn đăng nhập ở đó rồi dán bản sao yêu cầu.",
+  "Log in to archive.org in your browser — the copy has to come from a page where you are already logged in.":
+    "Đăng nhập archive.org trong trình duyệt — bản sao phải lấy từ trang khi bạn đã đăng nhập.",
+  'Right-click the first archive.org request (the details page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Nhấp chuột phải vào yêu cầu archive.org đầu tiên (trang chi tiết) → Copy → Copy as cURL. "Copy as cURL (bash)" cũng được.',
+  "The session lasts as long as archive.org keeps you signed in; import a fresh one when imports start failing.":
+    "Phiên theo thời gian archive.org giữ bạn đăng nhập; hãy nhập bản mới khi việc import bắt đầu thất bại.",
+  "A saved login is in use for borrow-only Internet Archive books.":
+    "Đăng nhập đã lưu đang dùng cho sách cho mượn trên Internet Archive.",
+  "Borrow-only Internet Archive books need a login saved from your own browser.":
+    "Sách cho mượn trên Internet Archive cần đăng nhập lưu từ chính trình duyệt của bạn.",
+  "You can skip this — public items still import.": "Có thể bỏ qua — mục công khai vẫn import được.",
 
   // Narration (Settings)
   "Narration": "Giọng đọc",

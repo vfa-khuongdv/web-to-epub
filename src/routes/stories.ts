@@ -5,6 +5,8 @@ import os from "os";
 import path from "path";
 import { findSupportedSite } from "../config/supportedSites";
 import {
+  ArchiveLoginRequiredError,
+  ArchiveLoanError,
   ArchiveNotBookError,
   ArchiveNotFoundError,
   ArchiveRestrictedError,
@@ -16,6 +18,7 @@ import {
 import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
 import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
 import { settingsStore } from "../services/settingsStore";
+import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../services/toc";
@@ -230,6 +233,7 @@ storiesRouter.post("/stories/import-archive", async (req, res) => {
   try {
     const book = await importArchiveItem(itemId, {
       storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
+      session: loadSiteSession(`https://archive.org/details/${itemId}`),
     });
 
     let coverUrl = existing?.coverUrl;
@@ -270,7 +274,10 @@ storiesRouter.post("/stories/import-archive", async (req, res) => {
       err instanceof ArchiveNotBookError ||
       err instanceof ArchiveRestrictedError ||
       err instanceof ArchiveTooManyPagesError ||
-      err instanceof ArchiveUnavailableError
+      err instanceof ArchiveUnavailableError ||
+      err instanceof ArchiveLoginRequiredError ||
+      err instanceof ArchiveLoanError ||
+      err instanceof SiteSessionUnreadableError
         ? err.message
         : t("Could not import from Internet Archive");
     res.status(400).json({ message });

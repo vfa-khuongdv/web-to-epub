@@ -425,6 +425,20 @@ export const en: Record<string, string> = {
     "Scribd documents that only load for a logged-in account need a login saved from your own browser.",
   "You can skip this — documents that are viewable without an account still load.":
     "You can skip this — documents that are viewable without an account still load.",
+  "Internet Archive session": "Internet Archive session",
+  "Borrow-only books need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.":
+    "Borrow-only books need a login saved from your own browser. The tool never sees your password — you log in there and paste a copy of the request.",
+  "Log in to archive.org in your browser — the copy has to come from a page where you are already logged in.":
+    "Log in to archive.org in your browser — the copy has to come from a page where you are already logged in.",
+  'Right-click the first archive.org request (the details page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.':
+    'Right-click the first archive.org request (the details page) → Copy → Copy as cURL. "Copy as cURL (bash)" works too.',
+  "The session lasts as long as archive.org keeps you signed in; import a fresh one when imports start failing.":
+    "The session lasts as long as archive.org keeps you signed in; import a fresh one when imports start failing.",
+  "A saved login is in use for borrow-only Internet Archive books.":
+    "A saved login is in use for borrow-only Internet Archive books.",
+  "Borrow-only Internet Archive books need a login saved from your own browser.":
+    "Borrow-only Internet Archive books need a login saved from your own browser.",
+  "You can skip this — public items still import.": "You can skip this — public items still import.",
 
   // Narration (Settings)
   "Narration": "Narration",

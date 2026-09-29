@@ -28,6 +28,9 @@ export interface ParsedSiteSession {
   cookies: NonNullable<SiteSession["cookies"]>;
 }
 
+/** A session file that exists but cannot be parsed — the fix is deleting that file. */
+export class SiteSessionUnreadableError extends Error {}
+
 export function sessionHostname(url: string): string | undefined {
   try {
     return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
@@ -46,7 +49,7 @@ function loadSessionByHostname(hostname: string): SiteSession | undefined {
   try {
     return JSON.parse(readFileSync(file, "utf8")) as SiteSession;
   } catch {
-    throw new Error(t("Saved login session is unreadable — delete {file} and log in again", { file }));
+    throw new SiteSessionUnreadableError(t("Saved login session is unreadable — delete {file} and log in again", { file }));
   }
 }
 
@@ -70,21 +73,24 @@ function cookieAppliesToHost(domain: string | undefined, hostname: string): bool
 
 /**
  * Headers that make a plain HTTP request to `url` look like the session's own browser:
- * its user agent (Cloudflare binds the cookies it issues to it) and the cookies that
- * belong to that host. Empty without a session — callers keep their own defaults then.
- * Used by the sites whose pages are served in the raw HTML (truyenfull.live), so they
- * can skip the browser when the saved session is enough.
+ * the saved user agent plus the cookies that apply to the URL's host (a storage host
+ * under .archive.org counts). Used by the sites whose pages are served in the raw HTML
+ * (truyenfull.live), so they can skip the browser when the saved session is enough, and
+ * by the archive.org borrow capture.
  */
-export function sessionRequestHeaders(url: string): Record<string, string> {
+export function siteSessionHeaders(session: SiteSession, url: string): Record<string, string> {
   const hostname = sessionHostname(url);
   if (!hostname) return {};
-  const session = loadSiteSession(url);
-  if (!session) return {};
   const headers: Record<string, string> = {};
   if (session.userAgent) headers["User-Agent"] = session.userAgent;
   const cookies = (session.cookies ?? []).filter((cookie) => cookieAppliesToHost(cookie.domain, hostname));
   if (cookies.length > 0) headers.Cookie = cookies.map((cookie) => `${cookie.name}=${cookie.value}`).join("; ");
   return headers;
+}
+
+export function sessionRequestHeaders(url: string): Record<string, string> {
+  const session = loadSiteSession(url);
+  return session ? siteSessionHeaders(session, url) : {};
 }
 
 // The payload of a JWT cookie, or undefined for anything that is not one — the session
@@ -128,6 +134,15 @@ export function sessionAccountName(session: SiteSession): string | undefined {
     for (const claim of ["name", "preferred_username", "username", "nickname"]) {
       const value = payload[claim];
       if (typeof value === "string" && value.trim()) return value.trim();
+    }
+  }
+  // archive.org carries no JWT: its logged-in cookie is the plain (URL-encoded) email.
+  for (const cookie of session.cookies ?? []) {
+    if (cookie.name !== "logged-in-user" || !cookie.value.trim()) continue;
+    try {
+      return decodeURIComponent(cookie.value).trim();
+    } catch {
+      return cookie.value.trim();
     }
   }
   return undefined;

@@ -459,10 +459,12 @@ Create `src/services/__fixtures__/archiveBorrowFixtures.ts`:
 // Minimal JPEG magic bytes — the capture only checks the header before storing.
 export const JPEG = Buffer.from([0xff, 0xd8, 0xff, 0xdb, 0x00, 0x01]);
 
-// The details page carries the reader config url in a hidden input; & must be
-// escaped as in real HTML so JSDOM decodes it back on .value.
+// The details page carries the reader config URL as JSON {url} in a hidden input;
+// & and ' must be escaped as in real HTML so JSDOM decodes it back on .value.
+// (Controller ruling in the execution ledger: the live value is JSON, not a bare URL.)
 export function detailsHtml(configUrl = defaultConfigUrl()): string {
-  return `<html><head><title>x</title></head><body><input class="js-bookreader" type="hidden" value='${configUrl.replace(/&/g, "&amp;").replace(/'/g, "&#39;")}'></body></html>`;
+  const value = JSON.stringify({ url: configUrl }).replace(/&/g, "&amp;").replace(/'/g, "&#39;");
+  return `<html><head><title>x</title></head><body><input class="js-bookreader" type="hidden" value='${value}'></body></html>`;
 }
 
 export function defaultConfigUrl(): string {
@@ -1108,9 +1110,14 @@ describe("captureChapters", () => {
   });
 
   it("skips an oversized page image but keeps the chapter structure", async () => {
+    // Controller ruling: branch on the leaf — only ONE page is oversized, so the
+    // mock matches the test's name and the assertion below (2 stored blocks).
     const fetchImpl = captureMock({
       leafCount: 3,
-      preview: () => {
+      preview: (leafNum: number) => {
+        if (leafNum !== 1) {
+          return new Response(new Uint8Array(JPEG), { status: 200, headers: { "content-type": "image/jpeg" } });
+        }
         const big = Buffer.alloc(8 * 1024 * 1024 + 1, 0x41);
         big[0] = 0xff;
         big[1] = 0xd8;
@@ -1390,6 +1397,7 @@ function withBorrow(fetchImpl: ReturnType<typeof archiveFetch>) {
     return fetchImpl(input);
   });
 }
+```
 
 ```ts
 describe("importArchiveItem with a session", () => {
@@ -1643,19 +1651,22 @@ it("imports a borrow-only item as image chapters when a session is saved", async
   const { story } = await res.json();
   expect(story).toMatchObject({ id, site: "epub", storyUrl: "archive:testitem", title: "Sách Archive" });
   expect(story.chapters).toHaveLength(1);
-  expect(story.chapters[0].blocks).toHaveLength(2);
-  expect(story.chapters[0].blocks[0].type).toBe("image");
+  // The route answers with getOutline (no blocks in an outline) — pin the stored
+  // content through the store instead, the same convention as importEpub.test.ts.
+  const saved = await stories.get(id);
+  expect(saved?.chapters[0]?.blocks).toHaveLength(2);
+  expect(saved?.chapters[0]?.blocks[0]?.type).toBe("image");
 });
 
 it("asks for a login when a borrow-only item has no saved session", async () => {
   stubArchive({ restricted: true, borrow: true });
   const res = await importArchive("", { url: "https://archive.org/details/testitem" }, { "X-Lang": "vi" });
   expect(res.status).toBe(400);
-  expect((await res.json()).message).toContain("Đăng nhập archive.org");
+  expect((await res.json()).message).toContain("Hãy đăng nhập archive.org");
 });
 ```
 
-Update the existing test `refuses a lending item with the translated message`: keep its stub, delete the `X-Lang`/`giới hạn truy cập` assertion or — better — rename it to `refuses a lending item without a session and says how to sign in` and assert the message contains `"Đăng nhập archive.org"` (it now covers the same case as the new test above; if you keep both, make this one run without `borrow: true` so the stub stays minimal).
+Update the existing test `refuses a lending item with the translated message`: keep its stub, delete the `X-Lang`/`giới hạn truy cập` assertion or — better — rename it to `refuses a lending item without a session and says how to sign in` and assert the message contains `"Hãy đăng nhập archive.org"` (byte-matched to the lang.ts copy; controller ruling — it now covers the same case as the new test above; if you keep both, make this one run without `borrow: true` so the stub stays minimal).
 
 - [ ] **Step 2: Run the tests to verify they fail**
 

@@ -197,4 +197,37 @@ describe("site session routes", () => {
     expect(post.status).toBe(404);
     expect(existsSync(path.join(DATA_DIR, "sessions", "example.json"))).toBe(false);
   });
+
+  const ARCHIVE_CURL =
+    `curl 'https://archive.org/details/namiyazakkatenno0000higa/page/n161/mode/2up' ` +
+    `-H 'cookie: logged-in-user=tester%40example.com; logged-in-sig=sigvalue; loan-namiyazakkatenno0000higa=1790656967-abc' ` +
+    `-H 'user-agent: UA-ARCHIVE'`;
+
+  it("nhập và đọc phiên archive.org, không lộ cookie", async () => {
+    const post = await fetch(`${base}/api/site-sessions/archive`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ curl: ARCHIVE_CURL }),
+    });
+    expect(post.status).toBe(200);
+    const body = await post.json();
+    expect(body.username).toBe("tester@example.com");
+    expect(body.cookieCount).toBeGreaterThan(0);
+    expect(JSON.stringify(body)).not.toContain("sigvalue");
+
+    const get = await fetch(`${base}/api/site-sessions/archive`);
+    const status = await get.json();
+    expect(status.configured).toBe(true);
+    expect(status.username).toBe("tester@example.com");
+    expect(existsSync(path.join(DATA_DIR, "sessions", "archive.org.json"))).toBe(true);
+
+    const del = await fetch(`${base}/api/site-sessions/archive`, { method: "DELETE" });
+    expect((await del.json()).removed).toBe(true);
+    expect((await (await fetch(`${base}/api/site-sessions/archive`)).json()).configured).toBe(false);
+  });
+
+  it("chưa nhập phiên archive.org → configured false", async () => {
+    const res = await fetch(`${base}/api/site-sessions/archive`);
+    expect((await res.json()).configured).toBe(false);
+  });
 });

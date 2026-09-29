@@ -185,9 +185,10 @@ export default function LibraryView({
   const [page, setPage] = useState(1);
   const [checking, setChecking] = useState(false);
   const checkedOnOpen = useRef(false);
-  // The URL waiting behind the site session dialog, with the site it belongs to: sites
-  // whose crawls need a saved browser session (Asianfanfics, truyenfull.live).
-  const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite } | null>(null);
+  // The URL waiting behind the site session dialog: sites that need a saved browser session (Asianfanfics, TruyenFull, Internet Archive).
+  const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite; action: "story" | "archive" } | null>(
+    null
+  );
 
   async function loadStories() {
     try {
@@ -290,11 +291,8 @@ export default function LibraryView({
       setError(t("Paste a story URL first."));
       return;
     }
-    if (isArchiveItemUrl(url)) {
-      await importArchiveFrom(url);
-      return;
-    }
-    if (!isSupportedUrl(url, supportedSites)) {
+    const archive = isArchiveItemUrl(url);
+    if (!archive && !isSupportedUrl(url, supportedSites)) {
       setError(
         t("URL is not from a supported site. Supported: {sites}.", {
           sites: supportedSites.map((s) => s.domain).join(", "),
@@ -303,23 +301,25 @@ export default function LibraryView({
       return;
     }
     // Sites whose crawls need a session saved from the reader's browser ask for one first
-    // (skippable — the crawl then reports what the site refused). Checked per add, so a
+    // (skippable — the import then reports what the site refused). Checked per add, so a
     // session imported here is picked up by the next one; a failed check never blocks.
     const sessionSite = sessionSiteForUrl(url);
-    if (sessionSite) {
-      const needsImport = await fetchSiteSession(sessionSite.slug)
-        .then(
-          (status) =>
-            !status.configured ||
-            (sessionSite.showsExpiry && !!status.expiresAt && Date.parse(status.expiresAt) <= Date.now())
-        )
-        .catch(() => false);
-      if (needsImport) {
-        setSessionPrompt({ url, site: sessionSite });
-        return;
-      }
+    if (sessionSite && (await needsSessionPrompt(sessionSite))) {
+      setSessionPrompt({ url, site: sessionSite, action: archive ? "archive" : "story" });
+      return;
     }
-    await createStoryFrom(url);
+    if (archive) await importArchiveFrom(url);
+    else await createStoryFrom(url);
+  }
+
+  async function needsSessionPrompt(site: SessionSite): Promise<boolean> {
+    return fetchSiteSession(site.slug)
+      .then(
+        (status) =>
+          !status.configured ||
+          (site.showsExpiry && !!status.expiresAt && Date.parse(status.expiresAt) <= Date.now())
+      )
+      .catch(() => false);
   }
 
   async function createStoryFrom(url: string) {
@@ -918,15 +918,17 @@ export default function LibraryView({
         <SiteSessionDialog
           site={sessionPrompt.site}
           onSaved={(result) => {
-            const url = sessionPrompt.url;
+            const { url, action } = sessionPrompt;
             setSessionPrompt(null);
             pushNotice({ kind: "session-saved", username: result.username });
-            void createStoryFrom(url);
+            if (action === "archive") void importArchiveFrom(url);
+            else void createStoryFrom(url);
           }}
           onSkip={() => {
-            const url = sessionPrompt.url;
+            const { url, action } = sessionPrompt;
             setSessionPrompt(null);
-            void createStoryFrom(url);
+            if (action === "archive") void importArchiveFrom(url);
+            else void createStoryFrom(url);
           }}
         />
       )}
