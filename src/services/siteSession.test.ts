@@ -3,6 +3,7 @@ import { rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { SiteSession } from "./siteSession";
 
 /**
  * DATA_DIR must be set before anything is imported: config/paths reads it at import
@@ -214,6 +215,33 @@ describe("persistRenderedCookies", () => {
     ]);
     expect(siteSession.siteSessionStatus("guest.example")).toEqual({ configured: false });
   });
+});
+
+it("gây header từ phiên đã lưu cho cả host kho của archive.org", () => {
+  const session: SiteSession = {
+    userAgent: "UA-ARCHIVE",
+    cookies: [
+      { name: "loan-x", value: "1-abc", domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+      { name: "other", value: "z", domain: ".example.com", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+    ],
+    origins: [],
+  };
+  const headers = siteSession.siteSessionHeaders(
+    session,
+    "https://ia601804.us.archive.org/BookReader/BookReaderPreview.php?page=leaf1"
+  );
+  expect(headers["User-Agent"]).toBe("UA-ARCHIVE");
+  expect(headers.Cookie).toBe("loan-x=1-abc");
+});
+
+it("lấy tên tài khoản từ cookie logged-in-user của archive.org", () => {
+  const session: SiteSession = {
+    cookies: [
+      { name: "logged-in-user", value: "tester%40example.com", domain: ".archive.org", path: "/", expires: -1, httpOnly: false, secure: false, sameSite: "Lax" },
+    ],
+    origins: [],
+  };
+  expect(siteSession.sessionAccountName(session)).toBe("tester@example.com");
 });
 });
 

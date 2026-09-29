@@ -17,6 +17,7 @@ export const siteSessionsRouter = Router();
 const SESSION_SITES: Record<string, string> = {
   asianfanfics: "asianfanfics.com",
   truyenfull: "truyenfull.live",
+  archive: "archive.org",
 };
 
 siteSessionsRouter.get("/site-sessions/:site", (req, res) => {
