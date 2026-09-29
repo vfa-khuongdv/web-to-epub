@@ -1,10 +1,11 @@
 import { JSDOM } from "jsdom";
 import type { ElementHandle, Page } from "playwright";
+import sharp from "sharp";
 import { ContentBlock, ExtractedChapter } from "../../types";
 import { LockedContentError } from "../extractor";
 import { Line, Margins, lineGapOf, linesToBlocks, mostCommonSize } from "../pdfImport";
 import { openRenderSession, RenderSession } from "../renderer";
-import { fetchText } from "../toc/http";
+import { fetchText, fetchWithRetry } from "../toc/http";
 import {
   currentSessionSavedAt,
   loadScribdDocument,
@@ -32,6 +33,28 @@ const DEFAULT_FONT_SIZE = 16;
 const PAGE_NUMBER_RE = /^[-–—\s]*\d+[-–—\s]*$/;
 // Closing punctuation never takes the space a font-run boundary would add.
 const NO_SPACE_BEFORE_RE = /^[.,;:!?…)\]}>”’]/;
+// A text page whose pictures cover at least this much of it is a designed page (a cover,
+// a slide, a table page): its text is painted over the graphics, so it is captured as an
+// image instead of being reflowed. Below it, the text is the page (with figures on it).
+export const GRAPHIC_PAGE_IMAGE_AREA = 0.35;
+// Cropped tiles are small (a logo, a bullet); one quality step keeps them light.
+const CROP_JPEG_QUALITY = 82;
+
+// Scribd's text layer spells ligatures with private-use codepoints (the embedded font
+// carries them): doc 354014758 shows U+E000 as "fi" (signi\uE000cantly), U+E001 "fl",
+// U+E002 "ff" and U+E003 "ffi". Left alone they are tofu boxes in the reader and the book.
+const LIGATURES: Record<number, string> = {
+  0xe000: "fi",
+  0xe001: "fl",
+  0xe002: "ff",
+  0xe003: "ffi",
+  0xfb00: "ff",
+  0xfb01: "fi",
+  0xfb02: "fl",
+  0xfb03: "ffi",
+  0xfb04: "ffl",
+};
+const LIGATURE_RE = /[\uE000-\uE003\uFB00-\uFB04]/g;
 
 export interface ScribdChapterRef {
   docId: string;
@@ -56,10 +79,28 @@ export function parseScribdChapterRef(url: string): ScribdChapterRef | undefined
   return { docId, from, to };
 }
 
+// A page's picture region: the viewer draws a source file clipped to `clip` at `top`.
+export interface ScribdClip {
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+}
+
+export interface ScribdImage {
+  // Where the tile's visible part starts on the page (the clip moves the drawing).
+  top: number;
+  src: string;
+  clip: ScribdClip;
+}
+
 export interface ScribdPagePayload {
   width: number;
   lines: Line[];
-  images: { top: number; src: string }[];
+  images: ScribdImage[];
+  // Summed tile area over the page area; the viewer tiles a large picture, so this may
+  // exceed 1. Used to tell a designed page from a text page with a figure.
+  imageArea: number;
 }
 
 interface Fragment {
@@ -93,7 +134,11 @@ function fontSizeOf(el: Element): number {
 }
 
 function cleanText(el: Element): string {
-  return (el.textContent ?? "").replace(/\u00a0/g, " ").replace(/\s+/g, " ").trim();
+  return (el.textContent ?? "")
+    .replace(/\u00a0/g, " ")
+    .replace(LIGATURE_RE, (char) => LIGATURES[char.codePointAt(0) ?? 0] ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function joinFragments(parts: Fragment[]): string {
@@ -150,6 +195,19 @@ function rowsFrom(root: Document, pageNum: number): Line[] {
   return rows;
 }
 
+// clip: rect(top right bottom left) in the source file's pixels. A tile without a usable
+// clip shows its whole file, which also means no crop (width/height 0). Read off the raw
+// `style` attribute: jsdom's CSSOM drops the deprecated `clip` shorthand.
+function clipRect(style: string, width: number, height: number): ScribdClip {
+  const numbers = (style.match(/rect\(([^)]*)\)/)?.[1] ?? "").split(/[\s,]+/).map(parseFloat);
+  const [top, right, bottom, left] =
+    numbers.length === 4 && numbers.every((value) => Number.isFinite(value))
+      ? (numbers as [number, number, number, number])
+      : [0, width, height, 0];
+  if (!(right - left > 0) || !(bottom - top > 0)) return { left: 0, top: 0, width: 0, height: 0 };
+  return { left, top, width: right - left, height: bottom - top };
+}
+
 /**
  * Read one page payload into positioned lines (for the shared paragraph heuristics in
  * pdfImport.ts) and images. Scan pages carry only an image_layer; text pages carry a
@@ -162,18 +220,37 @@ export function parseScribdPagePayload(payload: string, pageNum: number): Scribd
 
   const page = document.querySelector(".newpage") as HTMLElement | null;
   const width = parseFloat(page?.style.width ?? "");
+  const height = parseFloat(page?.style.height ?? "");
   const lines = rowsFrom(document, pageNum);
 
-  const images: { top: number; src: string }[] = [];
+  let tileArea = 0;
+  const images: ScribdImage[] = [];
   document.querySelectorAll("img.absimg").forEach((img) => {
     const raw = img.getAttribute("orig") ?? img.getAttribute("src") ?? "";
     if (!/^https?:/i.test(raw)) return;
-    const top = parseFloat((img as HTMLElement).style.top);
-    images.push({ top: Number.isFinite(top) ? top : 0, src: raw.replace(/^http:\/\//i, "https://") });
+    const style = (img as HTMLElement).style;
+    const tileWidth = parseFloat(style.width);
+    const tileHeight = parseFloat(style.height);
+    const top = parseFloat(style.top);
+    const clip = clipRect(img.getAttribute("style") ?? "", tileWidth, tileHeight);
+    images.push({
+      // The visible part starts where the clip starts; the drawing top alone can sit far
+      // off the page for a tile that shows the bottom of its file.
+      top: (Number.isFinite(top) ? top : 0) + clip.top,
+      src: raw.replace(/^http:\/\//i, "https://"),
+      clip,
+    });
+    if (Number.isFinite(tileWidth) && Number.isFinite(tileHeight)) tileArea += tileWidth * tileHeight;
   });
   images.sort((a, b) => a.top - b.top);
 
-  return { width: Number.isFinite(width) ? width : 0, lines, images };
+  const pageArea = width > 0 && height > 0 ? width * height : 0;
+  return {
+    width: Number.isFinite(width) ? width : 0,
+    lines,
+    images,
+    imageArea: pageArea > 0 ? tileArea / pageArea : 0,
+  };
 }
 
 type ChapterItem =
@@ -332,6 +409,50 @@ async function captureScrambledChapter(
   return { sourceUrl: url, title: t("Pages {from}–{to}", { from: ref.from, to: ref.to }), blocks };
 }
 
+// One designed page of a document that is otherwise text (see GRAPHIC_PAGE_IMAGE_AREA).
+async function captureGraphicPage(
+  ref: ScribdChapterRef,
+  url: string,
+  pageNum: number,
+  context: ChapterFetchContext | undefined
+): Promise<ChapterItem> {
+  if (!context) {
+    throw new Error(t("Could not store this Scribd document's page images — retry the crawl ({url})", { url }));
+  }
+  const render = await captureSessionFor(ref.docId, normalizeScribdStoryUrl(url), pageNum);
+  try {
+    const bytes = await captureScribdPage(render.page, pageNum, url);
+    if (captureSession?.docId === ref.docId) captureSession.lastPage = pageNum;
+    return { kind: "image", page: pageNum, top: 0, src: context.media.save(context.storyId, bytes, "jpg") };
+  } finally {
+    armCaptureIdle();
+  }
+}
+
+// The viewer paints a page's pictures as clipped tiles of one file (doc 354014758's logo
+// sprite holds the logo and every bullet mark): a whole tile repeats the picture, so each
+// tile is cropped to the region the viewer shows and stored next to the book. A failed
+// download or crop keeps the URL — the EPUB export can still fetch it later.
+async function storedImage(
+  image: ScribdImage,
+  context: ChapterFetchContext | undefined,
+  sources: Map<string, Buffer | undefined>
+): Promise<string> {
+  if (!context || image.clip.width <= 0 || image.clip.height <= 0) return image.src;
+  try {
+    if (!sources.has(image.src)) {
+      const res = await fetchWithRetry(image.src, { headers: { Accept: "image/*" } }, { maxAttempts: 2 });
+      sources.set(image.src, res.ok ? Buffer.from(await res.arrayBuffer()) : undefined);
+    }
+    const bytes = sources.get(image.src);
+    if (!bytes) return image.src;
+    const cropped = await sharp(bytes).extract(image.clip).jpeg({ quality: CROP_JPEG_QUALITY }).toBuffer();
+    return context.media.save(context.storyId, cropped, "jpg");
+  } catch {
+    return image.src;
+  }
+}
+
 /**
  * Fetch one chapter: the pages of its range, each from the payload URL the viewer page
  * listed. Scanned pages become image blocks, text pages are rebuilt into paragraphs with
@@ -366,11 +487,26 @@ export async function fetchScribdChapter(
 
   const items: ChapterItem[] = [];
   const pageWidths = new Map<number, number>();
+  // One download per source file per chapter: a page's tiles all come from the same file.
+  const sources = new Map<string, Buffer | undefined>();
   for (const page of pages) {
     const parsed = parseScribdPagePayload(await fetchText(page.contentUrl), page.pageNum);
     pageWidths.set(page.pageNum, parsed.width);
+    // A designed page's text is painted over its graphics, so the page is captured whole
+    // instead; a text page keeps its text and gets its figures as cropped tiles.
+    if (parsed.lines.length > 0 && parsed.imageArea >= GRAPHIC_PAGE_IMAGE_AREA) {
+      items.push(await captureGraphicPage(ref, url, page.pageNum, context));
+      continue;
+    }
     for (const line of parsed.lines) items.push({ kind: "line", page: page.pageNum, top: -line.y, line });
-    for (const image of parsed.images) items.push({ kind: "image", page: page.pageNum, top: image.top, src: image.src });
+    for (const image of parsed.images) {
+      items.push({
+        kind: "image",
+        page: page.pageNum,
+        top: image.top,
+        src: await storedImage(image, context, sources),
+      });
+    }
   }
   items.sort((a, b) => a.page - b.page || a.top - b.top);
 

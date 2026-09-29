@@ -1,24 +1,27 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import sharp from "sharp";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LockedContentError } from "../extractor";
 import { openRenderSession, renderPageHtml, RenderSession } from "../renderer";
 import type { EpubMediaStore } from "../epubMedia";
-import { fetchText } from "../toc/http";
+import { fetchText, fetchWithRetry } from "../toc/http";
 import { ScribdLockedError } from "../toc/scribd";
 import { parseScribdChapterRef, parseScribdPagePayload, fetchScribdChapter } from "./scribd";
 
 vi.mock("../renderer", () => ({ renderPageHtml: vi.fn(), openRenderSession: vi.fn() }));
-vi.mock("../toc/http", () => ({ fetchText: vi.fn(), sleep: vi.fn() }));
+vi.mock("../toc/http", () => ({ fetchText: vi.fn(), fetchWithRetry: vi.fn(), sleep: vi.fn() }));
 vi.mock("../siteSession", () => ({ loadSiteSession: vi.fn().mockReturnValue(undefined) }));
 
 const mockedRender = vi.mocked(renderPageHtml);
 const mockedFetch = vi.mocked(fetchText);
+const mockedFetchWithRetry = vi.mocked(fetchWithRetry);
 const mockedOpenSession = vi.mocked(openRenderSession);
 
 beforeEach(() => {
   mockedRender.mockReset();
   mockedFetch.mockReset();
+  mockedFetchWithRetry.mockReset();
   mockedOpenSession.mockReset();
 });
 
@@ -74,16 +77,19 @@ const capturePage = (options: { blurred?: number[]; missing?: number[] } = {}) =
 };
 
 const mediaStore = () => {
-  let saved = 0;
+  const saved: Buffer[] = [];
   return {
-    save: vi.fn(() => {
-      saved += 1;
-      return `epub-media/0123456789abcdef/${String(saved).padStart(12, "0")}.jpg`;
+    saved,
+    save: vi.fn((_storyId: string, bytes: Buffer) => {
+      saved.push(bytes);
+      return `epub-media/0123456789abcdef/${String(saved.length).padStart(12, "0")}.jpg`;
     }),
     find: vi.fn(),
     remove: vi.fn(),
-  } as unknown as EpubMediaStore;
+  } as unknown as EpubMediaStore & { saved: Buffer[] };
 };
+
+const context = (media: EpubMediaStore) => ({ storyId: "0123456789abcdef", media });
 
 const sessionFor = (page: unknown) =>
   ({ page, close: vi.fn() }) as unknown as RenderSession;
@@ -111,9 +117,15 @@ describe("parseScribdPagePayload", () => {
 
     expect(parsed.width).toBe(899);
     expect(parsed.lines).toEqual([]);
+    // Tile vẽ ở top -1, clip rect(1px 903px 1365px 1px): phần nhìn thấy bắt đầu ở 0.
     expect(parsed.images).toEqual([
-      { top: -1, src: "https://html.scribd.com/2l1p15luww9r1sb0/images/10-f959f226f3.jpg" },
+      {
+        top: 0,
+        src: "https://html.scribd.com/2l1p15luww9r1sb0/images/10-f959f226f3.jpg",
+        clip: { left: 1, top: 1, width: 902, height: 1364 },
+      },
     ]);
+    expect(parsed.imageArea).toBeCloseTo((904 * 1366) / (899 * 1362), 3);
   });
 
   it("trang text: gom span thành dòng theo top, nối mảnh cùng dòng theo left", () => {
@@ -121,6 +133,7 @@ describe("parseScribdPagePayload", () => {
 
     expect(parsed.width).toBe(902);
     expect(parsed.lines.length).toBeGreaterThan(20);
+    expect(parsed.imageArea).toBe(0);
     expect(parsed.lines.some((line) => line.text === "1 Introduction" && line.size === 127)).toBe(true);
     const merged = parsed.lines.find((line) => line.text.startsWith("November 2022"));
     expect(merged?.text).toBe("November 2022 (“ChatGPT Announcement,” 2022). While the people actively following");
@@ -142,8 +155,46 @@ describe("parseScribdPagePayload", () => {
     );
     expect(parsed.lines.some((line) => line.text === "Lappeenranta – Lahti University of Technology LUT")).toBe(true);
     expect(parsed.images).toEqual([
-      { top: 183, src: "https://html.scribd.com/15q5d82jr4dtf08h/images/1-2ff75f9af6.jpg" },
+      {
+        top: 184,
+        src: "https://html.scribd.com/15q5d82jr4dtf08h/images/1-2ff75f9af6.jpg",
+        clip: { left: 1, top: 1, width: 217, height: 94 },
+      },
     ]);
+    expect(parsed.imageArea).toBeCloseTo((219 * 96) / (902 * 1274), 4);
+  });
+
+  it("ảnh bị cắt thành nhiều tile: giữ từng mảnh với vùng cắt và vị trí hiển thị", () => {
+    const parsed = parseScribdPagePayload(readFixture("scribd-page-tiled.jsonp"), 1);
+
+    // (doc 354014758) cover 1-bf783a8b89.jpg vẽ 2 mảnh: mảnh góc dưới (top 41) và phần
+    // thân (top 193); cùng file nhưng hai vùng cắt khác nhau.
+    expect(parsed.images).toEqual([
+      {
+        top: 41,
+        src: "https://html.scribd.com/1sc08z9dq85ysm5r/images/1-bf783a8b89.jpg",
+        clip: { left: 1, top: 1084, width: 118, height: 111 },
+      },
+      {
+        top: 193,
+        src: "https://html.scribd.com/1sc08z9dq85ysm5r/images/1-bf783a8b89.jpg",
+        clip: { left: 1, top: 1, width: 902, height: 1081 },
+      },
+    ]);
+    expect(parsed.imageArea).toBeCloseTo((2 * 904 * 1196) / (902 * 1274), 2);
+  });
+
+  it("đổi ligature private-use (fi/fl/ff/ffi) về chữ thường", () => {
+    const payload = `window.page1_callback([${JSON.stringify(
+      '<div class="newpage" id="page1" style="width: 902px; height:1274px"><div class=text_layer><div class=ie_fix>\n' +
+        '<div class="ff6" style="font-size:103px"><span class=a style="left:10px;top:100px">signi\uE000cantly di\uE002erent</span></div>\n' +
+        '<div class="ff6" style="font-size:103px"><span class=a style="left:10px;top:200px">di\uE003cult to \uE001ip</span></div>\n' +
+        "</div></div></div>"
+    )}]);`;
+
+    const parsed = parseScribdPagePayload(payload, 1);
+
+    expect(parsed.lines.map((line) => line.text)).toEqual(["significantly different", "difficult to flip"]);
   });
 
   it("báo lỗi khi payload không phải JSONP đọc được", () => {
@@ -168,6 +219,86 @@ describe("fetchScribdChapter", () => {
     ]);
     expect(mockedFetch).toHaveBeenCalledTimes(3);
     expect(mockedFetch).toHaveBeenCalledWith("https://html.scribdassets.com/key/pages/2-deadbeef.jsonp");
+    // Trang scan không cần chụp lại bằng trình duyệt.
+    expect(mockedOpenSession).not.toHaveBeenCalled();
+  });
+
+  it("trang slide (chữ nằm trên hình lớn) được chụp ảnh thay vì trích chữ", async () => {
+    mockedRender.mockResolvedValue(documentPage([{ pageNum: 1 }]));
+    mockedFetch.mockImplementation(async () => readFixture("scribd-page-tiled.jsonp"));
+    mockedOpenSession.mockResolvedValue(sessionFor(capturePage()));
+    const media = mediaStore();
+
+    const chapter = await fetchScribdChapter(`${docUrl(778)}#pages=1-1`, context(media));
+
+    expect(chapter.blocks).toEqual([
+      { type: "image", src: "epub-media/0123456789abcdef/000000000001.jpg", alt: "" },
+    ]);
+    expect(media.save).toHaveBeenCalledWith("0123456789abcdef", Buffer.from("page-1"), "jpg");
+    // Chữ của trang vốn đã nằm trong ảnh chụp, không trích lại thành heading/paragraph.
+    expect(chapter.blocks.some((b) => b.type === "heading" || b.type === "paragraph")).toBe(false);
+  });
+
+  it("trang slide mà thiếu media store thì báo lỗi thử lại được", async () => {
+    mockedRender.mockResolvedValue(documentPage([{ pageNum: 1 }]));
+    mockedFetch.mockImplementation(async () => readFixture("scribd-page-tiled.jsonp"));
+
+    await expect(fetchScribdChapter(`${docUrl(779)}#pages=1-1`)).rejects.toThrow(/Could not store/);
+    expect(mockedOpenSession).not.toHaveBeenCalled();
+  });
+
+  it("trang chữ có ảnh sprite: cắt từng mảnh theo clip rồi lưu vào media store", async () => {
+    mockedRender.mockResolvedValue(documentPage([{ pageNum: 13 }]));
+    mockedFetch.mockImplementation(async () => readFixture("scribd-page-bullets.jsonp"));
+    const sprite = await sharp({ create: { width: 171, height: 209, channels: 3, background: "#ffffff" } })
+      .jpeg()
+      .toBuffer();
+    mockedFetchWithRetry.mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => sprite,
+    } as unknown as Response);
+    const media = mediaStore();
+
+    const chapter = await fetchScribdChapter(`${docUrl(780)}#pages=13-13`, context(media));
+
+    // Logo + 3 vạch bullet của sprite 13-5d128b1c61.jpg.
+    expect(chapter.blocks.filter((b) => b.type === "image")).toHaveLength(4);
+    expect(chapter.blocks.some((b) => b.type === "heading" && b.text === "Nouns")).toBe(true);
+    // Cùng một file: chỉ tải một lần cho cả trang.
+    expect(mockedFetchWithRetry).toHaveBeenCalledTimes(1);
+    expect(mockedFetchWithRetry).toHaveBeenCalledWith(
+      "https://html.scribd.com/1sc08z9dq85ysm5r/images/13-5d128b1c61.jpg",
+      expect.anything(),
+      expect.anything()
+    );
+    const sizes = await Promise.all(
+      media.saved.map(async (bytes) => {
+        const meta = await sharp(bytes).metadata();
+        return [meta.width, meta.height];
+      })
+    );
+    expect(sizes).toEqual([
+      [169, 42],
+      [6, 91],
+      [6, 163],
+      [6, 89],
+    ]);
+  });
+
+  it("ảnh sprite tải lỗi thì giữ nguyên URL gốc", async () => {
+    mockedRender.mockResolvedValue(documentPage([{ pageNum: 13 }]));
+    mockedFetch.mockImplementation(async () => readFixture("scribd-page-bullets.jsonp"));
+    mockedFetchWithRetry.mockRejectedValue(new Error("offline"));
+    const media = mediaStore();
+
+    const chapter = await fetchScribdChapter(`${docUrl(781)}#pages=13-13`, context(media));
+
+    expect(media.save).not.toHaveBeenCalled();
+    expect(chapter.blocks.find((b) => b.type === "image")).toEqual({
+      type: "image",
+      src: "https://html.scribd.com/1sc08z9dq85ysm5r/images/13-5d128b1c61.jpg",
+      alt: "",
+    });
   });
 
   it("dựng heading và đoạn văn từ trang text", async () => {
@@ -227,8 +358,6 @@ describe("fetchScribdChapter", () => {
 });
 
 describe("fetchScribdChapter — tài liệu mã hoá font", () => {
-  const context = (media: EpubMediaStore) => ({ storyId: "0123456789abcdef", media });
-
   it("chụp từng trang thành ảnh lưu vào media store", async () => {
     mockedRender.mockResolvedValue(
       documentPage([{ pageNum: 1 }, { pageNum: 2 }], { scrambled: true })
