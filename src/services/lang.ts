@@ -259,6 +259,13 @@ const vi: Record<string, string> = {
     "Sách từ Internet Archive có quá nhiều trang để nhập (tối đa {count})",
   "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
   "Internet Archive books are imported, not crawled": "Sách Internet Archive được nhập về, không crawl",
+  "DTV Ebook could not serve this book: {url}": "DTV Ebook không phục vụ được sách này: {url}",
+  "This DTV Ebook book has no EPUB to import — the site only offers other formats: {url}":
+    "Sách DTV Ebook này không có file EPUB để nhập — site chỉ có định dạng khác: {url}",
+  "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
+  "DTV Ebook books are imported, not crawled": "Sách DTV Ebook được nhập về, không crawl",
+  "This is not a DTV Ebook book page: {url} — paste a URL like https://dtv-ebook.com.vn/<name>_<id>.html":
+    "Đây không phải trang sách DTV Ebook: {url} — dán URL dạng https://dtv-ebook.com.vn/<ten>_<id>.html",
 };
 
 let current: Lang = DEFAULT_LANG;
