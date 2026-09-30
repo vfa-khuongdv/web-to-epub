@@ -44,3 +44,14 @@ export function findSupportedSite(url: string): SupportedSite | undefined {
   }
   return SUPPORTED_SITES.find((site) => hostname === site.domain || hostname.endsWith(`.${site.domain}`));
 }
+
+// Sources that host a whole book file instead of chapter pages: a URL from one of these is
+// imported (its book file is read directly), never crawled. Deliberately kept OUT of
+// SUPPORTED_SITES, which is the crawl allowlist findSupportedSite trusts — putting them
+// there would make POST /stories accept a URL it cannot crawl. The add box still lists
+// them as supported, under a separate heading, because a reader can paste one.
+// archive.org: POST /stories/import-archive. dtv-ebook.com.vn: POST /stories/import-dtvebook.
+export const IMPORT_SOURCES: SupportedSite[] = [
+  { domain: "archive.org", name: "Internet Archive" },
+  { domain: "dtv-ebook.com.vn", name: "DTV Ebook" },
+];

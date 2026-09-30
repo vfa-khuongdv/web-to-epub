@@ -16,9 +16,15 @@ export interface ExtractedChapter {
   errorKind?: ChapterErrorKind;
 }
 
+// A source the add box accepts. "crawl" = the chapter list is loaded from the pasted URL;
+// "import" = the source hosts a whole book file that is read instead (archive.org,
+// dtv-ebook.com.vn). Both are supported, and the UI says which kind a domain is.
+export type SupportedSiteMode = "crawl" | "import";
+
 export interface SupportedSite {
   domain: string;
   name: string;
+  mode: SupportedSiteMode;
 }
 
 export interface ProgressEvent {

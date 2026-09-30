@@ -25,6 +25,7 @@ export const vi: Record<string, string> = {
   "{count} sites supported": "{count} trang hỗ trợ",
   "Loading supported sites…": "Đang tải danh sách trang hỗ trợ…",
   "Supported sites": "Trang được hỗ trợ",
+  "Book files (imported)": "Sách file (nhập về)",
   "Click to view the supported sites": "Bấm để xem danh sách trang hỗ trợ",
 
   // Chapter status
@@ -123,6 +124,7 @@ export const vi: Record<string, string> = {
   "Loading…": "Đang tải…",
   "Load chapters": "Tải danh sách chương",
   "Paste a story page URL to load the full chapter list. Auto-loading sites:": "Dán URL trang truyện để nạp toàn bộ mục lục. Tự động load được:",
+  "Book sites (imported, not crawled):": "Trang sách dạng file (nhập về, không crawl):",
   "loading…": "đang tải…",
   "Search stories": "Tìm truyện",
   "Search by story name or site…": "Tìm theo tên truyện hoặc site…",
@@ -585,5 +587,7 @@ export const vi: Record<string, string> = {
   "PDF file": "File PDF",
   "Internet Archive": "Internet Archive",
   "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
+  "DTV Ebook": "DTV Ebook",
+  "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
   "Could not import the file": "Không nhập được file",
 };

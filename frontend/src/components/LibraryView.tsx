@@ -9,11 +9,13 @@ import {
   fetchStories,
   fetchStory,
   importArchive,
+  importDtvEbook,
   importEpub,
   setStoryWatch,
 } from "../lib/api";
 import { Translate, useLang } from "../i18n";
 import { isArchiveItemUrl } from "../lib/archiveUrl";
+import { isDtvEbookUrl } from "../lib/dtvEbookUrl";
 import { isSupportedUrl } from "../lib/isSupportedUrl";
 import { SessionSite, sessionSiteForUrl } from "../lib/siteSessions";
 import { timeAgo } from "../lib/timeAgo";
@@ -189,6 +191,10 @@ export default function LibraryView({
   const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite; action: "story" | "archive" } | null>(
     null
   );
+  // Split by kind, because the two need different words everywhere they are listed: a crawl
+  // site is loaded page by page, a book site is read as one file.
+  const crawlSites = supportedSites.filter((site) => site.mode === "crawl");
+  const importSites = supportedSites.filter((site) => site.mode === "import");
 
   async function loadStories() {
     try {
@@ -291,8 +297,14 @@ export default function LibraryView({
       setError(t("Paste a story URL first."));
       return;
     }
+    // archive.org and DTV Ebook host whole books rather than chapter pages, so their URLs
+    // are imported instead of crawled. The check is on the URL's shape, not just its host:
+    // a search page on either site is not a book. Everything else must be a crawl site.
     const archive = isArchiveItemUrl(url);
-    if (!archive && !isSupportedUrl(url, supportedSites)) {
+    const dtv = isDtvEbookUrl(url);
+    if (!archive && !dtv && !isSupportedUrl(url, supportedSites, "crawl")) {
+      // The message answers "do you support this?", so it names both kinds — a reader
+      // who pasted an archive.org URL should be able to see it belongs somewhere.
       setError(
         t("URL is not from a supported site. Supported: {sites}.", {
           sites: supportedSites.map((s) => s.domain).join(", "),
@@ -308,7 +320,7 @@ export default function LibraryView({
       setSessionPrompt({ url, site: sessionSite, action: archive ? "archive" : "story" });
       return;
     }
-    if (archive) await importArchiveFrom(url);
+    if (archive || dtv) await importUrlFrom(url);
     else await createStoryFrom(url);
   }
 
@@ -357,24 +369,48 @@ export default function LibraryView({
     }
   }
 
-  // Import an archive.org item by URL; a 409 asks before overwriting, like a file import.
-  // Runs on the "Load chapters" busy state: that button launched it and must show it.
+  // Import a book from a URL: an archive.org item or a DTV Ebook book page. A 409 asks
+  // before overwriting, like a file import. Runs on the "Load chapters" busy state: that
+  // button launched it and must show it.
+  async function importUrlFrom(url: string, overwrite = false) {
+    if (isDtvEbookUrl(url)) return importDtvFrom(url, overwrite);
+    return importArchiveFrom(url, overwrite);
+  }
+
   async function importArchiveFrom(url: string, overwrite = false) {
     setBusy(true);
     setError(null);
     try {
       const imported = await importArchive(url, { overwrite });
-      setPendingImport(null);
-      setStoryUrl("");
-      await loadStories();
-      setSelected(imported);
-      pushNotice({ kind: "epub-imported", title: imported.title });
+      await finishUrlImport(url, imported);
     } catch (err) {
       if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
       else setError((err as Error).message);
     } finally {
       setBusy(false);
     }
+  }
+
+  async function importDtvFrom(url: string, overwrite = false) {
+    setBusy(true);
+    setError(null);
+    try {
+      const imported = await importDtvEbook(url, { overwrite });
+      await finishUrlImport(url, imported);
+    } catch (err) {
+      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
+      else setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishUrlImport(url: string, imported: StoredStory) {
+    setPendingImport(null);
+    setStoryUrl("");
+    await loadStories();
+    setSelected(imported);
+    pushNotice({ kind: "epub-imported", title: imported.title });
   }
 
   function handleImportFiles(files: FileList | null) {
@@ -603,7 +639,7 @@ export default function LibraryView({
                   onClick={() =>
                     void (pendingImport.kind === "file"
                       ? handleImport(pendingImport.file, true)
-                      : importArchiveFrom(pendingImport.url, true))
+                      : importUrlFrom(pendingImport.url, true))
                   }
                 >
                   {t("Overwrite")}
@@ -621,7 +657,15 @@ export default function LibraryView({
           ) : (
             <p className="mt-1.5 text-xs text-ink-3">
               {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
-              {[...new Set(supportedSites.map((s) => s.name))].join(", ") || t("loading…")}
+              {[...new Set(crawlSites.map((s) => s.name))].join(", ") || t("loading…")}
+              {/* The book-file sources are supported too, but they work the other way
+                  round, so they are named apart from the crawl sites. */}
+              {importSites.length > 0 && (
+                <span className="block">
+                  {t("Book sites (imported, not crawled):")}{" "}
+                  {[...new Set(importSites.map((s) => s.name))].join(", ")}
+                </span>
+              )}
               <span className="block">{t("Or drop an .epub or .pdf file here to import it.")}</span>
             </p>
           )}
@@ -787,7 +831,9 @@ export default function LibraryView({
                           ? t("PDF file")
                           : s.storyUrl.startsWith("archive:")
                             ? t("Internet Archive")
-                            : t("EPUB file")
+                            : s.storyUrl.startsWith("dtv:")
+                              ? t("DTV Ebook")
+                              : t("EPUB file")
                         : s.site}
                     </td>
                     <td className="num">{s.chapterCount}</td>
@@ -921,13 +967,13 @@ export default function LibraryView({
             const { url, action } = sessionPrompt;
             setSessionPrompt(null);
             pushNotice({ kind: "session-saved", username: result.username });
-            if (action === "archive") void importArchiveFrom(url);
+            if (action === "archive") void importUrlFrom(url);
             else void createStoryFrom(url);
           }}
           onSkip={() => {
             const { url, action } = sessionPrompt;
             setSessionPrompt(null);
-            if (action === "archive") void importArchiveFrom(url);
+            if (action === "archive") void importUrlFrom(url);
             else void createStoryFrom(url);
           }}
         />

@@ -457,7 +457,9 @@ export default function StoryDetail({
                   ? t("PDF file")
                   : story.storyUrl.startsWith("archive:")
                     ? t("Internet Archive")
-                    : t("EPUB file")
+                    : story.storyUrl.startsWith("dtv:")
+                      ? t("DTV Ebook")
+                      : t("EPUB file")
                 : story.site}
             </span>
             {!imported && (

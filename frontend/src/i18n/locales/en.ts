@@ -24,6 +24,7 @@ export const en: Record<string, string> = {
   "{count} sites supported": "{count} sites supported",
   "Loading supported sites…": "Loading supported sites…",
   "Supported sites": "Supported sites",
+  "Book files (imported)": "Book files (imported)",
   "Click to view the supported sites": "Click to view the supported sites",
 
   // Chapter status
@@ -122,6 +123,7 @@ export const en: Record<string, string> = {
   "Loading…": "Loading…",
   "Load chapters": "Load chapters",
   "Paste a story page URL to load the full chapter list. Auto-loading sites:": "Paste a story page URL to load the full chapter list. Auto-loading sites:",
+  "Book sites (imported, not crawled):": "Book sites (imported, not crawled):",
   "loading…": "loading…",
   "Search stories": "Search stories",
   "Search by story name or site…": "Search by story name or site…",
@@ -583,5 +585,7 @@ export const en: Record<string, string> = {
   "PDF file": "PDF file",
   "Internet Archive": "Internet Archive",
   "Could not import from Internet Archive": "Could not import from Internet Archive",
+  "DTV Ebook": "DTV Ebook",
+  "Could not import from DTV Ebook": "Could not import from DTV Ebook",
   "Could not import the file": "Could not import the file",
 };

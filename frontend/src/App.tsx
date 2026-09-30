@@ -76,6 +76,11 @@ export default function App() {
     return () => media.removeEventListener("change", sync);
   }, [theme]);
 
+  // Split once here so the popover shows what each kind of domain needs: a chapter list
+  // crawled page by page, or a whole book file read in one go.
+  const crawlSites = supportedSites.filter((site) => site.mode === "crawl");
+  const importSites = supportedSites.filter((site) => site.mode === "import");
+
   const themeTitle =
     (theme === "system"
       ? t("Theme: {theme} (system)", { theme: t(THEME_LABEL[theme]) })
@@ -186,7 +191,7 @@ export default function App() {
                       {t("Supported sites")}
                     </h3>
                     <ul>
-                      {supportedSites.map((site) => (
+                      {crawlSites.map((site) => (
                         <li key={site.domain} className="py-0.5 text-[12.5px] whitespace-nowrap">
                           {/* Opens in a new tab: the reader keeps the library they
                               were about to paste a URL from. */}
@@ -203,6 +208,32 @@ export default function App() {
                         </li>
                       ))}
                     </ul>
+                    {importSites.length > 0 && (
+                      <>
+                        {/* These host whole book files, not chapter pages: the URL is
+                            imported instead of crawled. Without the heading, a reader
+                            would assume they work the same way. */}
+                        <h3 className="mt-2.5 mb-1.5 border-t border-rule-2 pt-2 text-[10.5px] font-[650] tracking-[0.07em] uppercase text-ink-2">
+                          {t("Book files (imported)")}
+                        </h3>
+                        <ul>
+                          {importSites.map((site) => (
+                            <li key={site.domain} className="py-0.5 text-[12.5px] whitespace-nowrap">
+                              <a
+                                href={`https://${site.domain}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="group flex items-baseline justify-between gap-2.5 text-inherit no-underline hover:text-select hover:underline"
+                                onClick={() => setSitesOpen(false)}
+                              >
+                                <span>{site.name}</span>
+                                <span className="text-ink-3 group-hover:text-inherit">{site.domain}</span>
+                              </a>
+                            </li>
+                          ))}
+                        </ul>
+                      </>
+                    )}
                   </div>
                 </>
               )}
