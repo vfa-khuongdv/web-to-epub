@@ -137,7 +137,7 @@ export default function NarrationSettings({
         {enginePicker}
         <Row
           label={t("Narration engine")}
-          hint={engine === "omnivoice" ? t("OmniVoice needs a Mac with Apple Silicon.") : t("Narration is not supported on this platform.")}
+          hint={engine === "omnivoice" ? t("OmniVoice needs a Mac with Apple Silicon or a PC with an NVIDIA GPU.") : t("Narration is not supported on this platform.")}
           control={null}
         />
       </>

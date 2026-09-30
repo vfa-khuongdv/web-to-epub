@@ -61,6 +61,12 @@ gh release create vX.Y.Z --title "vX.Y.Z — Web to EPUB" --notes-file /tmp/note
 
 It is created published with no assets yet; the DMG is attached next.
 
+Pushing the tag also starts `.github/workflows/desktop.yml`, which builds the Windows
+(`.exe` installer + `-win.zip`) and Linux (`.AppImage` + `.deb`) apps and uploads them to
+this release once both finish (~10–15 min). It adds to an existing release and leaves its
+notes alone, but if it wins the race it creates an empty release and `gh release create`
+fails — then use `gh release edit vX.Y.Z --notes-file /tmp/notes.md` instead.
+
 ## 5. Attach the macOS app
 
 ```sh

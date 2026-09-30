@@ -28,6 +28,11 @@ if (isPackaged) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.resourcesPath, "ms-playwright");
 }
 
+// AppImage/deb on Linux: the setuid sandbox helper is not installed and Ubuntu 24.04
+// blocks user namespaces, so Electron exits at startup. This window only shows the
+// app's own localhost UI (chapter HTML is rendered in a sandboxed iframe).
+if (process.platform === "linux") app.commandLine.appendSwitch("no-sandbox");
+
 function findFreePort() {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();

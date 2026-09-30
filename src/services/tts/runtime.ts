@@ -11,6 +11,8 @@ import {
   OMNIVOICE_TTS_DIR,
   OMNIVOICE_VERSION,
   OMNIVOICE_WORKER_SCRIPT,
+  TORCH_CUDA_INDEX,
+  TORCH_CUDA_TAG,
   PYTHON_VERSION,
   TTS_DIR,
   VIENEU_VERSION,
@@ -74,6 +76,9 @@ export interface TtsRuntimeDeps {
   workerScript: string;
   constraintsFile: string;
   uvUrl: string | undefined;
+  // Install torch/torchaudio from this index first (a CUDA build), at the versions the
+  // constraints pin, then everything else with those two left out of the constraints.
+  torchIndex?: { url: string; tag: string };
   download(url: string, dest: string, onBytes: (done: number, total: number) => void): Promise<void>;
   exec(command: string, args: string[], env: NodeJS.ProcessEnv, cwd?: string): Promise<void>;
   startWorker(cmd: WorkerCommand, log: (line: string) => void): Promise<TtsWorker>;
@@ -99,9 +104,12 @@ export interface TtsRuntime {
 }
 
 export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
-  const uvBin = path.join(deps.ttsDir, "bin", "uv");
+  // Windows: uv.exe, and a venv keeps its interpreter in Scripts/ instead of bin/.
+  const isWindows = process.platform === "win32";
+  const uvName = isWindows ? "uv.exe" : "uv";
+  const uvBin = path.join(deps.ttsDir, "bin", uvName);
   const venvDir = path.join(deps.ttsDir, "venv");
-  const python = path.join(venvDir, "bin", "python");
+  const python = isWindows ? path.join(venvDir, "Scripts", "python.exe") : path.join(venvDir, "bin", "python");
   const marker = path.join(deps.ttsDir, "installed.json");
   const hfDir = path.join(deps.ttsDir, "hf");
   const hfStamp = path.join(hfDir, ".constraints");
@@ -114,6 +122,9 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     UV_PYTHON_PREFERENCE: "only-managed",
     HF_HOME: hfDir,
     HF_HUB_DISABLE_TELEMETRY: "1",
+    // Windows without Developer Mode cannot symlink: the hub copies files instead, and
+    // would warn about it on every load.
+    HF_HUB_DISABLE_SYMLINKS_WARNING: "1",
     ...deps.env,
   };
 
@@ -170,14 +181,16 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
       progress = { phase: "uv" };
       const tmp = await fs.mkdtemp(path.join(deps.ttsDir, "uv-"));
       try {
-        const archive = path.join(tmp, "uv.tar.gz");
+        const archive = path.join(tmp, isWindows ? "uv.zip" : "uv.tar.gz");
         await deps.download(deps.uvUrl, archive, (downloaded, total) => {
           progress = { phase: "uv", downloaded, total };
         });
-        await deps.exec("tar", ["-xzf", archive, "-C", tmp], {});
-        // The archive holds uv-<target>/uv; take it from wherever it landed.
+        // bsdtar (bundled with Windows 10+) reads the .zip too; -x detects gzip on its own.
+        await deps.exec("tar", ["-xf", archive, "-C", tmp], {});
+        // The tarball holds uv-<target>/uv (the Windows zip has uv.exe at its root); take it
+        // from wherever it landed.
         const folder = (await fs.readdir(tmp, { withFileTypes: true })).find((entry) => entry.isDirectory());
-        const extracted = folder ? path.join(tmp, folder.name, "uv") : path.join(tmp, "uv");
+        const extracted = folder ? path.join(tmp, folder.name, uvName) : path.join(tmp, uvName);
         await fs.rename(extracted, uvBin);
         await fs.chmod(uvBin, 0o755);
       } finally {
@@ -191,15 +204,33 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
     }
 
     progress = { phase: "packages" };
+    let constraintsFile = deps.constraintsFile;
+    if (deps.torchIndex) {
+      const lines = (await fs.readFile(constraintsFile, "utf8")).split(/\r?\n/);
+      const pinned = (name: string) => lines.find((line) => line.startsWith(`${name}==`))?.slice(name.length + 2).trim();
+      const torch = pinned("torch");
+      const torchaudio = pinned("torchaudio");
+      if (!torch || !torchaudio) throw new Error("torch is not pinned in the constraints");
+      const { url, tag } = deps.torchIndex;
+      // uv does not match "==2.8.0" against the CUDA wheel "2.8.0+cu126", so it is asked for by
+      // its full version; a copy of the constraints without torch keeps it from being replaced.
+      await deps.exec(
+        uvBin,
+        ["pip", "install", "--python", python, "--index-url", url, `torch==${torch}+${tag}`, `torchaudio==${torchaudio}+${tag}`],
+        env
+      );
+      constraintsFile = path.join(deps.ttsDir, "constraints.txt");
+      await fs.writeFile(constraintsFile, lines.filter((line) => !/^torch(audio)?==/.test(line)).join("\n"));
+    }
     // -c: exact versions of every dependency, so today's release of some transitive package
     // cannot change what the model runs on (see tts/constraints.txt).
     // Passed relative to its own folder: uv cuts an absolute `-c` path at the first space, and
     // the packaged app lives in "/Applications/Web to EPUB.app".
     await deps.exec(
       uvBin,
-      ["pip", "install", "--python", python, "-c", path.basename(deps.constraintsFile), ...deps.packages],
+      ["pip", "install", "--python", python, "-c", path.basename(constraintsFile), ...deps.packages],
       env,
-      path.dirname(deps.constraintsFile)
+      path.dirname(constraintsFile)
     );
 
     // Loading once downloads the model, so the first narration does not stall on it. A cache
@@ -381,6 +412,7 @@ export const ttsRuntimes: Record<TtsEngine, TtsRuntime> = {
     packages: [`omnivoice==${OMNIVOICE_VERSION}`],
     // A few ops have no MPS kernel yet; let torch run those on the CPU instead of failing.
     env: { PYTORCH_ENABLE_MPS_FALLBACK: "1" },
+    torchIndex: process.platform === "darwin" ? undefined : { url: TORCH_CUDA_INDEX, tag: TORCH_CUDA_TAG },
     ttsDir: OMNIVOICE_TTS_DIR,
     workerScript: OMNIVOICE_WORKER_SCRIPT,
     constraintsFile: OMNIVOICE_CONSTRAINTS_FILE,

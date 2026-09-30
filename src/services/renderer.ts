@@ -26,7 +26,14 @@ function getBrowser(): Promise<Browser> {
     const args = process.env.CHROMIUM_NO_SANDBOX === "1" ? ["--no-sandbox"] : [];
     // Launch failure: discard promise. Keeping a rejected promise means all
     // following chapters fail too and never retry.
-    browserPromise = chromium.launch({ headless: true, args }).catch((err) => {
+    // Desktop Linux (Ubuntu 24.04 restricts unprivileged user namespaces) can refuse the
+    // sandbox too: retry once without it, as the Docker image does from the start.
+    const launch = () => chromium.launch({ headless: true, args });
+    const attempt =
+      process.platform === "linux" && args.length === 0
+        ? launch().catch(() => chromium.launch({ headless: true, args: ["--no-sandbox"] }))
+        : launch();
+    browserPromise = attempt.catch((err) => {
       browserPromise = null;
       throw err;
     });

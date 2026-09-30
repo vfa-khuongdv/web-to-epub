@@ -83,10 +83,25 @@ def load():
     from omnivoice import OmniVoice
 
     path = snapshot_download(MODEL_REPO, revision=MODEL_REVISION)
-    device = "mps" if torch.backends.mps.is_available() else "cpu"
-    dtype = torch.float16 if device == "mps" else torch.float32
+    device = pick_device(torch)
+    dtype = torch.float16 if device != "cpu" else torch.float32
     model = OmniVoice.from_pretrained(path, device_map=device, dtype=dtype)
     return model
+
+
+def pick_device(torch):
+    if torch.backends.mps.is_available():
+        return "mps"
+    if torch.cuda.is_available():
+        return "cuda"
+    return "cpu"
+
+
+def free_gpu_cache(torch):
+    if torch.backends.mps.is_available():
+        torch.mps.empty_cache()
+    elif torch.cuda.is_available():
+        torch.cuda.empty_cache()
 
 
 def loaded_message(model):
@@ -114,8 +129,7 @@ def voice_prompt(model, ref_audio, ref_text, ref_prompt, prompts):
         finally:
             # Whisper is only needed for this; on an 8 GB Mac it must not stay resident.
             model._asr_pipe = None
-            if torch.backends.mps.is_available():
-                torch.mps.empty_cache()
+            free_gpu_cache(torch)
         os.makedirs(os.path.dirname(saved), exist_ok=True)
         partial = saved + ".part"
         prompt.save(partial)

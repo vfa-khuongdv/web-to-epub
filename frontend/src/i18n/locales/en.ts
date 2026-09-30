@@ -487,7 +487,7 @@ export const en: Record<string, string> = {
   "Remove the voice “{name}”? Chapters already narrated with it are kept.": "Remove the voice “{name}”? Chapters already narrated with it are kept.",
   "Engine": "Engine",
   "OmniVoice sounds more natural but is several times slower and needs a voice of your own; VieNeu-TTS is faster and has voices built in.": "OmniVoice sounds more natural but is several times slower and needs a voice of your own; VieNeu-TTS is faster and has voices built in.",
-  "OmniVoice needs a Mac with Apple Silicon.": "OmniVoice needs a Mac with Apple Silicon.",
+  "OmniVoice needs a Mac with Apple Silicon or a PC with an NVIDIA GPU.": "OmniVoice needs a Mac with Apple Silicon or a PC with an NVIDIA GPU.",
   "Reads Vietnamese chapters aloud with OmniVoice on this Mac's GPU, in a voice you upload. Installing downloads about 4.5 GB (Python, PyTorch and the model) into the library folder. The model is licensed for non-commercial use only (CC BY-NC).": "Reads Vietnamese chapters aloud with OmniVoice on this Mac's GPU, in a voice you upload. Installing downloads about 4.5 GB (Python, PyTorch and the model) into the library folder. The model is licensed for non-commercial use only (CC BY-NC).",
   "What is said in the clip": "What is said in the clip",
   "What is said in the clip (optional — OmniVoice transcribes it if left blank)": "What is said in the clip (optional — OmniVoice transcribes it if left blank)",
