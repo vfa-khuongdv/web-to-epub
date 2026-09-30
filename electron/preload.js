@@ -16,12 +16,12 @@ contextBridge.exposeInMainWorld("electronExport", {
 
 // Update bridge: the packaged app downloads a release zip and replaces its own
 // bundle (electron/main.js); the renderer only asks and watches progress.
-// macOS only: the installer swaps a .app bundle from the release's mac zip, which
-// means nothing on Windows/Linux. Without the bridge the update dialog just links to
-// the release page.
-if (process.platform === "darwin") {
+// Only offered where this install can replace itself (macOS .app, Windows NSIS install,
+// Linux AppImage — see updateKind in src/services/appInstaller.ts); otherwise the update
+// dialog just links to the release page.
+if (ipcRenderer.sendSync("update:can-install")) {
   contextBridge.exposeInMainWorld("electronUpdate", {
-    install: (zipUrl) => ipcRenderer.invoke("update:install", zipUrl),
+    install: (assetUrl) => ipcRenderer.invoke("update:install", assetUrl),
     onProgress: (callback) => {
       const listener = (_event, progress) => callback(progress);
       ipcRenderer.on("update:progress", listener);

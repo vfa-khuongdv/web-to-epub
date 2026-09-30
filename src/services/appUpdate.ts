@@ -17,6 +17,7 @@ export interface UpdateStatus {
   latest: string | null;
   hasUpdate: boolean;
   releaseUrl: string | null;
+  // The asset to install from on this OS (name kept from when it was macOS-only).
   zipUrl: string | null;
 }
 
@@ -49,15 +50,33 @@ export function pickZipAsset(assets: GithubAsset[], version: string): string | n
   return match?.browser_download_url ?? null;
 }
 
+// The release asset this platform installs from: the macOS zip (the .app inside), the
+// Windows NSIS installer (run silently) or the Linux AppImage (swapped in place). GitHub
+// turns the spaces of "Web to EPUB Setup 1.6.0.exe" into dots.
+const ASSET_PATTERNS: Partial<Record<NodeJS.Platform, RegExp>> = {
+  darwin: /-arm64-mac\.zip$/,
+  win32: /\.Setup\.[^/]*\.exe$/,
+  linux: /\.AppImage$/,
+};
+
+export function pickUpdateAsset(assets: GithubAsset[], version: string, platform: NodeJS.Platform): string | null {
+  const pattern = ASSET_PATTERNS[platform];
+  if (!pattern) return null;
+  const matches = assets.filter((asset) => pattern.test(asset.name));
+  const match = matches.find((asset) => asset.name.includes(version)) ?? matches[0];
+  return match?.browser_download_url ?? null;
+}
+
 export interface AppUpdateChecker {
   check(current: string): Promise<UpdateStatus>;
 }
 
 export function createAppUpdateChecker(
-  deps: { fetchImpl?: typeof fetch; now?: () => number } = {}
+  deps: { fetchImpl?: typeof fetch; now?: () => number; platform?: NodeJS.Platform } = {}
 ): AppUpdateChecker {
   const fetchImpl = deps.fetchImpl ?? fetch;
   const now = deps.now ?? Date.now;
+  const platform = deps.platform ?? process.platform;
   let cached: { at: number; status: UpdateStatus } | null = null;
   let failedAt: number | null = null;
 
@@ -91,7 +110,7 @@ export function createAppUpdateChecker(
           latest,
           hasUpdate: compareVersions(latest, current) > 0,
           releaseUrl: release.html_url,
-          zipUrl: pickZipAsset(Array.isArray(release.assets) ? (release.assets as GithubAsset[]) : [], latest),
+          zipUrl: pickUpdateAsset(Array.isArray(release.assets) ? (release.assets as GithubAsset[]) : [], latest, platform),
         };
         cached = { at, status };
         failedAt = null;
