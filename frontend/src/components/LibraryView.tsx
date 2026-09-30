@@ -8,138 +8,22 @@ import {
   fetchSiteSession,
   fetchStories,
   fetchStory,
-  importArchive,
-  importDtvEbook,
   importEpub,
   setStoryWatch,
 } from "../lib/api";
-import { Translate, useLang } from "../i18n";
-import { isArchiveItemUrl } from "../lib/archiveUrl";
-import { isDtvEbookUrl } from "../lib/dtvEbookUrl";
+import { useLang } from "../i18n";
+import { DEFAULT_SORTS, PAGE_SIZE, SortKey, SortState, StoryRow, compareRows, crawlStatus, fold } from "../lib/libraryRows";
+import { bookUrlSourceFor } from "../lib/bookUrlSources";
 import { isSupportedUrl } from "../lib/isSupportedUrl";
 import { SessionSite, sessionSiteForUrl } from "../lib/siteSessions";
 import { timeAgo } from "../lib/timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
 import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../hooks/useCrawlJob";
 import { Icon } from "./Icon";
+import SortTh from "./SortTh";
 import SiteSessionDialog from "./SiteSessionDialog";
-import { ChipState, StatusChip } from "./StatusChip";
+import { StatusChip } from "./StatusChip";
 import StoryDetail, { StoryDetailSkeleton } from "./StoryDetail";
-
-// Crawl status for the entire story, combining saved count with running crawl: if
-// chapters are waiting, report how many remain; if all waiting chapters are done,
-// report crawl complete (with error count if any) — at a glance, know which stories
-// are fully crawled. Watched stories with new chapters are prioritized before remaining.
-function crawlStatus(
-  total: number,
-  done: number,
-  errors: number,
-  newChapterCount: number,
-  crawling: LiveCrawl | undefined,
-  t: Translate
-): { state: ChipState; label: string } {
-  if (crawling) {
-    return {
-      state: "running",
-      label:
-        crawling.total > 0
-          ? t("Crawling {done}/{total}", { done: crawling.cursor, total: crawling.total })
-          : t("Crawling"),
-    };
-  }
-  if (newChapterCount > 0) {
-    return { state: "new", label: t("{count} new chapters", { count: newChapterCount }) };
-  }
-  const remaining = total - done - errors;
-  if (remaining > 0) return { state: "pending", label: t("{count} chapters pending", { count: remaining }) };
-  if (errors > 0) return { state: "error", label: `${t("Done")} · ${t("{count} errors", { count: errors })}` };
-  return { state: "done", label: t("Crawl complete") };
-}
-
-const PAGE_SIZE = 10;
-
-type SortKey = "title" | "site" | "chapterCount" | "done" | "errors" | "remaining" | "updatedAt";
-interface SortState {
-  key: SortKey;
-  dir: "asc" | "desc";
-}
-
-// Multi-level sort: first element is primary criteria, subsequent elements are
-// tie-breakers. Shift+click adds a secondary column, regular click replaces all.
-const DEFAULT_SORTS: SortState[] = [{ key: "updatedAt", dir: "desc" }];
-
-// A table row: combines saved data plus running crawl, pre-calculated for
-// filtering/sorting to work on the same numbers the user sees.
-interface StoryRow extends StorySummary {
-  done: number;
-  errors: number;
-  remaining: number;
-  crawling?: LiveCrawl;
-  status: { state: ChipState; label: string };
-}
-
-// Remove diacritics so typing "van" still finds "Văn".
-function fold(text: string): string {
-  return text
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/đ/g, "d")
-    .replace(/Đ/g, "D")
-    .toLowerCase();
-}
-
-function compareRows(a: StoryRow, b: StoryRow, key: SortKey): number {
-  switch (key) {
-    case "title":
-      return a.title.localeCompare(b.title, "vi");
-    case "site":
-      return a.site.localeCompare(b.site, "vi");
-    case "updatedAt":
-      // ISO format, so string comparison = time comparison.
-      return a.updatedAt.localeCompare(b.updatedAt);
-    default:
-      return a[key] - b[key];
-  }
-}
-
-function SortTh({
-  label,
-  sortKey,
-  sorts,
-  onSort,
-  className,
-}: {
-  label: string;
-  sortKey: SortKey;
-  sorts: SortState[];
-  onSort: (key: SortKey, additive: boolean) => void;
-  className?: string;
-}) {
-  const { t } = useLang();
-  const rank = sorts.findIndex((s) => s.key === sortKey);
-  const active = sorts[rank];
-  return (
-    <th
-      className={className}
-      aria-sort={active ? (active.dir === "asc" ? "ascending" : "descending") : undefined}
-    >
-      <button
-        type="button"
-        className="inline-flex cursor-pointer items-center gap-1"
-        title={t("Sort by {label} — hold Shift to add secondary criteria", { label: t(label) })}
-        onClick={(e) => onSort(sortKey, e.shiftKey)}
-      >
-        {t(label)}
-        {active && (
-          <>
-            <Icon name="chevron" size={10} className={active.dir === "asc" ? "-rotate-90" : "rotate-90"} />
-            {sorts.length > 1 && <span className="text-[9px] font-semibold">{rank + 1}</span>}
-          </>
-        )}
-      </button>
-    </th>
-  );
-}
 
 export default function LibraryView({
   job,
@@ -188,7 +72,7 @@ export default function LibraryView({
   const [checking, setChecking] = useState(false);
   const checkedOnOpen = useRef(false);
   // The URL waiting behind the site session dialog: sites that need a saved browser session (Asianfanfics, TruyenFull, Internet Archive).
-  const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite; action: "story" | "archive" } | null>(
+  const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite; action: "story" | "import" } | null>(
     null
   );
   // Split by kind, because the two need different words everywhere they are listed: a crawl
@@ -297,12 +181,10 @@ export default function LibraryView({
       setError(t("Paste a story URL first."));
       return;
     }
-    // archive.org and DTV Ebook host whole books rather than chapter pages, so their URLs
-    // are imported instead of crawled. The check is on the URL's shape, not just its host:
-    // a search page on either site is not a book. Everything else must be a crawl site.
-    const archive = isArchiveItemUrl(url);
-    const dtv = isDtvEbookUrl(url);
-    if (!archive && !dtv && !isSupportedUrl(url, supportedSites, "crawl")) {
+    // Book-hosting sites (archive.org, DTV Ebook — see lib/bookUrlSources.ts) are imported
+    // instead of crawled. Everything else must be a crawl site.
+    const bookSource = bookUrlSourceFor(url);
+    if (!bookSource && !isSupportedUrl(url, supportedSites, "crawl")) {
       // The message answers "do you support this?", so it names both kinds — a reader
       // who pasted an archive.org URL should be able to see it belongs somewhere.
       setError(
@@ -317,10 +199,10 @@ export default function LibraryView({
     // session imported here is picked up by the next one; a failed check never blocks.
     const sessionSite = sessionSiteForUrl(url);
     if (sessionSite && (await needsSessionPrompt(sessionSite))) {
-      setSessionPrompt({ url, site: sessionSite, action: archive ? "archive" : "story" });
+      setSessionPrompt({ url, site: sessionSite, action: bookSource ? "import" : "story" });
       return;
     }
-    if (archive || dtv) await importUrlFrom(url);
+    if (bookSource) await importUrlFrom(url);
     else await createStoryFrom(url);
   }
 
@@ -369,33 +251,16 @@ export default function LibraryView({
     }
   }
 
-  // Import a book from a URL: an archive.org item or a DTV Ebook book page. A 409 asks
-  // before overwriting, like a file import. Runs on the "Load chapters" busy state: that
-  // button launched it and must show it.
+  // Import a book from a URL (see lib/bookUrlSources.ts). A 409 asks before overwriting,
+  // like a file import. Runs on the "Load chapters" busy state: that button launched it and
+  // must show it.
   async function importUrlFrom(url: string, overwrite = false) {
-    if (isDtvEbookUrl(url)) return importDtvFrom(url, overwrite);
-    return importArchiveFrom(url, overwrite);
-  }
-
-  async function importArchiveFrom(url: string, overwrite = false) {
+    const source = bookUrlSourceFor(url);
+    if (!source) return;
     setBusy(true);
     setError(null);
     try {
-      const imported = await importArchive(url, { overwrite });
-      await finishUrlImport(url, imported);
-    } catch (err) {
-      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
-      else setError((err as Error).message);
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function importDtvFrom(url: string, overwrite = false) {
-    setBusy(true);
-    setError(null);
-    try {
-      const imported = await importDtvEbook(url, { overwrite });
+      const imported = await source.importBook(url, { overwrite });
       await finishUrlImport(url, imported);
     } catch (err) {
       if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
@@ -967,13 +832,13 @@ export default function LibraryView({
             const { url, action } = sessionPrompt;
             setSessionPrompt(null);
             pushNotice({ kind: "session-saved", username: result.username });
-            if (action === "archive") void importUrlFrom(url);
+            if (action === "import") void importUrlFrom(url);
             else void createStoryFrom(url);
           }}
           onSkip={() => {
             const { url, action } = sessionPrompt;
             setSessionPrompt(null);
-            if (action === "archive") void importUrlFrom(url);
+            if (action === "import") void importUrlFrom(url);
             else void createStoryFrom(url);
           }}
         />
