@@ -4,7 +4,6 @@ import {
   deleteHighlight,
   fetchHighlights,
   Highlight,
-  HIGHLIGHT_COLORS,
   HighlightColor,
   recolorHighlight,
 } from "../lib/api";
@@ -12,19 +11,18 @@ import * as hl from "../lib/highlightDom";
 import { CONTENT_ID } from "../lib/highlightDom";
 import { useLang } from "../i18n";
 import {
-  FONT_SIZE_RANGE,
-  LINE_HEIGHTS,
-  READER_FONTS,
   ReaderPrefs,
-  ReaderTheme,
   readPosition,
   readPrefs,
   readerDocument,
   savePosition,
   savePrefs,
 } from "../lib/readerPreview";
+import HighlightPalette, { Palette } from "./HighlightPalette";
 import { Icon } from "./Icon";
 import MiniPlayer from "./MiniPlayer";
+import ReaderSidebar from "./ReaderSidebar";
+import ReaderTextPanel from "./ReaderTextPanel";
 import { fetchNarrationTimeline } from "../lib/api";
 import { TimelinePart, activePart, markNarrating } from "../lib/narrationHighlight";
 import { NarrationPlayer } from "../hooks/narrationPlayer";
@@ -49,24 +47,6 @@ const PALETTE_CLEARANCE = 56;
 const CHARS_PER_MINUTE = 1000;
 // Below this there is nothing to scroll, so the chapter is fully in view.
 const MIN_SCROLLABLE = 8;
-
-const THEME_LABEL: Record<ReaderTheme, string> = { light: "Paper", sepia: "Sepia", dark: "Night" };
-const LINE_HEIGHT_LABEL: Record<string, string> = { "1.4": "Tight", "1.5": "Book", "1.8": "Loose" };
-const COLOR_LABEL: Record<HighlightColor, string> = {
-  yellow: "Yellow",
-  green: "Green",
-  blue: "Blue",
-  pink: "Pink",
-};
-
-// Where the colour palette sits: over a fresh selection, or over a highlight that was
-// clicked (which can also be recoloured or removed).
-interface Palette {
-  left: number;
-  top: number;
-  below: boolean;
-  target: { kind: "selection"; start: number; end: number; text: string } | { kind: "highlight"; id: string };
-}
 
 /**
  * Full-screen reader: shows one chapter at a time inside an iframe carrying the book's
@@ -601,115 +581,28 @@ export default function ReaderOverlay({
 
       <div className="reader-stage" ref={stage}>
         {prefs.toc && (
-          <nav className="reader-panel reader-panel-left" aria-label={t("Chapters")}>
-            <div className="reader-book">
-              {coverSrc ? (
-                <img className="reader-cover" src={coverSrc} alt="" referrerPolicy="no-referrer" />
-              ) : (
-                <div className="reader-cover reader-cover-empty">
-                  <Icon name="library" size={16} />
-                </div>
-              )}
-              <div className="min-w-0">
-                <b className="block truncate">{storyTitle}</b>
-                <span className="block truncate text-xs text-ink-2">{author || t("Unknown")}</span>
-                <span className="block text-xs text-ink-3">{t("{count} chapters in the book", { count: chapters.length })}</span>
-              </div>
-            </div>
-            <div className="tabs">
-              <button type="button" aria-selected={sidebar === "chapters"} onClick={() => setSidebar("chapters")}>
-                {t("Chapters")}
-              </button>
-              <button type="button" aria-selected={sidebar === "highlights"} onClick={() => setSidebar("highlights")}>
-                {t("Highlights ({count})", { count: highlights.length })}
-              </button>
-            </div>
-
-            {sidebar === "highlights" ? (
-              <ul className="reader-toc">
-                {highlights.map((highlight) => (
-                  <li key={highlight.id}>
-                    <button
-                      type="button"
-                      className="reader-hl-row"
-                      aria-current={highlight.chapterOrder === chapter?.order ? "true" : undefined}
-                      onClick={() => goToHighlight(highlight)}
-                    >
-                      <span className="reader-hl-dot" style={{ background: hl.SWATCH[highlight.color] }} />
-                      <span className="min-w-0">
-                        <span className="reader-hl-text">{highlight.text}</span>
-                        <span className="reader-hl-where">
-                          {t("Chapter {order}", { order: highlight.chapterOrder })}
-                        </span>
-                      </span>
-                    </button>
-                  </li>
-                ))}
-                {highlights.length === 0 && (
-                  <li className="reader-toc-note">
-                    {t("Nothing highlighted yet — select any text in the page to colour it.")}
-                  </li>
-                )}
-              </ul>
-            ) : (
-              <>
-            <input
-              type="search"
-              className="input"
-              placeholder={t("Find a chapter…")}
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-            />
-            <ul className="reader-toc">
-              {shown.map((c) => {
-                const current = c.order === chapter?.order;
-                return (
-                  <li key={c.order}>
-                    <button
-                      type="button"
-                      ref={current ? activeRow : undefined}
-                      aria-current={current ? "true" : undefined}
-                      onClick={() => goTo(chapters.indexOf(c))}
-                    >
-                      <span className="num">{c.order}</span>
-                      <span className="truncate">{c.title}</span>
-                    </button>
-                  </li>
-                );
-              })}
-              {shown.length === 0 && <li className="reader-toc-note">{t("No chapter matches “{query}”.", { query: query.trim() })}</li>}
-            </ul>
-            {hiddenMatches > 0 && (
-              <p className="reader-toc-note">{t("{count} more matches — type a longer search.", { count: hiddenMatches })}</p>
-            )}
-            {!needle && pageCount > 1 && (
-              <div className="reader-toc-foot">
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny"
-                  disabled={page === 0}
-                  aria-label={t("Earlier chapters")}
-                  onClick={() => setTocPage(page - 1)}
-                >
-                  <Icon name="chevron" size={12} className="rotate-180" />
-                </button>
-                <span>
-                  {t("{from}–{to} of {total}", { from: from + 1, to: from + shown.length, total: chapters.length })}
-                </span>
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny"
-                  disabled={page >= pageCount - 1}
-                  aria-label={t("Later chapters")}
-                  onClick={() => setTocPage(page + 1)}
-                >
-                  <Icon name="chevron" size={12} />
-                </button>
-              </div>
-            )}
-              </>
-            )}
-          </nav>
+          <ReaderSidebar
+            coverSrc={coverSrc}
+            storyTitle={storyTitle}
+            author={author}
+            chapters={chapters}
+            currentOrder={chapter?.order}
+            tab={sidebar}
+            onTab={setSidebar}
+            highlights={highlights}
+            onGoToHighlight={goToHighlight}
+            query={query}
+            onQuery={setQuery}
+            needle={needle}
+            shown={shown}
+            hiddenMatches={hiddenMatches}
+            activeRow={activeRow}
+            onGoToChapter={goTo}
+            page={page}
+            pageCount={pageCount}
+            from={from}
+            onTocPage={setTocPage}
+          />
         )}
 
         {srcDoc ? (
@@ -734,117 +627,9 @@ export default function ReaderOverlay({
           </div>
         )}
 
-        {palette && (
-          <div
-            className={palette.below ? "reader-palette reader-palette-below" : "reader-palette"}
-            style={{ left: palette.left, top: palette.top }}
-            role="group"
-            aria-label={t("Highlight colour")}
-          >
-            {HIGHLIGHT_COLORS.map((color) => (
-              <button
-                key={color}
-                type="button"
-                className="reader-swatch"
-                style={{ background: hl.SWATCH[color] }}
-                title={t(COLOR_LABEL[color])}
-                aria-label={t(COLOR_LABEL[color])}
-                onClick={() => applyColor(color)}
-              />
-            ))}
-            {palette.target.kind === "highlight" && (
-              <button
-                type="button"
-                className="reader-swatch reader-swatch-remove"
-                title={t("Remove highlight")}
-                aria-label={t("Remove highlight")}
-                onClick={() => removeHighlight((palette.target as { id: string }).id)}
-              >
-                <Icon name="trash" size={12} />
-              </button>
-            )}
-          </div>
-        )}
+        {palette && <HighlightPalette palette={palette} onColor={applyColor} onRemove={removeHighlight} />}
 
-        {textOpen && (
-          <aside className="reader-panel" aria-label={t("Text settings")}>
-            <div className="field">
-              <label>{t("Text size")}</label>
-              <div className="reader-seg">
-                <button
-                  type="button"
-                  disabled={prefs.fontSize <= FONT_SIZE_RANGE.min}
-                  aria-label={t("Smaller text")}
-                  onClick={() => updatePrefs({ fontSize: prefs.fontSize - FONT_SIZE_RANGE.step })}
-                >
-                  A−
-                </button>
-                <span className="reader-seg-value">{prefs.fontSize}px</span>
-                <button
-                  type="button"
-                  disabled={prefs.fontSize >= FONT_SIZE_RANGE.max}
-                  aria-label={t("Larger text")}
-                  onClick={() => updatePrefs({ fontSize: prefs.fontSize + FONT_SIZE_RANGE.step })}
-                >
-                  A+
-                </button>
-              </div>
-            </div>
-            <div className="field">
-              <label>{t("Line spacing")}</label>
-              <div className="reader-seg">
-                {LINE_HEIGHTS.map((value) => (
-                  <button
-                    key={value}
-                    type="button"
-                    aria-pressed={prefs.lineHeight === value}
-                    onClick={() => updatePrefs({ lineHeight: value })}
-                  >
-                    {t(LINE_HEIGHT_LABEL[String(value)])}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <label>{t("Font")}</label>
-              {/* Each choice is written in the family it selects, so the list is its own
-                  sample — the reason to pick one is what it looks like. */}
-              <div className="reader-seg reader-seg-col">
-                {READER_FONTS.map((font) => (
-                  <button
-                    key={font.id}
-                    type="button"
-                    style={{ fontFamily: font.stack }}
-                    aria-pressed={prefs.font === font.id}
-                    onClick={() => updatePrefs({ font: font.id })}
-                  >
-                    {t(font.label)}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="field">
-              <label>{t("Page")}</label>
-              <div className="reader-seg">
-                {(Object.keys(THEME_LABEL) as ReaderTheme[]).map((theme) => (
-                  <button
-                    key={theme}
-                    type="button"
-                    aria-pressed={prefs.theme === theme}
-                    onClick={() => updatePrefs({ theme })}
-                  >
-                    {t(THEME_LABEL[theme])}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <p className="text-xs text-ink-3">
-              {t(
-                "Spacing and images come from the book's own stylesheet, so this page is what the exported EPUB contains. These settings only change how you read here — like the text controls on a Kindle, they are not written into the file."
-              )}
-            </p>
-          </aside>
-        )}
+        {textOpen && <ReaderTextPanel prefs={prefs} onChange={updatePrefs} />}
       </div>
 
       <div className="reader-foot">

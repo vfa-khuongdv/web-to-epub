@@ -3,6 +3,7 @@ import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refres
 import { blocksToHtml } from "../lib/blocksToHtml";
 import { formatEta } from "../lib/formatEta";
 import { Translate, useLang } from "../i18n";
+import { IMPORTED_SITE, storySourceLabel } from "../lib/storySource";
 import { timeAgo } from "../lib/timeAgo";
 import { ExtractedChapter, StoredChapter, StoredStory } from "../types";
 import { CrawlJobState, liveCounts, NoticeInput } from "../hooks/useCrawlJob";
@@ -12,9 +13,12 @@ import NarrationPanel, { playerMusic } from "./NarrationPanel";
 import { exportProgressLabel, useEpubExport } from "../hooks/useEpubExport";
 import { useVault } from "../vault";
 import { vaultQuery } from "../vault/token";
-import ChapterCard, { PendingChapterRow } from "./ChapterCard";
+import ChapterCard from "./ChapterCard";
+import ChapterPager from "./ChapterPager";
+import PendingChapterRow from "./PendingChapterRow";
 import { Icon } from "./Icon";
 import ReaderOverlay from "./ReaderOverlay";
+import StoryMetaFields from "./StoryMetaFields";
 import { SkeletonBar } from "./Skeleton";
 
 // Long stories with thousands of chapters: rendering all at once creates tens of
@@ -139,7 +143,7 @@ export default function StoryDetail({
   const narrationLoaded = narration.state !== null;
   // A book imported from a file has no TOC to crawl, check or watch; those controls
   // and the source link would all point at an epub: URL that no site can answer.
-  const imported = story.site === "epub";
+  const imported = story.site === IMPORTED_SITE;
   useEffect(() => {
     // Not before this page knows which chapters have audio: an empty list would read as
     // "the chapter playing lost its audio" and stop the player on the way back to its story.
@@ -452,15 +456,7 @@ export default function StoryDetail({
             <h3 className="story-title">{story.title}</h3>
           <div className="story-src mt-1">
             <span>
-              {imported
-                ? story.storyUrl.startsWith("pdf:")
-                  ? t("PDF file")
-                  : story.storyUrl.startsWith("archive:")
-                    ? t("Internet Archive")
-                    : story.storyUrl.startsWith("dtv:")
-                      ? t("DTV Ebook")
-                      : t("EPUB file")
-                : story.site}
+              {storySourceLabel(story, t)}
             </span>
             {!imported && (
               <>
@@ -607,52 +603,16 @@ export default function StoryDetail({
           </div>
         )}
 
-          <div className="fields">
-            <div className="field">
-              <label htmlFor="story-title">{t("Book title")}</label>
-            <input
-              id="story-title"
-              type="text"
-              className="input"
-              value={bookTitle}
-              onChange={(e) => setBookTitle(e.target.value)}
-            />
-            </div>
-            <div className="field">
-              <label htmlFor="story-author">{t("Author")}</label>
-            <input
-              id="story-author"
-              type="text"
-              className="input"
-              value={author}
-              onChange={(e) => setAuthor(e.target.value)}
-            />
-            </div>
-            <div className="field">
-              <label htmlFor="story-language">{t("Book language")}</label>
-            <select
-              id="story-language"
-              className="input"
-              value={language}
-              onChange={(e) => setLanguage(e.target.value)}
-            >
-              <option value="vi">{t("Vietnamese")}</option>
-              <option value="en">{t("English")}</option>
-            </select>
-            </div>
-            <div className="field">
-              <label htmlFor="story-cover">{t("Cover image")}</label>
-            <input
-              id="story-cover"
-              ref={coverInput}
-              type="file"
-              className="file-input"
-              accept="image/*"
-              onChange={(e) => setCoverFile(e.target.files?.[0] || null)}
-            />
-              <p className="cover-hint">{t("Cover auto-downloads during crawl. Select a new image, then click Save metadata to change it.")}</p>
-            </div>
-          </div>
+          <StoryMetaFields
+            bookTitle={bookTitle}
+            onBookTitle={setBookTitle}
+            author={author}
+            onAuthor={setAuthor}
+            language={language}
+            onLanguage={setLanguage}
+            coverInput={coverInput}
+            onCoverFile={setCoverFile}
+          />
         </div>
       </div>
 
@@ -753,34 +713,13 @@ export default function StoryDetail({
         </table>
 
         {chapterPageCount > 1 && (
-          <div className="flex items-center gap-2 border-t border-rule px-3 py-2 text-xs text-ink-2">
-            <span>
-              {t("Chapters {from}–{to} / {total}", {
-                from: (currentChapterPage - 1) * CHAPTERS_PER_PAGE + 1,
-                to: Math.min(currentChapterPage * CHAPTERS_PER_PAGE, story.chapters.length),
-                total: story.chapters.length,
-              })}
-            </span>
-            <span className="ml-auto flex items-center gap-1.5">
-              <button
-                type="button"
-                className="btn btn-quiet btn-tiny"
-                disabled={currentChapterPage <= 1}
-                onClick={() => setChapterPage(currentChapterPage - 1)}
-              >
-                {t("Previous")}
-              </button>
-              <span>{t("Page {page}/{total}", { page: currentChapterPage, total: chapterPageCount })}</span>
-              <button
-                type="button"
-                className="btn btn-quiet btn-tiny"
-                disabled={currentChapterPage >= chapterPageCount}
-                onClick={() => setChapterPage(currentChapterPage + 1)}
-              >
-                {t("Next")}
-              </button>
-            </span>
-          </div>
+          <ChapterPager
+            page={currentChapterPage}
+            pageCount={chapterPageCount}
+            perPage={CHAPTERS_PER_PAGE}
+            total={story.chapters.length}
+            onPage={setChapterPage}
+          />
         )}
       </div>
 

@@ -15,6 +15,7 @@ import { useLang } from "../i18n";
 import { DEFAULT_SORTS, PAGE_SIZE, SortKey, SortState, StoryRow, compareRows, crawlStatus, fold } from "../lib/libraryRows";
 import { bookUrlSourceFor } from "../lib/bookUrlSources";
 import { isSupportedUrl } from "../lib/isSupportedUrl";
+import { storySourceLabel } from "../lib/storySource";
 import { SessionSite, sessionSiteForUrl } from "../lib/siteSessions";
 import { timeAgo } from "../lib/timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
@@ -691,15 +692,7 @@ export default function LibraryView({
                       </button>
                     </td>
                     <td className="dim">
-                      {s.site === "epub"
-                        ? s.storyUrl.startsWith("pdf:")
-                          ? t("PDF file")
-                          : s.storyUrl.startsWith("archive:")
-                            ? t("Internet Archive")
-                            : s.storyUrl.startsWith("dtv:")
-                              ? t("DTV Ebook")
-                              : t("EPUB file")
-                        : s.site}
+                      {storySourceLabel(s, t)}
                     </td>
                     <td className="num">{s.chapterCount}</td>
                     <td className="num">
