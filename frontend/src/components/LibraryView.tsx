@@ -20,6 +20,7 @@ import { SessionSite, sessionSiteForUrl } from "../lib/siteSessions";
 import { timeAgo } from "../lib/timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../types";
 import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../hooks/useCrawlJob";
+import AddStoryBox, { PendingImport } from "./AddStoryBox";
 import { Icon } from "./Icon";
 import SortTh from "./SortTh";
 import SiteSessionDialog from "./SiteSessionDialog";
@@ -53,9 +54,7 @@ export default function LibraryView({
   const [storyUrl, setStoryUrl] = useState("");
   const [busy, setBusy] = useState(false);
   const [importBusy, setImportBusy] = useState(false);
-  const [pendingImport, setPendingImport] = useState<{ kind: "file"; file: File } | { kind: "url"; url: string } | null>(null);
-  const [dragging, setDragging] = useState(false);
-  const fileInput = useRef<HTMLInputElement>(null);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
   const [loading, setLoading] = useState(true);
   const [selected, setSelected] = useState<StoredStory | null>(null);
   // A story's outline is a few hundred KB on a long story, so opening one shows the
@@ -443,99 +442,23 @@ export default function LibraryView({
           </span>
         </div>
 
-        <div
-          className={`border-b border-rule p-3${dragging ? " bg-sunken" : ""}`}
-          onDragOver={(event) => {
-            event.preventDefault();
-            setDragging(true);
-          }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(event) => {
-            event.preventDefault();
-            setDragging(false);
-            handleImportFiles(event.dataTransfer.files);
-          }}
-        >
-          <div className="flex gap-2">
-            <label className="visually-hidden" htmlFor="story-url">
-              {t("Story page URL")}
-            </label>
-            <input
-              id="story-url"
-              type="text"
-              className="input"
-              placeholder="https://example.com/story-title/"
-              value={storyUrl}
-              onChange={(e) => setStoryUrl(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleCreate();
-              }}
-            />
-            <button type="button" className="btn btn-primary" disabled={busy} onClick={handleCreate}>
-              {busy ? t("Loading…") : t("Load chapters")}
-            </button>
-            <button type="button" className="btn" disabled={importBusy} onClick={() => fileInput.current?.click()}>
-              <Icon name="upload" size={13} />
-              {importBusy ? t("Importing…") : t("Import EPUB / PDF")}
-            </button>
-            <input
-              ref={fileInput}
-              type="file"
-              accept=".epub,application/epub+zip,.pdf,application/pdf"
-              className="hidden"
-              onChange={(event) => {
-                handleImportFiles(event.target.files);
-                event.target.value = "";
-              }}
-            />
-          </div>
-          {pendingImport ? (
-            <div className="banner banner-new mt-2">
-              <Icon name="alert" size={14} />
-              <p className="min-w-0">
-                {t("This book is already in the library. Overwrite it with “{name}”?", {
-                  name: pendingImport.kind === "file" ? pendingImport.file.name : pendingImport.url,
-                })}
-              </p>
-              <span className="ml-auto flex gap-1.5">
-                <button
-                  type="button"
-                  className="btn btn-tiny btn-danger"
-                  disabled={busy || importBusy}
-                  onClick={() =>
-                    void (pendingImport.kind === "file"
-                      ? handleImport(pendingImport.file, true)
-                      : importUrlFrom(pendingImport.url, true))
-                  }
-                >
-                  {t("Overwrite")}
-                </button>
-                <button
-                  type="button"
-                  className="btn btn-tiny btn-quiet"
-                  disabled={importBusy}
-                  onClick={() => setPendingImport(null)}
-                >
-                  {t("Cancel")}
-                </button>
-              </span>
-            </div>
-          ) : (
-            <p className="mt-1.5 text-xs text-ink-3">
-              {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
-              {[...new Set(crawlSites.map((s) => s.name))].join(", ") || t("loading…")}
-              {/* The book-file sources are supported too, but they work the other way
-                  round, so they are named apart from the crawl sites. */}
-              {importSites.length > 0 && (
-                <span className="block">
-                  {t("Book sites (imported, not crawled):")}{" "}
-                  {[...new Set(importSites.map((s) => s.name))].join(", ")}
-                </span>
-              )}
-              <span className="block">{t("Or drop an .epub or .pdf file here to import it.")}</span>
-            </p>
-          )}
-        </div>
+        <AddStoryBox
+          storyUrl={storyUrl}
+          onStoryUrl={setStoryUrl}
+          busy={busy}
+          importBusy={importBusy}
+          onCreate={handleCreate}
+          onImportFiles={handleImportFiles}
+          pendingImport={pendingImport}
+          onOverwrite={() =>
+            void (pendingImport?.kind === "file"
+              ? handleImport(pendingImport.file, true)
+              : pendingImport && importUrlFrom(pendingImport.url, true))
+          }
+          onCancelOverwrite={() => setPendingImport(null)}
+          crawlSites={crawlSites}
+          importSites={importSites}
+        />
 
         {!loading && stories.length > 0 && (
           <div className="border-b border-rule p-3">

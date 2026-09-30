@@ -58,6 +58,7 @@ Local-first tool that crawls rendered pages of web novel sites and exports Kindl
 ## Conventions
 
 - Tests are colocated as `**/*.test.ts` — backend under `src/` (excluded from the tsc build), frontend under `frontend/src/`; fixtures in `__fixtures__/`.
+- Frontend layout: API calls live in `frontend/src/lib/api/<domain>.ts` (`index.ts` re-exports, import from `../lib/api`); a book-hosting site the add box imports is one row in `lib/bookUrlSources.ts`, and an imported book's source label is one row in `lib/storySource.ts`. Big components keep state and handlers, the presentational pieces are their own files (`AddStoryBox`, `StoryMetaFields`, `ChapterPager`, `PendingChapterRow`, `ReaderSidebar`, `ReaderTextPanel`, `HighlightPalette`); pure logic that a component needed (`lib/libraryRows.ts`) is tested on its own.
 - Style UI with **Tailwind utilities at the call site** — the `@theme` tokens in `frontend/src/styles.css` are utilities too (`bg-raised`, `text-ink-2`, `border-rule-2`, `rounded-tool`, …), so dark mode follows automatically. Do not add new component classes to `styles.css`; the ones already there are legacy and get removed only when the element using them is reworked.
 - Conventional commit prefixes; messages in Vietnamese or English (`feat(chapter): ...`).
 - Release process: `RELEASE.md` (version bump → tag → GitHub release → DMG → Docker Hub).
