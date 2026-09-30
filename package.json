@@ -21,10 +21,10 @@
     "dev:frontend": "npm run dev -w frontend",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
-    "app:mac": "npm run build && npm run app:browser && npm run app:icon && electron-builder --mac --arm64",
-    "app:win": "npm run build && npm run app:browser && electron-builder --win --x64",
-    "app:linux": "npm run build && npm run app:browser && electron-builder --linux --x64",
-    "app:browser": "PLAYWRIGHT_BROWSERS_PATH=\"$PWD/build/ms-playwright\" playwright install --only-shell chromium",
+    "app:mac": "npm run build && npm run app:browser && npm run app:icon && electron-builder --mac --arm64 --publish never",
+    "app:win": "npm run build && npm run app:browser && electron-builder --win --x64 --publish never",
+    "app:linux": "npm run build && npm run app:browser && electron-builder --linux --x64 --publish never",
+    "app:browser": "node scripts/install-browser.js",
     "app:icon": "node scripts/make-icon.js"
   },
   "dependencies": {
