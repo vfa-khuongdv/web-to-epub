@@ -114,9 +114,7 @@ test("cookies a site refreshes during a crawl are written back to the session fi
     await page.goto("/");
     await page.getByRole("button", { name: "Cookie refresh", exact: true }).click();
     await page.getByRole("button", { name: "Continue crawl (1 chapters)" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Downloaded 1 chapters" })).toBeVisible({
-      timeout: 90_000,
-    });
+    await expect(page.locator("header").getByRole("button", { name: /^Crawl log/ })).toBeVisible({ timeout: 90_000 });
 
     const saved = JSON.parse(fs.readFileSync(file, "utf8")) as {
       userAgent?: string;

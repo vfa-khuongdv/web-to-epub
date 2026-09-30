@@ -60,9 +60,7 @@ test("crawls a private story with live progress", async ({ page }) => {
 
   await page.getByRole("button", { name: "Private crawl", exact: true }).click();
   await page.getByRole("button", { name: "Continue crawl (1 chapters)" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Downloaded 1 chapters" })).toBeVisible({
-    timeout: 90_000,
-  });
+  await expect(page.locator("header").getByRole("button", { name: /^Crawl log/ })).toBeVisible({ timeout: 90_000 });
 
   const stored = await privateStore().get(privateStory.id);
   expect(stored?.chapters[0].status).toBe("done");

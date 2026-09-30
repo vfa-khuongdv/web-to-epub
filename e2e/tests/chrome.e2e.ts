@@ -99,8 +99,6 @@ test("replaces the sites button with a crawl chip while crawling", async ({ page
   await page.getByRole("button", { name: "Chrome crawl", exact: true }).click();
   await page.getByRole("button", { name: "Continue crawl (1 chapters)" }).click();
   await expect(page.locator("header").getByText(/^Crawling/)).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Downloaded 1 chapters" })).toBeVisible({
-    timeout: 90_000,
-  });
+  await expect(page.locator("header").getByRole("button", { name: /^Crawl log/ })).toBeVisible({ timeout: 90_000 });
   await expect(page.getByRole("button", { name: /\d+ sites supported/ })).toBeVisible();
 });
