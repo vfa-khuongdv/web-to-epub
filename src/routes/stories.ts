@@ -22,7 +22,7 @@ import { settingsStore } from "../services/settingsStore";
 import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
-import { getTocAdapter } from "../services/toc";
+import { getTocAdapter } from "../sites";
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";

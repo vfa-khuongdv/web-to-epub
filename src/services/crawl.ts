@@ -1,5 +1,5 @@
 import { ChapterErrorKind, ExtractedChapter } from "../types";
-import { getChapterFetcher } from "./chapters";
+import { getChapterFetcher } from "../sites";
 import type { ChapterFetchContext } from "./chapters/types";
 import { extractChapter, LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
