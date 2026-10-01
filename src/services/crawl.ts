@@ -64,7 +64,7 @@ export async function extractWithRetry(
       if (siteFetcher) return await siteFetcher.fetchChapter(url, context);
       // Outside the allowlist the only way a story got here is AI crawling, so the AI picks
       // the chapter body instead of Readability's guess.
-      if (!findSupportedSite(url) && activeAiProvider()) return await fetchChapterWithAi(url);
+      if (!findSupportedSite(url) && activeAiProvider()) return await fetchChapterWithAi(url, context);
       const html = await renderPageHtml(url);
       return extractChapter(url, html);
     } catch (err) {

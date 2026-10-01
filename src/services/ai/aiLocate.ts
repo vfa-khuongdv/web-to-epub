@@ -10,9 +10,11 @@ import { ExtractedChapter } from "../../types";
 import { LockedContentError, walkToBlocks } from "../extractor";
 import { t } from "../lang";
 import { TocAdapter, TocChapter, TocResult } from "../toc/types";
-import { fetchText } from "../toc/http";
+import { fetchWithRetry } from "../toc/http";
 import { renderPageHtml } from "../renderer";
 import { activeAiProvider } from "./aiConfig";
+import type { ChapterFetchContext } from "../chapters/types";
+import { savePictures } from "./pictures";
 import type { AiProvider } from "./providers";
 
 const MAX_CANDIDATES = 8;
@@ -459,6 +461,167 @@ async function keepStoryText(provider: AiProvider, region: Element, state: strin
   return holder;
 }
 
+// ── Comics: the chapter is a run of pictures ────────────────────────────────────────────────
+
+// A value that looks like the address of a picture: a URL, a path, or a name ending in an image
+// extension. Judged by the value alone, so no attribute name is listed anywhere here.
+const PICTURE_VALUE = /^(https?:)?\/\/|^\/|\.(jpe?g|png|webp|gif|avif|bmp)(\?|#|$)/i;
+
+// Every address an <img> carries, by attribute: `src`, and wherever the site's lazy loader keeps
+// the real one (often `data-src`, while `src` holds a placeholder). A set of sizes ("a.jpg 640w,
+// b.jpg 1280w") counts as its last, largest address.
+function pictureAddresses(img: Element): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const attr of Array.from(img.attributes)) {
+    const token = (attr.value.trim().split(/\s*,\s*/).pop() ?? "").split(/\s+/)[0];
+    if (token && token.length < 2048 && PICTURE_VALUE.test(token)) out[attr.name] = token;
+  }
+  return out;
+}
+
+const tail = (address: string) => {
+  try {
+    const u = new URL(address, "https://x.invalid");
+    return `${u.hostname === "x.invalid" ? "" : u.hostname}${u.pathname.split("/").slice(-3).join("/")}`;
+  } catch {
+    return address.slice(-60);
+  }
+};
+
+interface PictureRegion {
+  el: Element;
+  pictures: Element[];
+  // How many of the pictures sit inside a link to another page: thumbnails of other stories and
+  // "next chapter" cards do, a chapter's own pages do not.
+  inLinks: number;
+  // How many regions of the same kind there are on the page (the slides of a carousel).
+  similar: number;
+}
+
+const inLink = (img: Element) => img.closest("a[href]") !== null;
+
+// The elements that hold pictures, as deep as possible (the strip of pages rather than the page
+// around it): the candidates for "the comic's pages". A chapter can be a single tall picture, so a
+// region needs only one. Items that repeat — the 35 slides of a carousel, each holding one
+// thumbnail — are one candidate with a count, not 35, and regions made only of pictures inside
+// links come last, so they cannot crowd the rest out of the list. Only built here; the AI chooses.
+function pictureRegions(doc: Document): PictureRegion[] {
+  const carrying = (el: Element) => Array.from(el.querySelectorAll("img")).filter((i) => Object.keys(pictureAddresses(i)).length);
+  const found: PictureRegion[] = [];
+  for (const el of Array.from(doc.body.querySelectorAll("*")).filter(isRegion)) {
+    const pictures = carrying(el);
+    if (pictures.length === 0) continue;
+    const child = Array.from(el.children).some((c) => isRegion(c) && carrying(c).length >= pictures.length * 0.9);
+    if (!child) found.push({ el, pictures, inLinks: pictures.filter(inLink).length, similar: 1 });
+  }
+  const byKind = new Map<string, PictureRegion>();
+  const regions: PictureRegion[] = [];
+  for (const region of found) {
+    const key = `${label(region.el).replace(/#.*$/, "")}|${region.pictures.length}|${region.inLinks}`;
+    const first = byKind.get(key);
+    if (first) first.similar++;
+    else {
+      byKind.set(key, region);
+      regions.push(region);
+    }
+  }
+  const onlyCards = (r: PictureRegion) => (r.inLinks === r.pictures.length ? 1 : 0);
+  return regions.sort((a, b) => onlyCards(a) - onlyCards(b) || b.pictures.length - a.pictures.length).slice(0, MAX_CANDIDATES);
+}
+
+function describePictures({ el, pictures, inLinks, similar }: PictureRegion): string {
+  const show = (img: Element) =>
+    Object.entries(pictureAddresses(img))
+      .map(([name, value]) => `${name}=${tail(value)}`)
+      .join(", ");
+  const links = inLinks === 0 ? "none inside a link" : `${inLinks} of them inside links to other pages`;
+  const kind = similar > 1 ? `, one of ${similar} like it on the page` : "";
+  return `${label(el)}, ${pictures.length} ${pictures.length === 1 ? "picture" : "pictures"}, ${links}${kind}. first: ${show(pictures[0])}${
+    pictures.length > 1 ? `. last: ${show(pictures[pictures.length - 1])}` : ""
+  }`;
+}
+
+// Which attribute holds the address of the page picture itself. A lazy-loading site leaves a
+// placeholder or a loading animation in `src` and the real address in another attribute, but not
+// on every picture of the strip (a banner at its start carries only `src`), so the AI sees every
+// attribute the strip's pictures carry, with how many pictures have it and a few values, and
+// says which is the real one. That attribute is then read from every picture.
+async function chooseAddressAttribute(provider: AiProvider, pictures: Element[], state: string): Promise<string | undefined> {
+  const byName = new Map<string, string[]>();
+  for (const img of pictures) {
+    for (const [name, value] of Object.entries(pictureAddresses(img))) byName.set(name, [...(byName.get(name) ?? []), value]);
+  }
+  const names = [...byName.keys()];
+  if (names.length <= 1) return names[0];
+  const options: Record<string, string> = {};
+  names.forEach((name, i) => {
+    const values = byName.get(name) as string[];
+    options[`attr${i + 1}`] = `${name} on ${values.length} of ${pictures.length} pictures, for example ${values
+      .slice(0, 2)
+      .map((v) => preview(v, 110))
+      .join(" and ")}`;
+  });
+  const picked = await provider.choose(
+    "The pictures of a comic's pages carry several addresses; some are placeholders or loading animations. Which attribute holds the address of the actual page picture?",
+    state,
+    options
+  );
+  return names[Number(picked.replace("attr", "")) - 1] ?? names[0];
+}
+
+function pictureAddress(img: Element, attribute: string | undefined): string | undefined {
+  const all = pictureAddresses(img);
+  const value = (attribute && all[attribute]) || Object.values(all)[0];
+  if (!value) return undefined;
+  try {
+    return new URL(value, img.ownerDocument.baseURI).href;
+  } catch {
+    return undefined;
+  }
+}
+
+const describePicture = (img: Element, attribute: string | undefined) => {
+  const alt = norm(img.getAttribute("alt"));
+  const size = [img.getAttribute("width"), img.getAttribute("height")].filter(Boolean).join("x");
+  const where = tail(pictureAddress(img, attribute) ?? "");
+  return `${where}${alt ? `, alt "${preview(alt, 60)}"` : ""}${size ? `, ${size}` : ""}`;
+};
+
+// The same walk inwards as for text lines (trimSiteLines): sites put their own pictures — a
+// banner, an advert, a logo, a "next chapter" card — at the start or the end of the run of pages.
+// The AI is asked about the pictures at each end, one at a time, stopping at the first it calls a
+// page, so a wrong answer can cost an edge picture and never one from the middle.
+async function trimSitePictures(
+  provider: AiProvider,
+  pictures: Element[],
+  attribute: string | undefined,
+  state: string
+): Promise<Element[]> {
+  const list = [...pictures];
+  const isSite = async (img: Element, where: string, beside?: Element) => {
+    const answer = await provider.choose(
+      `This picture is at the ${where} of a comic chapter: ${describePicture(img, attribute)}${
+        beside ? ` (the picture next to it: ${describePicture(beside, attribute)})` : ""
+      }. Is it a page of the comic, or something the site added?`,
+      state,
+      {
+        page: "A page of the comic, a drawn or lettered page of the story",
+        site: "Added by the site: a banner, an advert, a logo, a 'next chapter' or 'read more' card, a notice",
+      }
+    );
+    return answer === "site";
+  };
+  for (let k = 0; k < MAX_EDGE_TRIM && list.length > 1; k++) {
+    if (!(await isSite(list[0], "start", list[1]))) break;
+    list.shift();
+  }
+  for (let k = 0; k < MAX_EDGE_TRIM && list.length > 1; k++) {
+    if (!(await isSite(list[list.length - 1], "end", list[list.length - 2]))) break;
+    list.pop();
+  }
+  return list;
+}
+
 // How many paragraphs at each end of a chapter the AI is asked about.
 const MAX_EDGE_TRIM = 3;
 const blockText = (b: ExtractedChapter["blocks"][number]) => norm((b.text ?? "").replace(/<[^>]*>/g, ""));
@@ -510,12 +673,14 @@ export async function extractChapterWithAi(provider: AiProvider, url: string, ht
     }
     bodies.sort((a, b) => b.chars - a.chars);
     const top = bodies.slice(0, MAX_CANDIDATES);
+    // A comic has pictures where a story has text: its pages are candidates beside the text.
+    const strips = pictureRegions(doc);
     const state = `Page title: ${title}\nURL: ${url}`;
     const locked = () =>
       new LockedContentError(t("This chapter needs a login on the site, which the app does not bypass: {url}", { url }));
 
-    // No block of text at all: the page is a wall or an empty shell. The AI says which.
-    if (top.length === 0) {
+    // No block of text and no run of pictures: the page is a wall or an empty shell. The AI says which.
+    if (top.length === 0 && strips.length === 0) {
       const verdict = await provider.choose(
         "This page has almost no text. Why?",
         `${state}\nText on the page: ${preview(flat(doc.body), 400)}`,
@@ -527,13 +692,34 @@ export async function extractChapterWithAi(provider: AiProvider, url: string, ht
     // Step 1: the region of the page that holds the chapter, or the verdict that it is locked.
     const options: Record<string, string> = {};
     top.forEach(({ el }, i) => (options[`body${i + 1}`] = describe(el)));
+    strips.forEach((region, i) => (options[`pages${i + 1}`] = describePictures(region)));
     options.locked = LOCKED;
     const picked = await provider.choose(
-      "Which element holds the text of the chapter itself (the story prose)? Comments, chapter lists, recommendations, descriptions and site text are not the chapter.",
+      "Which element holds the chapter itself — the story text, or for a comic the run of page pictures? Comments, chapter lists, recommendations, descriptions, adverts and site text are not the chapter.",
       state,
       options
     );
     if (picked === "locked") throw locked();
+
+    // A comic: the pages are the pictures of the strip the AI picked.
+    if (picked.startsWith("pages")) {
+      const strip = strips[Number(picked.slice(5)) - 1];
+      if (!strip) throw new Error(t("Could not extract main content from {url}", { url }));
+      const attribute = await chooseAddressAttribute(provider, strip.pictures, state);
+      const pages = await trimSitePictures(provider, strip.pictures, attribute, state);
+      const seen = new Set<string>();
+      const blocks: ExtractedChapter["blocks"] = [];
+      for (const img of pages) {
+        const src = pictureAddress(img, attribute);
+        if (!src || seen.has(src)) continue;
+        seen.add(src);
+        blocks.push({ type: "image", src, alt: "" });
+      }
+      if (blocks.length === 0) throw new Error(t("Could not extract main content from {url}", { url }));
+      const comicTitle = await chooseTitle(provider, "chapter", titleCands, state).catch(() => undefined);
+      return { sourceUrl: url, title: comicTitle ?? title, blocks, titleFromAi: comicTitle !== undefined };
+    }
+
     const first = top[Number(picked.replace("body", "")) - 1]?.el;
     if (!first) throw new Error(t("Could not extract main content from {url}", { url }));
     let chosen: Element = first;
@@ -600,13 +786,23 @@ export async function extractChapterWithAi(provider: AiProvider, url: string, ht
   }
 }
 
-// Plain fetch first, a browser when the page needs scripts to show its content.
+// Plain fetch first, a browser when the page needs scripts to show its content or refuses plain
+// requests (a bot check answers 403). A site that is itself failing (a 5xx, such as Cloudflare's
+// 522 when the site's own server does not answer) is reported as such: a browser would only
+// render the error page, and the AI would be asked to find a chapter list on it.
 async function loadHtml(url: string): Promise<string> {
+  let res: Response | undefined;
   try {
-    const html = await fetchText(url);
-    if (html.length > 2000) return html;
+    res = await fetchWithRetry(url, {}, { maxAttempts: 2 });
   } catch {
-    // fall through to the renderer
+    // no answer at all: the browser may still get through
+  }
+  if (res && res.status >= 500) {
+    throw new Error(t("Failed to fetch {url} (HTTP {status}){hint}", { url, status: res.status, hint: "" }));
+  }
+  if (res?.ok) {
+    const html = await res.text();
+    if (html.length > 2000) return html;
   }
   return renderPageHtml(url);
 }
@@ -819,9 +1015,13 @@ async function walkTocPages(
 ): Promise<void> {
   let remembered: Control | undefined;
   const gathered = new Map<string, Link>();
+  // What counts as the page having changed. Once the chapters' address shape is known, only their
+  // links do: a press that merely loads comments, thumbnails or other stories' links is not a page
+  // of the chapter list, and treating it as one makes the walk press the same button until it times out.
+  const key = (links: Link[]) => linkKey(shape ? links.filter((l) => urlShape(l.url) === shape) : links);
   for (let i = 0; i < MAX_TOC_PAGES; i++) {
     const anchors = await pageAnchors(page);
-    const before = linkKey(anchors);
+    const before = key(anchors);
     const html = await page.content();
     if (i === 0) out.first = html;
     out.pages.push(anchors);
@@ -833,6 +1033,7 @@ async function walkTocPages(
     // AI is asked again. Two tries, then this was the last page.
     let changed = false;
     let done = false;
+    let useless: Control | undefined;
     for (let attempt = 0; attempt < 2 && !changed && !done; attempt++) {
       let next: Control | undefined;
       if (attempt === 0 && remembered) {
@@ -853,7 +1054,8 @@ async function walkTocPages(
           : onScreen(anchors);
         // The address the browser is at now says which page of a numbered pager this is.
         next = await askMoreControl(provider, await controlsOnPage(page), `${state}\nAddress now: ${page.url()}\n${facts}`);
-        if (!next || next.disabled) {
+        // The AI names again the control that was just pressed to no effect: nothing more to try.
+        if (!next || next.disabled || (useless && sameControl(next, useless))) {
           done = true;
           break;
         }
@@ -863,21 +1065,22 @@ async function walkTocPages(
       // The next page arrives from the network, and a press can land while the previous page is
       // still mounting: wait for the links to change and press again a few times before deciding
       // it did nothing.
-      for (let press = 0; press < 3 && !changed; press++) {
+      for (let press = 0; press < 2 && !changed; press++) {
         await page.locator(`[data-ai-ctl="${next.idx}"]`).first().click({ timeout: 3000 }).catch(() => {});
-        for (let wait = 0; wait < 10 && !changed; wait++) {
+        for (let wait = 0; wait < 8 && !changed; wait++) {
           await page.waitForTimeout(500);
-          changed = linkKey(await pageAnchors(page)) !== before;
+          changed = key(await pageAnchors(page)) !== before;
         }
       }
+      if (!changed) useless = next;
     }
     if (!changed) break;
     // The links change while the page is still loading (a skeleton, half a list). Read it only
     // once two looks in a row agree, or a page gets skipped when the next press lands early.
     for (let look = 0; look < 12; look++) {
-      const seen = linkKey(await pageAnchors(page));
+      const seen = key(await pageAnchors(page));
       await page.waitForTimeout(400);
-      if (seen === linkKey(await pageAnchors(page)) && seen !== "") break;
+      if (seen === key(await pageAnchors(page)) && seen !== "") break;
     }
   }
 }
@@ -1091,7 +1294,9 @@ export function createAiTocAdapter(): TocAdapter {
       // can land before the page's scripts are attached and do nothing, so load the page again a
       // couple of times before settling for less.
       let best: AiToc | undefined = plain;
-      for (let attempt = 1; attempt <= 3; attempt++) {
+      // With a list already in hand a second look is enough; with none, give it three tries.
+      const attempts = plain ? 2 : 3;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
         const walked = { first: "", pages: [] as Link[][], snaps: [] as { html: string; url: string }[] };
         const rendered = await renderPageHtml(storyUrl, {
           afterOpen: async (page) => {
@@ -1104,7 +1309,7 @@ export function createAiTocAdapter(): TocAdapter {
           try {
             base = await parseToc(provider, storyUrl, walked.first || rendered);
           } catch (err) {
-            if (!(err instanceof NoChapterListError) || attempt >= 3) throw err;
+            if (!(err instanceof NoChapterListError) || attempt >= attempts) throw err;
             continue;
           }
         }
@@ -1117,8 +1322,11 @@ export function createAiTocAdapter(): TocAdapter {
           plain !== undefined
         );
         if (!best || merged.chapters.length > best.chapters.length) best = merged;
-        // The walk found more than the plain page had: done. Otherwise try the browser again.
-        if (!plain || merged.chapters.length > plain.chapters.length) break;
+        // A second look is for a page whose scripts had not attached yet: the browser could not even
+        // see the chapters the plain page showed. When it saw them all the page was alive, and
+        // finding nothing more means the lead was a false one — loading the page again would only
+        // repeat that.
+        if (!plain || merged.chapters.length >= plain.chapters.length) break;
       }
       if (!best) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
       return finalizeToc(best);
@@ -1126,13 +1334,91 @@ export function createAiTocAdapter(): TocAdapter {
   };
 }
 
-export async function fetchChapterWithAi(url: string): Promise<ExtractedChapter> {
-  const provider = requireProvider();
+// How a site's chapter pages have to be read: as the server sends them, or after a browser has run
+// their scripts. Some sites send the chapter's text or pictures only that way (the page as sent
+// holds a first picture and a notice). Decided once per host, by the AI, and remembered.
+const MODE_TTL_MS = 30 * 60 * 1000;
+const readingModes = new Map<string, { mode: "plain" | "browser"; at: number }>();
+
+export function forgetReadingModes(): void {
+  readingModes.clear();
+}
+
+const hostOfUrl = (url: string) => {
   try {
-    return await extractChapterWithAi(provider, url, await loadHtml(url));
-  } catch (err) {
-    if (err instanceof AiNotConfiguredError || err instanceof LockedContentError) throw err;
-    // The plain page may be an empty shell that scripts fill in: read what a browser shows.
-    return extractChapterWithAi(provider, url, await renderPageHtml(url));
+    return new URL(url).host;
+  } catch {
+    return "";
   }
+};
+
+// What a reading of a chapter amounts to, in a line the AI can compare with another.
+function summarizeReading(chapter: ExtractedChapter): string {
+  const pictures = chapter.blocks.filter((b) => b.type === "image");
+  const text = chapter.blocks.filter((b) => b.type !== "image");
+  const chars = text.reduce((n, b) => n + blockText(b).length, 0);
+  const firstText = text[0] ? preview(blockText(text[0]), 90) : "";
+  const lastText = text.length > 1 ? preview(blockText(text[text.length - 1]), 90) : "";
+  const shown = (src?: string) => (src ? tail(src) : "");
+  return `${pictures.length} pictures${pictures.length ? ` (first ${shown(pictures[0].src)}, last ${shown(pictures[pictures.length - 1].src)})` : ""}; ${text.length} text blocks, ${chars} characters${
+    firstText ? `; text starts "${firstText}"` : ""
+  }${lastText ? `, ends "${lastText}"` : ""}`;
+}
+
+const sameReading = (a: ExtractedChapter, b: ExtractedChapter) =>
+  a.blocks.length === b.blocks.length &&
+  a.blocks.every((block, i) => block.type === b.blocks[i].type && block.src === b.blocks[i].src && blockText(block) === blockText(b.blocks[i]));
+
+export async function fetchChapterWithAi(url: string, context?: ChapterFetchContext): Promise<ExtractedChapter> {
+  const provider = requireProvider();
+  const host = hostOfUrl(url);
+  const known = readingModes.get(host);
+  const mode = known && Date.now() - known.at < MODE_TTL_MS ? known.mode : undefined;
+
+  let chapter: ExtractedChapter;
+  if (mode === "browser") {
+    chapter = await extractChapterWithAi(provider, url, await renderPageHtml(url));
+  } else {
+    try {
+      chapter = await extractChapterWithAi(provider, url, await loadHtml(url));
+    } catch (err) {
+      if (err instanceof AiNotConfiguredError || err instanceof LockedContentError) throw err;
+      // The plain page may be an empty shell that scripts fill in: read what a browser shows.
+      chapter = await extractChapterWithAi(provider, url, await renderPageHtml(url));
+      readingModes.set(host, { mode: "browser", at: Date.now() });
+    }
+    // First chapter of this host: is the page as sent enough? Read it the other way too and let the
+    // AI say which holds the complete chapter. Identical readings need no question.
+    if (!mode && !readingModes.has(host)) {
+      let rendered: ExtractedChapter | undefined;
+      try {
+        rendered = await extractChapterWithAi(provider, url, await renderPageHtml(url));
+      } catch (err) {
+        if (err instanceof AiNotConfiguredError) throw err;
+      }
+      let chosen: "plain" | "browser" = "plain";
+      if (rendered && !sameReading(chapter, rendered)) {
+        const verdict = await provider.choose(
+          "These are two readings of the same chapter page: one of the page as the server sent it, one after a browser ran the page's scripts. Which one holds the complete chapter — the story text, or all of a comic's pages?",
+          `URL: ${url}`,
+          {
+            plain: `The page as sent: ${summarizeReading(chapter)}`,
+            browser: `After the scripts ran: ${summarizeReading(rendered)}`,
+          }
+        );
+        if (verdict === "browser") {
+          chosen = "browser";
+          chapter = rendered;
+        }
+      }
+      readingModes.set(host, { mode: chosen, at: Date.now() });
+    }
+  }
+  // A comic's pictures are kept as links while the site lets anyone load them, and saved in the story's
+  // media folder, fetched with the chapter's address as the referrer, when it does not; without a
+  // store (nowhere to keep them) the block keeps the picture's address.
+  if (context && chapter.blocks.some((b) => b.type === "image")) {
+    chapter = { ...chapter, blocks: await savePictures(chapter.blocks, url, context) };
+  }
+  return chapter;
 }

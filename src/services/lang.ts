@@ -85,6 +85,7 @@ const vi: Record<string, string> = {
   // Crawling and extraction
   "Loading & extracting…{attempt}": "Đang tải & trích xuất…{attempt}",
   "Could not extract main content from {url}": "Không trích xuất được nội dung chính từ {url}",
+  "Could not download a page picture of {url}: {picture}": "Không tải được một trang ảnh của {url}: {picture}",
   "This chapter needs a login on the site, which the app does not bypass: {url}": "Chương này cần đăng nhập vào trang, ứng dụng không vượt qua bước đăng nhập: {url}",
   "Page loaded empty (temporary error, can retry): {url}":
     "Trang tải về rỗng (lỗi tạm thời, thử lại được): {url}",
