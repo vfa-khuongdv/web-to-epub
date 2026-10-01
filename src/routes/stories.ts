@@ -22,6 +22,7 @@ import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "
 import { settingsStore } from "../services/settingsStore";
 import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
 import { storyId } from "../services/storyStore";
+import { storyUsage } from "../services/storyUsage";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../sites";
 import { activeAiProvider } from "../services/ai/aiConfig";
@@ -407,6 +408,17 @@ storiesRouter.get("/stories/:id", async (req, res) => {
     return;
   }
   res.json({ story });
+});
+
+// What the story takes on disk, for the story page: text, pictures, audio, cover.
+storiesRouter.get("/stories/:id/size", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  if (!(await library.stories.getOutline(req.params.id))) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  res.json({ size: await storyUsage(library, req.params.id) });
 });
 
 // Downloaded cover image for the preview; if no cover exists, return 404 so
