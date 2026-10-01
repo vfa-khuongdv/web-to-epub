@@ -30,11 +30,12 @@ export async function fetchStories(): Promise<StorySummary[]> {
   return data.stories || [];
 }
 
-export async function createStory(url: string): Promise<StoredStory> {
+// `ai` asks the server to read a site it has no adapter for with the AI crawler.
+export async function createStory(url: string, options: { ai?: boolean } = {}): Promise<StoredStory> {
   const res = await apiFetch("/api/stories", {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ url }),
+    body: JSON.stringify({ url, ...(options.ai ? { ai: true } : {}) }),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load chapters")));
   const data = await res.json();
