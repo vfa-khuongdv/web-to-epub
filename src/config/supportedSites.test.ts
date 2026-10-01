@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findSupportedSite, SUPPORTED_SITES } from "./supportedSites";
+import { findSupportedSite, IMPORT_SOURCES, SUPPORTED_SITES } from "./supportedSites";
 
 describe("findSupportedSite", () => {
   it("nhận Wattpad (có/không www)", () => {
@@ -126,5 +126,21 @@ describe("findSupportedSite", () => {
 
   it("trả undefined cho chuỗi rỗng", () => {
     expect(findSupportedSite("")).toBeUndefined();
+  });
+});
+
+describe("IMPORT_SOURCES", () => {
+  it("không trùng với allowlist crawl", () => {
+    // Overlap would mean POST /stories accepts a URL it cannot crawl; the two lists are
+    // kept apart on purpose (see the comment in supportedSites.ts).
+    const crawlDomains = new Set(SUPPORTED_SITES.map((site) => site.domain));
+    for (const source of IMPORT_SOURCES) {
+      expect(crawlDomains.has(source.domain)).toBe(false);
+      expect(findSupportedSite(`https://${source.domain}/x`)).toBeUndefined();
+    }
+  });
+
+  it("giữ đúng các nguồn sách dạng file", () => {
+    expect(IMPORT_SOURCES.map((site) => site.domain)).toEqual(["archive.org", "dtv-ebook.com.vn", "heyzine.com"]);
   });
 });

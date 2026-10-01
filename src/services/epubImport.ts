@@ -351,6 +351,9 @@ export async function parseEpub(bytes: Buffer, options: ParseEpubOptions = {}): 
     const dom = new JSDOM(chapterBytes.toString("utf8"));
     try {
       const doc = dom.window.document;
+      // Calibre's generated cover page (an SVG around the cover image): the cover is
+      // already kept as the book's cover, so it must not become the first chapter.
+      if (item.properties.includes("calibre:title-page") || doc.querySelector('meta[name="calibre:cover"]')) continue;
       const headingTitle = firstHeadingText(doc);
       const fileTitle = path.posix.basename(chapterPath).replace(/\.[^.]+$/, "");
       const chapterTitle = titles.get(chapterPath) ?? headingTitle ?? (fileTitle || "Untitled");

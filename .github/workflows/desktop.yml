@@ -1,0 +1,67 @@
+name: Desktop build
+
+# Windows and Linux installers. Built natively on each OS: sharp, Electron and
+# Playwright's Chromium ship per-platform binaries, so cross-building from a Mac
+# would bundle the wrong ones. The macOS app is still built locally (`make release-mac`).
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            script: app:win
+            artifacts: |
+              release/*.exe
+              release/*-win.zip
+          - name: Linux
+            os: ubuntu-latest
+            script: app:linux
+            artifacts: |
+              release/*.AppImage
+              release/*.deb
+    defaults:
+      run:
+        # app:browser uses POSIX env syntax; Git Bash on the Windows runner runs it.
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-to-epub-${{ matrix.os }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
+
+  # One publisher after both builds: two matrix jobs creating the same release race.
+  release:
+    name: Upload to GitHub release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist-desktop
+          merge-multiple: true
+      - run: ls -l dist-desktop
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist-desktop/*

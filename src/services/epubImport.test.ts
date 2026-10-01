@@ -153,6 +153,17 @@ describe("parseEpub", () => {
     expect(book.cover?.bytes.equals(TINY_PNG)).toBe(true);
   });
 
+  it("drops Calibre's generated cover page from the chapters", async () => {
+    const bytes = buildEpubFixture({
+      chapters: [
+        { id: "titlepage", file: "OEBPS/titlepage.xhtml", html: '<meta name="calibre:cover" content="true"/><div><svg><image href="cover.jpg"/></svg></div>' },
+        { id: "ch1", file: "OEBPS/ch1.xhtml", title: "Chương 1", html: "<h1>Chương 1</h1><p>Nội dung một.</p>" },
+      ],
+    });
+    const book = await parseEpub(bytes);
+    expect(book.chapters.map((chapter) => chapter.title)).toEqual(["Chương 1"]);
+  });
+
   it("has no cover when the book has none", async () => {
     const book = await parseEpub(buildEpubFixture());
     expect(book.cover).toBeUndefined();

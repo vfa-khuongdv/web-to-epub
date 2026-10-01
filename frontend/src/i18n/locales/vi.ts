@@ -25,6 +25,7 @@ export const vi: Record<string, string> = {
   "{count} sites supported": "{count} trang hỗ trợ",
   "Loading supported sites…": "Đang tải danh sách trang hỗ trợ…",
   "Supported sites": "Trang được hỗ trợ",
+  "Book files (imported)": "Sách file (nhập về)",
   "Click to view the supported sites": "Bấm để xem danh sách trang hỗ trợ",
 
   // Chapter status
@@ -123,6 +124,7 @@ export const vi: Record<string, string> = {
   "Loading…": "Đang tải…",
   "Load chapters": "Tải danh sách chương",
   "Paste a story page URL to load the full chapter list. Auto-loading sites:": "Dán URL trang truyện để nạp toàn bộ mục lục. Tự động load được:",
+  "Book sites (imported, not crawled):": "Trang sách dạng file (nhập về, không crawl):",
   "loading…": "đang tải…",
   "Search stories": "Tìm truyện",
   "Search by story name or site…": "Tìm theo tên truyện hoặc site…",
@@ -487,7 +489,7 @@ export const vi: Record<string, string> = {
   "Remove the voice “{name}”? Chapters already narrated with it are kept.": "Xoá giọng “{name}”? Các chương đã đọc bằng giọng này vẫn được giữ lại.",
   "Engine": "Bộ đọc",
   "OmniVoice sounds more natural but is several times slower and needs a voice of your own; VieNeu-TTS is faster and has voices built in.": "OmniVoice đọc tự nhiên hơn nhưng chậm hơn nhiều lần và cần giọng riêng của bạn; VieNeu-TTS nhanh hơn và có sẵn giọng.",
-  "OmniVoice needs a Mac with Apple Silicon.": "OmniVoice cần máy Mac chip Apple Silicon.",
+  "OmniVoice needs a Mac with Apple Silicon or a PC with an NVIDIA GPU.": "OmniVoice cần máy Mac chip Apple Silicon hoặc PC có GPU NVIDIA.",
   "Reads Vietnamese chapters aloud with OmniVoice on this Mac's GPU, in a voice you upload. Installing downloads about 4.5 GB (Python, PyTorch and the model) into the library folder. The model is licensed for non-commercial use only (CC BY-NC).": "Đọc to các chương tiếng Việt bằng OmniVoice trên GPU của máy Mac này, với giọng bạn tải lên. Khi cài sẽ tải về khoảng 4,5 GB (Python, PyTorch và model) vào thư mục thư viện. Model chỉ được phép dùng phi thương mại (CC BY-NC).",
   "What is said in the clip": "Lời nói trong đoạn mẫu",
   "What is said in the clip (optional — OmniVoice transcribes it if left blank)": "Lời nói trong đoạn mẫu (không bắt buộc — để trống thì OmniVoice tự chép lời)",
@@ -585,5 +587,9 @@ export const vi: Record<string, string> = {
   "PDF file": "File PDF",
   "Internet Archive": "Internet Archive",
   "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
+  "DTV Ebook": "DTV Ebook",
+  "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
+  "Heyzine": "Heyzine",
+  "Could not import from Heyzine": "Không nhập được sách từ Heyzine",
   "Could not import the file": "Không nhập được file",
 };

@@ -83,7 +83,7 @@ describe("TTS runtime", () => {
     expect((await runtime.status()).state).toBe("installing");
     await install;
 
-    expect(commands[0]).toMatch(/^tar -xzf .*uv\.tar\.gz$/);
+    expect(commands[0]).toMatch(/^tar -xf .*uv\.tar\.gz$/);
     expect(commands.slice(1)).toEqual(["uv venv --python", "uv pip install"]);
     expect(await fs.readFile(path.join(ttsDir, "bin", "uv"), "utf8")).toBe("#!uv");
     expect(JSON.parse(await fs.readFile(path.join(ttsDir, "installed.json"), "utf8")).vieneu).toBe(VIENEU_VERSION);
@@ -95,6 +95,20 @@ describe("TTS runtime", () => {
     const [cmd] = vi.mocked(deps.startWorker).mock.calls[0];
     expect(cmd.env?.HF_HOME).toBe(path.join(ttsDir, "hf"));
     expect(cmd.args).toEqual([FAKE_WORKER]);
+  });
+
+  it("installs the CUDA torch first and keeps it out of the constraints", async () => {
+    await fs.writeFile(deps.constraintsFile, "numpy==2.5.3\ntorch==2.8.0\ntorchaudio==2.8.0\n");
+    runtime = createTtsRuntime({ ...deps, torchIndex: { url: "https://idx.test/whl/cu126", tag: "cu126" } });
+    await runtime.install("nano");
+
+    const pipInstalls = vi.mocked(deps.exec).mock.calls.filter(([, args]) => args[0] === "pip");
+    expect(pipInstalls).toHaveLength(2);
+    expect(pipInstalls[0][1]).toEqual(
+      expect.arrayContaining(["--index-url", "https://idx.test/whl/cu126", "torch==2.8.0+cu126", "torchaudio==2.8.0+cu126"])
+    );
+    expect(pipInstalls[1][1]).toContain("constraints.txt");
+    expect(await fs.readFile(path.join(ttsDir, "constraints.txt"), "utf8")).toBe("numpy==2.5.3\n");
   });
 
   it("installs another engine's package and records its version under its own name", async () => {

@@ -7,12 +7,15 @@ const http = require("http");
 const fs = require("fs");
 const os = require("os");
 const fsp = require("fs/promises");
+const { spawn } = require("child_process");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
 const {
   cleanupUpdateLeftovers,
+  installAppImage,
   installUpdateFromZip,
   resolveAppBundlePath,
+  updateKind,
 } = require(path.join(__dirname, "..", "dist", "services", "appInstaller.js"));
 
 const isPackaged = app.isPackaged;
@@ -27,6 +30,11 @@ process.env.DATA_DIR = path.join(app.getPath("userData"), "data");
 if (isPackaged) {
   process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(process.resourcesPath, "ms-playwright");
 }
+
+// AppImage/deb on Linux: the setuid sandbox helper is not installed and Ubuntu 24.04
+// blocks user namespaces, so Electron exits at startup. This window only shows the
+// app's own localhost UI (chapter HTML is rendered in a sandboxed iframe).
+if (process.platform === "linux") app.commandLine.appendSwitch("no-sandbox");
 
 function findFreePort() {
   return new Promise((resolve, reject) => {
@@ -93,11 +101,11 @@ ipcMain.handle("export:save-url", async (_event, folderPath, fileName, url) => {
 const UPDATE_HOSTS = new Set(["github.com", "objects.githubusercontent.com"]);
 let updateInstalling = false;
 
-async function downloadUpdate(url, onProgress) {
+async function downloadUpdate(url, extension, onProgress) {
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`);
   const total = Number(res.headers.get("content-length") ?? 0);
-  const filePath = path.join(os.tmpdir(), `web-to-epub-update-${Date.now()}.zip`);
+  const filePath = path.join(os.tmpdir(), `web-to-epub-update-${Date.now()}${extension}`);
   let received = 0;
   await pipeline(
     Readable.fromWeb(res.body),
@@ -113,25 +121,53 @@ async function downloadUpdate(url, onProgress) {
   return filePath;
 }
 
-ipcMain.handle("update:install", async (event, zipUrl) => {
+const currentUpdateKind = () => updateKind(process.platform, process.env, process.execPath);
+
+// The preload asks before exposing the bridge, so a .deb or a portable zip only gets the
+// link to the release page.
+ipcMain.on("update:can-install", (event) => {
+  event.returnValue = app.isPackaged && currentUpdateKind() !== null;
+});
+
+const UPDATE_EXTENSION = { mac: ".zip", win: ".exe", appimage: ".AppImage" };
+
+ipcMain.handle("update:install", async (event, assetUrl) => {
   if (!app.isPackaged) throw new Error("Updates only run in the packaged app");
+  const kind = currentUpdateKind();
+  if (!kind) throw new Error("This install cannot update itself — download the new version from the release page");
   if (updateInstalling) throw new Error("An update is already being installed");
-  const host = new URL(zipUrl).hostname;
+  const host = new URL(assetUrl).hostname;
   if (!UPDATE_HOSTS.has(host)) throw new Error(`Refusing to download from ${host}`);
 
   updateInstalling = true;
-  let zipPath = null;
+  let filePath = null;
+  let keepFile = false;
   try {
-    zipPath = await downloadUpdate(zipUrl, (progress) => event.sender.send("update:progress", progress));
+    filePath = await downloadUpdate(assetUrl, UPDATE_EXTENSION[kind], (progress) =>
+      event.sender.send("update:progress", progress)
+    );
     event.sender.send("update:progress", { installing: true });
-    await installUpdateFromZip({ zipPath, appBundlePath: resolveAppBundlePath(process.execPath) });
-    // The bundle at process.execPath is the new one now, so the relaunched instance
-    // runs it. The before-quit handler below closes Chromium first.
-    app.relaunch();
+    if (kind === "mac") {
+      await installUpdateFromZip({ zipPath: filePath, appBundlePath: resolveAppBundlePath(process.execPath) });
+      // The bundle at process.execPath is the new one now, so the relaunched instance
+      // runs it. The before-quit handler below closes Chromium first.
+      app.relaunch();
+    } else if (kind === "win") {
+      // The NSIS installer (same flags as electron-updater): silent, reuses the install
+      // folder, waits for this process to exit, and starts the new version. It runs from
+      // the temp file, so that file has to outlive this handler.
+      keepFile = true;
+      spawn(filePath, ["/S", "--updated", "--force-run"], { detached: true, stdio: "ignore" }).unref();
+    } else {
+      const appImage = process.env.APPIMAGE;
+      installAppImage({ downloadPath: filePath, appImagePath: appImage });
+      // Give this instance a moment to release the database before the new one opens it.
+      spawn("sh", ["-c", 'sleep 2; exec "$0"', appImage], { detached: true, stdio: "ignore" }).unref();
+    }
     app.quit();
   } finally {
     updateInstalling = false;
-    if (zipPath) await fsp.rm(zipPath, { force: true }).catch(() => {});
+    if (filePath && !keepFile) await fsp.rm(filePath, { force: true }).catch(() => {});
   }
 });
 
@@ -166,7 +202,7 @@ async function start() {
 app.whenReady().then(() => {
   // A previous update can leave "<app>.old" or a work dir behind; clear them before
   // anything else. Best-effort (see services/appInstaller.ts).
-  if (isPackaged) cleanupUpdateLeftovers(resolveAppBundlePath(process.execPath));
+  if (isPackaged && currentUpdateKind() === "mac") cleanupUpdateLeftovers(resolveAppBundlePath(process.execPath));
   return start().catch((err) => {
     dialog.showErrorBox("Không khởi động được Web to EPUB", String(err && err.stack ? err.stack : err));
     app.exit(1);

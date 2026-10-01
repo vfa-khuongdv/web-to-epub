@@ -13,7 +13,11 @@ const SESSION_FILE = path.join(DATA_DIR, "sessions", "asianfanfics.com.json");
 const TRUYENFULL_SESSION_FILE = path.join(DATA_DIR, "sessions", "truyenfull.live.json");
 const STORY_URL = "https://www.asianfanfics.com/story/view/1143593";
 // The shape a browser's "Copy as cURL" produces: cookies in a header, UA included.
-const NAMED_TOKEN = "FAKE_JWT_REMOVED";
+// Built at runtime from its claims, so no token-shaped literal sits in the source.
+const fakeJwt = (claims: object) =>
+  [{ alg: "HS256" }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".sig";
+
+const NAMED_TOKEN = fakeJwt({ exp: 4102444800, name: "tester" });
 const CURL =
   "curl 'https://www.asianfanfics.com/story/view/1143593' " +
   `-H 'cookie: atokun=${NAMED_TOKEN}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
@@ -77,7 +81,7 @@ test("asks for a session before loading an Asianfanfics URL, then continues with
   await dialog.getByRole("button", { name: "Save session" }).click();
   await expect(dialog).toHaveCount(0);
   // The toast names the account that was imported.
-  await expect(page.getByRole("status").filter({ hasText: "Saved login for khuongdv" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Saved login for tester" })).toBeVisible();
   await expect.poll(() => created).toBe(1);
   expect(fs.existsSync(SESSION_FILE)).toBe(true);
 
@@ -114,9 +118,7 @@ test("cookies a site refreshes during a crawl are written back to the session fi
     await page.goto("/");
     await page.getByRole("button", { name: "Cookie refresh", exact: true }).click();
     await page.getByRole("button", { name: "Continue crawl (1 chapters)" }).click();
-    await expect(page.getByRole("status").filter({ hasText: "Downloaded 1 chapters" })).toBeVisible({
-      timeout: 90_000,
-    });
+    await expect(page.locator("header").getByRole("button", { name: /^Crawl log/ })).toBeVisible({ timeout: 90_000 });
 
     const saved = JSON.parse(fs.readFileSync(file, "utf8")) as {
       userAgent?: string;
@@ -141,9 +143,9 @@ test("settings shows the saved session and removes it", async ({ page, request }
   const row = sessionRow(panel, "Asianfanfics");
   await expect(row.getByText("A saved login is in use for rated-M and subscribers-only stories.")).toBeVisible();
 
-  await expect(row.getByRole("link", { name: "khuongdv" })).toHaveAttribute(
+  await expect(row.getByRole("link", { name: "tester" })).toHaveAttribute(
     "href",
-    "https://www.asianfanfics.com/profile/u/khuongdv"
+    "https://www.asianfanfics.com/profile/u/tester"
   );
 
   await row.getByRole("button", { name: "Remove" }).click();
@@ -173,7 +175,7 @@ test("settings imports and removes a TruyenFull Cloudflare session", async ({ pa
 // A token whose `exp` is long past: the app must treat it as needing a fresh import.
 const EXPIRED_CURL =
   "curl 'https://www.asianfanfics.com/story/view/1426810' " +
-  "-H 'cookie: atokun=FAKE_JWT_REMOVED' -H 'user-agent: UA-TEST'";
+  `-H 'cookie: atokun=${fakeJwt({ exp: 1000000000 })}' -H 'user-agent: UA-TEST'`;
 
 test("asks to import again when the saved login has expired", async ({ page, request }) => {
   await request.post("/api/site-sessions/asianfanfics", { data: { curl: EXPIRED_CURL } });

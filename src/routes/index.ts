@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { SUPPORTED_SITES } from "../config/supportedSites";
+import { IMPORT_SOURCES, SUPPORTED_SITES } from "../config/supportedSites";
 import { setLang } from "../services/lang";
 import { appUpdateRouter } from "./appUpdate";
 import { audioExportsRouter } from "./audioExports";
@@ -25,8 +25,16 @@ router.use((req, _res, next) => {
   next();
 });
 
+// Every source the add box accepts, with what it needs: "crawl" sites load a chapter list
+// from the URL, "import" ones host a whole book file that is read instead. The frontend
+// shows the two groups separately — a reader needs to know which kind a domain is.
 router.get("/supported-sites", (_req, res) => {
-  res.json({ sites: SUPPORTED_SITES });
+  res.json({
+    sites: [
+      ...SUPPORTED_SITES.map((site) => ({ ...site, mode: "crawl" })),
+      ...IMPORT_SOURCES.map((site) => ({ ...site, mode: "import" })),
+    ],
+  });
 });
 
 router.use(vaultRouter);

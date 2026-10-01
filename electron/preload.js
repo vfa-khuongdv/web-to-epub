@@ -16,11 +16,16 @@ contextBridge.exposeInMainWorld("electronExport", {
 
 // Update bridge: the packaged app downloads a release zip and replaces its own
 // bundle (electron/main.js); the renderer only asks and watches progress.
-contextBridge.exposeInMainWorld("electronUpdate", {
-  install: (zipUrl) => ipcRenderer.invoke("update:install", zipUrl),
-  onProgress: (callback) => {
-    const listener = (_event, progress) => callback(progress);
-    ipcRenderer.on("update:progress", listener);
-    return () => ipcRenderer.removeListener("update:progress", listener);
-  },
-});
+// Only offered where this install can replace itself (macOS .app, Windows NSIS install,
+// Linux AppImage — see updateKind in src/services/appInstaller.ts); otherwise the update
+// dialog just links to the release page.
+if (ipcRenderer.sendSync("update:can-install")) {
+  contextBridge.exposeInMainWorld("electronUpdate", {
+    install: (assetUrl) => ipcRenderer.invoke("update:install", assetUrl),
+    onProgress: (callback) => {
+      const listener = (_event, progress) => callback(progress);
+      ipcRenderer.on("update:progress", listener);
+      return () => ipcRenderer.removeListener("update:progress", listener);
+    },
+  });
+}

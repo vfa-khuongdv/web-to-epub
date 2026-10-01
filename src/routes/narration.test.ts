@@ -313,7 +313,9 @@ describe("narration routes", () => {
 
     let open!: () => void;
     fake.gate = new Promise((r) => (open = r));
-    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    // Chapter 1 already has audio, so without `regenerate` the job would have nothing to do,
+    // end at once, and the DELETE below would race it.
+    await post(`/stories/${viId}/narrate`, { orders: [1], regenerate: true });
     expect((await fetch(`${base}/stories/${viId}/narration`, { method: "DELETE" })).status).toBe(409);
     open();
     await waitIdle(viId);

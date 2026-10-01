@@ -41,7 +41,7 @@ export interface ParsePdfOptions {
   fallbackTitle?: string;
 }
 
-// Shared with services/chapters/scribd.ts, which builds the same line records from a
+// Shared with sites/scribd/chapter.ts, which builds the same line records from a
 // Scribd text layer and reuses the block heuristics below.
 export interface Line {
   page: number;

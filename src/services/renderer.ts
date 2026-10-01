@@ -26,7 +26,14 @@ function getBrowser(): Promise<Browser> {
     const args = process.env.CHROMIUM_NO_SANDBOX === "1" ? ["--no-sandbox"] : [];
     // Launch failure: discard promise. Keeping a rejected promise means all
     // following chapters fail too and never retry.
-    browserPromise = chromium.launch({ headless: true, args }).catch((err) => {
+    // Desktop Linux (Ubuntu 24.04 restricts unprivileged user namespaces) can refuse the
+    // sandbox too: retry once without it, as the Docker image does from the start.
+    const launch = () => chromium.launch({ headless: true, args });
+    const attempt =
+      process.platform === "linux" && args.length === 0
+        ? launch().catch(() => chromium.launch({ headless: true, args: ["--no-sandbox"] }))
+        : launch();
+    browserPromise = attempt.catch((err) => {
       browserPromise = null;
       throw err;
     });
@@ -179,26 +186,16 @@ export async function openRenderSession(
  * clipboard pipeline, CSS `user-select: none`, `oncopy`/`oncontextmenu`
  * handlers and similar copy-blocking scripts have no effect on it.
  */
-export async function renderPageHtml(url: string): Promise<string> {
+export async function renderPageHtml(
+  url: string,
+  options: { afterOpen?: (page: Page) => Promise<void> } = {}
+): Promise<string> {
   const session = await openRenderSession(url);
   try {
     const page = session.page;
 
-    // Asianfanfics gates every page behind an "Are you over 18?" click-through that is
-    // independent of login: it sets a cookie only when a real click happens (a plain
-    // request to the same href does not), so a session captured from a pasted cURL never
-    // carries it. Click it once per render so rendering behaves like an already-verified
-    // browser, same as the user's own.
-    if (/(^|\.)asianfanfics\.com$/.test(new URL(url).hostname)) {
-      const ageGate = page.locator('a[href="/htmx/story/verify_age"]');
-      if (await ageGate.count().catch(() => 0)) {
-        await ageGate.first().click().catch(() => {});
-        // The click reloads the page; without this the settle loop below starts
-        // polling mid-navigation and reads a transient blank document as a real
-        // BlankedPageError instead of waiting for the unlocked content.
-        await page.waitForLoadState("domcontentloaded").catch(() => {});
-      }
-    }
+    // Site-specific step (e.g. a click-through gate) the caller brings; the renderer knows no site.
+    await options.afterOpen?.(page);
 
     // Scrolls to the bottom repeatedly so lazy-loaded / infinite-scroll
     // content mounts into the DOM, stopping once the page height settles.

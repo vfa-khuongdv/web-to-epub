@@ -1,11 +1,13 @@
 name: CI
 
+# Push runs only on main; a branch with a PR is covered by the pull_request event,
+# so one commit starts one run instead of two.
 on:
   push:
+    branches: [main]
   pull_request:
 
-# One run per branch: a PR event and its branch push share a group, so a newer
-# commit cancels the older run instead of queueing behind it.
+# A newer commit on the same branch cancels the older run instead of queueing behind it.
 concurrency:
   group: ${{ github.workflow }}-${{ github.head_ref || github.ref }}
   cancel-in-progress: true

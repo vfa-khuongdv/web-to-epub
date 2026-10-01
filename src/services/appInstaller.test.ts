@@ -1,12 +1,14 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   cleanupUpdateLeftovers,
   findAppBundleInDir,
+  installAppImage,
   installUpdateFromZip,
   resolveAppBundlePath,
+  updateKind,
 } from "./appInstaller";
 
 describe("appInstaller", () => {
@@ -170,5 +172,85 @@ describe("appInstaller", () => {
 
   it("is a no-op when there is nothing to clean", () => {
     expect(() => cleanupUpdateLeftovers(appBundlePath)).not.toThrow();
+  });
+});
+
+describe("updateKind", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "update-kind-test-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("macOS: only from inside an .app bundle", () => {
+    expect(updateKind("darwin", {}, "/Applications/Web to EPUB.app/Contents/MacOS/Web to EPUB")).toBe("mac");
+    expect(updateKind("darwin", {}, "/usr/local/bin/node")).toBeNull();
+  });
+
+  it("Windows: an NSIS install has an uninstaller next to the exe, the portable zip does not", () => {
+    const exe = path.join(dir, "Web to EPUB.exe");
+    writeFileSync(exe, "");
+    expect(updateKind("win32", {}, exe)).toBeNull();
+    writeFileSync(path.join(dir, "Uninstall Web to EPUB.exe"), "");
+    expect(updateKind("win32", {}, exe)).toBe("win");
+  });
+
+  it("Linux: only an AppImage that still exists (a .deb sits in root-owned /opt)", () => {
+    const appImage = path.join(dir, "Web.AppImage");
+    writeFileSync(appImage, "");
+    expect(updateKind("linux", { APPIMAGE: appImage }, "/tmp/.mount_x/web-to-epub")).toBe("appimage");
+    expect(updateKind("linux", {}, "/opt/Web to EPUB/web-to-epub")).toBeNull();
+    expect(updateKind("linux", { APPIMAGE: path.join(dir, "gone.AppImage") }, "/x")).toBeNull();
+  });
+
+  it("nothing on other platforms", () => {
+    expect(updateKind("freebsd", { APPIMAGE: "/x" }, "/x")).toBeNull();
+  });
+});
+
+describe("installAppImage", () => {
+  let dir: string;
+  beforeEach(() => {
+    dir = mkdtempSync(path.join(os.tmpdir(), "appimage-test-"));
+  });
+  afterEach(() => rmSync(dir, { recursive: true, force: true }));
+
+  it("replaces the AppImage with the download and makes it executable", () => {
+    const appImage = path.join(dir, "Web.AppImage");
+    const download = path.join(dir, "download.AppImage");
+    writeFileSync(appImage, "old");
+    writeFileSync(download, "new");
+
+    installAppImage({ downloadPath: download, appImagePath: appImage });
+
+    expect(readFileSync(appImage, "utf8")).toBe("new");
+    expect(statSync(appImage).mode & 0o111).not.toBe(0);
+    expect(readdirSync(dir).filter((name) => name.startsWith(".web-to-epub-update-"))).toEqual([]);
+  });
+
+  it("keeps the old AppImage and explains when the folder is not writable", () => {
+    const appImage = path.join(dir, "Web.AppImage");
+    const download = path.join(dir, "download.AppImage");
+    writeFileSync(appImage, "old");
+    writeFileSync(download, "new");
+    const denied = Object.assign(new Error("denied"), { code: "EACCES" });
+
+    expect(() =>
+      installAppImage({
+        downloadPath: download,
+        appImagePath: appImage,
+        rename: () => {
+          throw denied;
+        },
+      })
+    ).toThrow(/cannot replace itself/);
+    expect(readFileSync(appImage, "utf8")).toBe("old");
+    expect(readdirSync(dir).filter((name) => name.startsWith(".web-to-epub-update-"))).toEqual([]);
+  });
+
+  it("refuses a missing download", () => {
+    expect(() => installAppImage({ downloadPath: path.join(dir, "nope"), appImagePath: path.join(dir, "x") })).toThrow(
+      /not found/
+    );
   });
 });

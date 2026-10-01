@@ -27,10 +27,10 @@ test("opens the preview and navigates between chapters", async ({ page }) => {
 
   const frame = page.frameLocator("iframe.reader-page");
   await expect(frame.getByText("Chương reader-1")).toBeVisible();
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("dialog", { name: /^Reading / }).getByRole("button", { name: "Next" }).click();
   await expect(frame.getByText("Chương reader-2")).toBeVisible();
   await expect(page.getByText("Chapter 2 / 3")).toBeVisible();
-  await page.getByRole("button", { name: "Previous" }).click();
+  await page.getByRole("dialog", { name: /^Reading / }).getByRole("button", { name: "Previous" }).click();
   await expect(frame.getByText("Chương reader-1")).toBeVisible();
 });
 
@@ -59,9 +59,9 @@ test("never builds a page from one chapter's title and another's content", async
   const frame = page.frameLocator("iframe.reader-page");
   await expect(frame.getByText("Chương turn-1")).toBeVisible();
   // Chapter 2 is prefetched by now, so the turn takes the cached path.
-  await page.getByRole("button", { name: "Next" }).click();
+  await page.getByRole("dialog", { name: /^Reading / }).getByRole("button", { name: "Next" }).click();
   await expect(frame.getByText("Chương turn-2")).toBeVisible();
-  await page.getByRole("button", { name: "Previous" }).click();
+  await page.getByRole("dialog", { name: /^Reading / }).getByRole("button", { name: "Previous" }).click();
   await expect(frame.getByText("Chương turn-1")).toBeVisible();
 
   const docs = await page.evaluate(() => (window as unknown as { __srcdocs: string[] }).__srcdocs);
@@ -167,8 +167,8 @@ test("renders, recolours and deletes a seeded highlight", async ({ page }) => {
   // highlights fetch resolves. The tab label above proves the fetch is done, so one
   // round trip (Next, Previous) forces a load that paints. Known gap: the very first
   // open is not guaranteed to paint, so that is deliberately not asserted.
-  await page.getByRole("button", { name: "Next" }).click();
-  await page.getByRole("button", { name: "Previous" }).click();
+  await page.getByRole("dialog", { name: /^Reading / }).getByRole("button", { name: "Next" }).click();
+  await page.getByRole("dialog", { name: /^Reading / }).getByRole("button", { name: "Previous" }).click();
   await expect(mark).toHaveClass(/hl-yellow/);
 
   await mark.click();
