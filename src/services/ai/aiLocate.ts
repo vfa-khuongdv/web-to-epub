@@ -1,7 +1,8 @@
 /**
  * Crawling a site nobody wrote an adapter for. The page is parsed here; the AI only chooses
- * among candidate elements (which one is the chapter list, which one is the chapter body),
- * and the text itself always comes from the DOM — a model cannot invent or drop a sentence.
+ * among candidates the code lists (which group of links is the chapter list, which element is
+ * the chapter body, which line is the title…), and the text itself always comes from the DOM —
+ * a model cannot invent or drop a sentence.
  */
 import { JSDOM } from "jsdom";
 import type { Page } from "playwright";
@@ -9,15 +10,18 @@ import { ExtractedChapter } from "../../types";
 import { LockedContentError, walkToBlocks } from "../extractor";
 import { t } from "../lang";
 import { TocAdapter, TocChapter, TocResult } from "../toc/types";
-import { fetchText } from "../toc/http";
+import { fetchWithRetry } from "../toc/http";
 import { renderPageHtml } from "../renderer";
 import { activeAiProvider } from "./aiConfig";
+import type { ChapterFetchContext } from "../chapters/types";
+import { savePictures } from "./pictures";
 import type { AiProvider } from "./providers";
 
 const MAX_CANDIDATES = 8;
-const MIN_TOC_LINKS = 5;
 const MIN_BODY_CHARS = 200;
-const NOISE = "script, style, noscript, iframe, nav, header, footer, aside, form";
+// Never content: code and templates. Navigation, headers, forms and the like stay in; the AI
+// decides what is the chapter.
+const NOISE = "script, style, noscript, template";
 
 export class AiNotConfiguredError extends Error {}
 // No chapter list on the page as loaded — worth retrying after opening a "chapters" tab.
@@ -45,11 +49,16 @@ function pageTitle(doc: Document): string {
 // title. `pieces` is empty when the link is a single piece of text.
 interface Link extends TocChapter {
   pieces: string[];
+  // Found inside the list itself (see listContainer), not as a button elsewhere on the page
+  // ("read from the start", "latest chapter"): its title is the chapter's name.
+  inList?: boolean;
 }
 type TitlePiece = number | "whole";
 interface AiToc extends Omit<TocResult, "chapters"> {
   chapters: Link[];
   titlePiece: TitlePiece;
+  // The address shape of the chapters (see urlShape), used to find them on later pages.
+  shape: string;
 }
 
 const norm = (text: string | null) => (text ?? "").replace(/\s+/g, " ").trim();
@@ -89,38 +98,100 @@ function titleOf(link: Link, piece: TitlePiece): string {
   return preview(part ?? link.title, 200);
 }
 
-// Links in `root`, absolute, same site, one per URL, in page order.
-function linksIn(root: Element, pageUrl: string): Link[] {
-  const host = new URL(pageUrl).hostname;
-  const seen = new Set<string>();
-  const out: Link[] = [];
-  for (const a of Array.from(root.querySelectorAll("a[href]"))) {
-    let href: URL;
+// The shape of a link's address, with the parts that change from one chapter to the next blanked
+// out: numbers, and long ids made of letters and digits. "/truyen/a/chuong-12/" and
+// "/truyen/a/chuong-13/" share "/truyen/a/chuong-#"; "/doc-truyen/a/6ab0767331…" and
+// "/doc-truyen/a/6ab076c331…" share "/doc-truyen/a/#". The chapters of one story share a shape,
+// while genres, tags, menus and other stories — their chapters included, whose path names
+// another story — have shapes of their own. The host is left out: some sites link part of the
+// list on a mirror domain.
+export function urlShape(url: string): string {
+  const u = new URL(url);
+  const path = u.pathname
+    .split("/")
+    .map((seg) => (/\d/.test(seg) && /^[0-9a-z]{12,}$/i.test(seg) ? "#" : seg.replace(/\d+/g, "#")))
+    .join("/")
+    .replace(/\/$/, "");
+  const query = [...u.searchParams.keys()]
+    .sort()
+    .map((key) => `${key}=#`)
+    .join("&");
+  return query ? `${path}?${query}` : path;
+}
+
+interface Cluster {
+  shape: string;
+  links: Link[];
+}
+
+// The element holding most of a cluster's links, as deep as possible: the list itself rather
+// than the page around it. A chapter linked twice ("read from the start" and its row in the
+// list) takes its title from the row, which sits in here.
+function listContainer(anchors: Element[]): Element | undefined {
+  const counts = new Map<Element, number>();
+  for (const a of anchors) for (let el = a.parentElement; el; el = el.parentElement) counts.set(el, (counts.get(el) ?? 0) + 1);
+  const need = Math.max(2, Math.ceil(anchors.length * 0.6));
+  let best: Element | undefined;
+  let bestDepth = -1;
+  for (const [el, count] of counts) {
+    if (count < need) continue;
+    let depth = 0;
+    for (let up = el.parentElement; up; up = up.parentElement) depth++;
+    if (depth > bestDepth) {
+      best = el;
+      bestDepth = depth;
+    }
+  }
+  return best;
+}
+
+// Every link on the page, grouped by address shape: the candidates for "the chapter list". One
+// link per chapter address, on the story's own host, in the order of the list they sit in.
+function linkClusters(doc: Document, storyUrl: string, limit = MAX_CANDIDATES): Cluster[] {
+  const story = new URL(storyUrl);
+  story.hash = "";
+  const byShape = new Map<string, { a: Element; url: string }[]>();
+  for (const a of Array.from(doc.querySelectorAll("a[href]"))) {
+    let u: URL;
     try {
-      href = new URL(a.getAttribute("href") as string, pageUrl);
+      // Against the document's own address: a later page of the list resolves its links from there.
+      u = new URL(a.getAttribute("href") as string, doc.baseURI);
     } catch {
       continue;
     }
-    href.hash = "";
-    const title = preview(a.textContent ?? "", 200);
-    if (!/^https?:$/.test(href.protocol) || href.hostname !== host || !title || seen.has(href.href)) continue;
-    seen.add(href.href);
-    out.push({ url: href.href, title, pieces: piecesOf(a) });
+    u.hash = "";
+    if (!/^https?:$/.test(u.protocol) || !norm(a.textContent) || u.href === story.href) continue;
+    const shape = urlShape(u.href);
+    const list = byShape.get(shape) ?? [];
+    list.push({ a, url: onStoryHost(u.href, storyUrl) });
+    byShape.set(shape, list);
   }
-  return out;
+  const clusters: Cluster[] = [];
+  for (const [shape, found] of byShape) {
+    const box = listContainer(found.map((f) => f.a));
+    const inside = box ? found.filter((f) => box.contains(f.a)) : found;
+    const outside = box ? found.filter((f) => !box.contains(f.a)) : [];
+    const seen = new Set<string>();
+    const links: Link[] = [];
+    for (const { a, url } of [...inside, ...outside]) {
+      if (seen.has(url)) continue;
+      seen.add(url);
+      links.push({ url, title: preview(a.textContent ?? "", 200), pieces: piecesOf(a), inList: box ? box.contains(a) : false });
+    }
+    clusters.push({ shape, links });
+  }
+  return clusters.sort((a, b) => b.links.length - a.links.length).slice(0, limit);
 }
 
-// Tightest elements that hold many links: a candidate is dropped when one child already
-// holds nearly all of its links, so the list itself wins over the page wrapper around it.
-function linkGroups(doc: Document, pageUrl: string): { el: Element; links: Link[] }[] {
-  const groups: { el: Element; links: Link[] }[] = [];
-  for (const el of Array.from(doc.body.querySelectorAll("ul, ol, div, section, table, dl, main"))) {
-    const links = linksIn(el, pageUrl);
-    if (links.length < MIN_TOC_LINKS) continue;
-    const child = Array.from(el.children).some((c) => linksIn(c, pageUrl).length >= links.length * 0.9);
-    if (!child) groups.push({ el, links });
+// The chapter links of one page of the list: the links with the chapters' address shape, each
+// titled from the list it sits in (see listContainer).
+function chapterLinksIn(html: string, pageUrl: string, storyUrl: string, shape: string): Link[] {
+  const dom = new JSDOM(html, { url: pageUrl });
+  try {
+    return linkClusters(dom.window.document, storyUrl, Infinity).find((c) => c.shape === shape)?.links ?? [];
+  } finally {
+    dom.window.close();
   }
-  return groups.sort((a, b) => b.links.length - a.links.length).slice(0, MAX_CANDIDATES);
 }
 
 // Candidate titles of a page: its headings and title tags, whole and cut at the separators
@@ -235,7 +306,6 @@ function coverCandidates(doc: Document, pageUrl: string): CoverCandidate[] {
     const srcset = img.getAttribute("srcset")?.split(",").pop()?.trim().split(/\s+/)[0];
     const raw = img.getAttribute("data-src") ?? img.getAttribute("data-lazy-src") ?? img.getAttribute("src") ?? srcset;
     const width = Number(img.getAttribute("width"));
-    if (width && width < 60) continue;
     const link = img.closest("a")?.getAttribute("href");
     const before = heading ? !!(img.compareDocumentPosition(heading) & 4) : false; // heading follows the image
     add(
@@ -245,7 +315,7 @@ function coverCandidates(doc: Document, pageUrl: string): CoverCandidate[] {
       }, ${link ? `inside a link to ${preview(link, 60)}` : "not in a link"}, ${before ? "before" : "after"} the main heading`
     );
   }
-  return out.slice(0, 12);
+  return out.slice(0, 20);
 }
 
 // The AI says which picture is the story's cover, or none.
@@ -272,25 +342,24 @@ async function parseToc(provider: AiProvider, storyUrl: string, html: string): P
   try {
     const guess = pageTitle(doc);
     const author = doc.querySelector('meta[name="author"], meta[property="book:author"]')?.getAttribute("content") ?? undefined;
-    const groups = linkGroups(doc, storyUrl);
-    if (groups.length === 0) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
+    const clusters = linkClusters(doc, storyUrl);
+    if (clusters.length === 0) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
     const options: Record<string, string> = {};
-    groups.forEach(({ links }, i) => {
+    clusters.forEach(({ shape, links }, i) => {
       const first = links.slice(0, 3).map((l) => l.title).join(" | ");
       const last = links.slice(-2).map((l) => l.title).join(" | ");
-      options[`list${i + 1}`] = `${links.length} links. first: ${first}. last: ${last}`;
+      options[`list${i + 1}`] = `${links.length} links to addresses like ${shape} — first: ${first}. last: ${last}`;
     });
     options.none = "None of these is the chapter list of the story";
     const state = `Page title: ${guess}\nURL: ${storyUrl}`;
     const picked = await provider.choose(
-      `The page is the home page of a web novel titled "${guess}". Which group of links is the list of the story's chapters (not genres, menus, other stories or comments)?`,
+      `The page is the home page of a web novel titled "${guess}". The links on it are grouped by the shape of their address. Which group is the list of this story's chapters (not genres, tags, menus, other stories or their chapters)?`,
       state,
       options
     );
-    const index = Number(picked.replace("list", "")) - 1;
-    if (picked === "none" || !groups[index]) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
-
-    const chapters = groups[index].links;
+    const cluster = clusters[Number(picked.replace("list", "")) - 1];
+    if (picked === "none" || !cluster) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
+    const chapters = cluster.links;
     const titlePiece = await chooseTitlePiece(provider, chapters, state);
     const title = (await chooseTitle(provider, "story", titleCandidates(doc), state)) ?? guess;
     const coverUrl = await chooseCover(provider, coverCandidates(doc, storyUrl), `${state}\nStory: ${title}`);
@@ -300,7 +369,7 @@ async function parseToc(provider: AiProvider, storyUrl: string, html: string): P
     const a = num(titleOf(chapters[0], titlePiece));
     const b = num(titleOf(chapters[chapters.length - 1], titlePiece));
     if (Number.isFinite(a) && Number.isFinite(b) && a > b) chapters.reverse();
-    return { title, author, coverUrl, chapters, titlePiece };
+    return { title, author, coverUrl, chapters: readingOrder(chapters), titlePiece, shape: cluster.shape };
   } finally {
     dom.window.close();
   }
@@ -324,8 +393,11 @@ const flat = (el: Element) => (el.textContent ?? "").replace(/\s+/g, " ").trim()
 const MAX_DEPTH = 5;
 const MIN_PART_CHARS = 20;
 // A part worth offering is a region of the page (it has things inside it), not one paragraph
-// or one line of the chapter: the prose is made of those, it is never one of them.
-const isRegion = (el: Element) => /^(DIV|SECTION|ARTICLE|MAIN|UL|OL|TABLE|FIGURE)$/.test(el.tagName) && el.children.length > 0;
+// or one line of the chapter: the prose is made of those, it is never one of them. Regions are
+// found by what they are not — text-level tags — so a site's own container elements
+// (<el-tab-panels>, <app-root>…) count too.
+const TEXT_LEVEL = /^(P|H[1-6]|LI|SPAN|A|B|STRONG|EM|I|U|S|SMALL|BR|IMG|BLOCKQUOTE|PRE|TD|TH|TR|FIGCAPTION|LABEL|BUTTON|SVG)$/;
+const isRegion = (el: Element) => !TEXT_LEVEL.test(el.tagName.toUpperCase()) && el.children.length > 0;
 
 function label(el: Element): string {
   return el.id ? `#${el.id}` : el.className ? `.${String(el.className).split(/\s+/)[0]}` : el.tagName.toLowerCase();
@@ -339,30 +411,276 @@ function describe(el: Element): string {
 // What the AI is told about the page, apart from the options.
 const LOCKED = "The page asks the reader to log in, subscribe or pay instead of showing the chapter";
 
+// Parts of an element that are blocks of their own with text in them (not inline styling, not
+// icons): what could be "the story text" next to a counter or a button.
+const blockParts = (el: Element) =>
+  Array.from(el.children).filter((c) => !INLINE_TAGS.test(c.tagName.toUpperCase()) && textLength(c) > 0);
+
+// Narrow every paragraph (child) of the chapter region to the part of it that is story text.
+// The AI looks at the first paragraph that has parts and walks down it, one choice per level;
+// the same path of choices is then followed in every paragraph. Returns an element to read the
+// blocks from: the region itself when its paragraphs are already plain text.
+async function keepStoryText(provider: AiProvider, region: Element, state: string): Promise<Element> {
+  const units = blockParts(region);
+  const sample = units.find((u) => blockParts(u).length > 0);
+  if (!sample) return region;
+
+  const path: number[] = [];
+  let node = sample;
+  for (let depth = 0; depth < MAX_DEPTH; depth++) {
+    const parts = blockParts(node).slice(0, MAX_CANDIDATES);
+    if (parts.length === 0) break;
+    // One part holding all the text offers no choice: step in without asking.
+    if (parts.length === 1 && textLength(parts[0]) >= textLength(node) * 0.98) {
+      path.push(0);
+      node = parts[0];
+      continue;
+    }
+    const options: Record<string, string> = {
+      whole: "All of it is story text, nothing in it has to be left out",
+    };
+    parts.forEach((part, i) => (options[`part${i + 1}`] = describe(part)));
+    const answer = await provider.choose(
+      `This is one paragraph of a chapter (${describe(node)}). Besides the story text it may hold buttons, counters, share or comment widgets. Which part is the story text itself?`,
+      state,
+      options
+    );
+    const part = answer === "whole" ? undefined : parts[Number(answer.replace("part", "")) - 1];
+    if (!part) break;
+    path.push(parts.indexOf(part));
+    node = part;
+  }
+  if (path.length === 0) return region;
+
+  const holder = region.ownerDocument.createElement("div");
+  for (const unit of units) {
+    let current: Element | undefined = unit;
+    for (const index of path) current = current && blockParts(current)[index];
+    holder.appendChild(current ?? unit);
+  }
+  return holder;
+}
+
+// ── Comics: the chapter is a run of pictures ────────────────────────────────────────────────
+
+// A value that looks like the address of a picture: a URL, a path, or a name ending in an image
+// extension. Judged by the value alone, so no attribute name is listed anywhere here.
+const PICTURE_VALUE = /^(https?:)?\/\/|^\/|\.(jpe?g|png|webp|gif|avif|bmp)(\?|#|$)/i;
+
+// Every address an <img> carries, by attribute: `src`, and wherever the site's lazy loader keeps
+// the real one (often `data-src`, while `src` holds a placeholder). A set of sizes ("a.jpg 640w,
+// b.jpg 1280w") counts as its last, largest address.
+function pictureAddresses(img: Element): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const attr of Array.from(img.attributes)) {
+    const token = (attr.value.trim().split(/\s*,\s*/).pop() ?? "").split(/\s+/)[0];
+    if (token && token.length < 2048 && PICTURE_VALUE.test(token)) out[attr.name] = token;
+  }
+  return out;
+}
+
+const tail = (address: string) => {
+  try {
+    const u = new URL(address, "https://x.invalid");
+    return `${u.hostname === "x.invalid" ? "" : u.hostname}${u.pathname.split("/").slice(-3).join("/")}`;
+  } catch {
+    return address.slice(-60);
+  }
+};
+
+interface PictureRegion {
+  el: Element;
+  pictures: Element[];
+  // How many of the pictures sit inside a link to another page: thumbnails of other stories and
+  // "next chapter" cards do, a chapter's own pages do not.
+  inLinks: number;
+  // How many regions of the same kind there are on the page (the slides of a carousel).
+  similar: number;
+}
+
+const inLink = (img: Element) => img.closest("a[href]") !== null;
+
+// The elements that hold pictures, as deep as possible (the strip of pages rather than the page
+// around it): the candidates for "the comic's pages". A chapter can be a single tall picture, so a
+// region needs only one. Items that repeat — the 35 slides of a carousel, each holding one
+// thumbnail — are one candidate with a count, not 35, and regions made only of pictures inside
+// links come last, so they cannot crowd the rest out of the list. Only built here; the AI chooses.
+function pictureRegions(doc: Document): PictureRegion[] {
+  const carrying = (el: Element) => Array.from(el.querySelectorAll("img")).filter((i) => Object.keys(pictureAddresses(i)).length);
+  const found: PictureRegion[] = [];
+  for (const el of Array.from(doc.body.querySelectorAll("*")).filter(isRegion)) {
+    const pictures = carrying(el);
+    if (pictures.length === 0) continue;
+    const child = Array.from(el.children).some((c) => isRegion(c) && carrying(c).length >= pictures.length * 0.9);
+    if (!child) found.push({ el, pictures, inLinks: pictures.filter(inLink).length, similar: 1 });
+  }
+  const byKind = new Map<string, PictureRegion>();
+  const regions: PictureRegion[] = [];
+  for (const region of found) {
+    const key = `${label(region.el).replace(/#.*$/, "")}|${region.pictures.length}|${region.inLinks}`;
+    const first = byKind.get(key);
+    if (first) first.similar++;
+    else {
+      byKind.set(key, region);
+      regions.push(region);
+    }
+  }
+  const onlyCards = (r: PictureRegion) => (r.inLinks === r.pictures.length ? 1 : 0);
+  return regions.sort((a, b) => onlyCards(a) - onlyCards(b) || b.pictures.length - a.pictures.length).slice(0, MAX_CANDIDATES);
+}
+
+function describePictures({ el, pictures, inLinks, similar }: PictureRegion): string {
+  const show = (img: Element) =>
+    Object.entries(pictureAddresses(img))
+      .map(([name, value]) => `${name}=${tail(value)}`)
+      .join(", ");
+  const links = inLinks === 0 ? "none inside a link" : `${inLinks} of them inside links to other pages`;
+  const kind = similar > 1 ? `, one of ${similar} like it on the page` : "";
+  return `${label(el)}, ${pictures.length} ${pictures.length === 1 ? "picture" : "pictures"}, ${links}${kind}. first: ${show(pictures[0])}${
+    pictures.length > 1 ? `. last: ${show(pictures[pictures.length - 1])}` : ""
+  }`;
+}
+
+// Which attribute holds the address of the page picture itself. A lazy-loading site leaves a
+// placeholder or a loading animation in `src` and the real address in another attribute, but not
+// on every picture of the strip (a banner at its start carries only `src`), so the AI sees every
+// attribute the strip's pictures carry, with how many pictures have it and a few values, and
+// says which is the real one. That attribute is then read from every picture.
+async function chooseAddressAttribute(provider: AiProvider, pictures: Element[], state: string): Promise<string | undefined> {
+  const byName = new Map<string, string[]>();
+  for (const img of pictures) {
+    for (const [name, value] of Object.entries(pictureAddresses(img))) byName.set(name, [...(byName.get(name) ?? []), value]);
+  }
+  const names = [...byName.keys()];
+  if (names.length <= 1) return names[0];
+  const options: Record<string, string> = {};
+  names.forEach((name, i) => {
+    const values = byName.get(name) as string[];
+    options[`attr${i + 1}`] = `${name} on ${values.length} of ${pictures.length} pictures, for example ${values
+      .slice(0, 2)
+      .map((v) => preview(v, 110))
+      .join(" and ")}`;
+  });
+  const picked = await provider.choose(
+    "The pictures of a comic's pages carry several addresses; some are placeholders or loading animations. Which attribute holds the address of the actual page picture?",
+    state,
+    options
+  );
+  return names[Number(picked.replace("attr", "")) - 1] ?? names[0];
+}
+
+function pictureAddress(img: Element, attribute: string | undefined): string | undefined {
+  const all = pictureAddresses(img);
+  const value = (attribute && all[attribute]) || Object.values(all)[0];
+  if (!value) return undefined;
+  try {
+    return new URL(value, img.ownerDocument.baseURI).href;
+  } catch {
+    return undefined;
+  }
+}
+
+const describePicture = (img: Element, attribute: string | undefined) => {
+  const alt = norm(img.getAttribute("alt"));
+  const size = [img.getAttribute("width"), img.getAttribute("height")].filter(Boolean).join("x");
+  const where = tail(pictureAddress(img, attribute) ?? "");
+  return `${where}${alt ? `, alt "${preview(alt, 60)}"` : ""}${size ? `, ${size}` : ""}`;
+};
+
+// The same walk inwards as for text lines (trimSiteLines): sites put their own pictures — a
+// banner, an advert, a logo, a "next chapter" card — at the start or the end of the run of pages.
+// The AI is asked about the pictures at each end, one at a time, stopping at the first it calls a
+// page, so a wrong answer can cost an edge picture and never one from the middle.
+async function trimSitePictures(
+  provider: AiProvider,
+  pictures: Element[],
+  attribute: string | undefined,
+  state: string
+): Promise<Element[]> {
+  const list = [...pictures];
+  const isSite = async (img: Element, where: string, beside?: Element) => {
+    const answer = await provider.choose(
+      `This picture is at the ${where} of a comic chapter: ${describePicture(img, attribute)}${
+        beside ? ` (the picture next to it: ${describePicture(beside, attribute)})` : ""
+      }. Is it a page of the comic, or something the site added?`,
+      state,
+      {
+        page: "A page of the comic, a drawn or lettered page of the story",
+        site: "Added by the site: a banner, an advert, a logo, a 'next chapter' or 'read more' card, a notice",
+      }
+    );
+    return answer === "site";
+  };
+  for (let k = 0; k < MAX_EDGE_TRIM && list.length > 1; k++) {
+    if (!(await isSite(list[0], "start", list[1]))) break;
+    list.shift();
+  }
+  for (let k = 0; k < MAX_EDGE_TRIM && list.length > 1; k++) {
+    if (!(await isSite(list[list.length - 1], "end", list[list.length - 2]))) break;
+    list.pop();
+  }
+  return list;
+}
+
+// How many paragraphs at each end of a chapter the AI is asked about.
+const MAX_EDGE_TRIM = 3;
+const blockText = (b: ExtractedChapter["blocks"][number]) => norm((b.text ?? "").replace(/<[^>]*>/g, ""));
+
+// Sites put their own lines inside the chapter text — "read the latest chapters at…", "copied
+// elsewhere it will be incomplete", a link to the next chapter — almost always at its start or
+// end. Ask the AI about the paragraphs at each end, one at a time, walking inwards and stopping
+// at the first one it calls story text: a wrong answer can only cost an edge paragraph, never
+// one from the middle of the chapter.
+async function trimSiteLines(provider: AiProvider, blocks: ExtractedChapter["blocks"], state: string): Promise<void> {
+  const ask = async (block: ExtractedChapter["blocks"][number], where: string, neighbour?: ExtractedChapter["blocks"][number]) => {
+    const answer = await provider.choose(
+      `This paragraph is at the ${where} of a chapter of a web novel: "${preview(blockText(block), 300)}"${
+        neighbour ? ` (the paragraph next to it: "${preview(blockText(neighbour), 120)}")` : ""
+      }. Is it part of the story, or a line the site added?`,
+      state,
+      {
+        story: "Part of the story: narration, dialogue, a heading or a note by the author",
+        site: "Added by the site: a notice, an advert, where to read more, a request to share or rate, navigation",
+      }
+    );
+    return answer === "site";
+  };
+  for (let k = 0; k < MAX_EDGE_TRIM && blocks.length > 1; k++) {
+    if (blocks[0].type !== "paragraph" || !(await ask(blocks[0], "start", blocks[1]))) break;
+    blocks.shift();
+  }
+  for (let k = 0; k < MAX_EDGE_TRIM && blocks.length > 1; k++) {
+    const last = blocks[blocks.length - 1];
+    if (last.type !== "paragraph" || !(await ask(last, "end", blocks[blocks.length - 2]))) break;
+    blocks.pop();
+  }
+}
+
 export async function extractChapterWithAi(provider: AiProvider, url: string, html: string): Promise<ExtractedChapter> {
   const dom = new JSDOM(html, { url });
   try {
     const doc = dom.window.document;
     const title = pageTitle(doc);
-    // Taken before the page chrome is stripped: the heading often sits in a <header>.
     const titleCands = titleCandidates(doc);
     doc.querySelectorAll(NOISE).forEach((el) => el.remove());
 
     const bodies: { el: Element; chars: number }[] = [];
-    for (const el of Array.from(doc.body.querySelectorAll("article, main, section, div"))) {
+    for (const el of Array.from(doc.body.querySelectorAll("*")).filter(isRegion)) {
       const chars = textLength(el);
       if (chars < MIN_BODY_CHARS) continue;
-      const child = Array.from(el.children).some((c) => /^(ARTICLE|MAIN|SECTION|DIV)$/.test(c.tagName) && textLength(c) >= chars * 0.9);
+      const child = Array.from(el.children).some((c) => isRegion(c) && textLength(c) >= chars * 0.9);
       if (!child) bodies.push({ el, chars });
     }
     bodies.sort((a, b) => b.chars - a.chars);
     const top = bodies.slice(0, MAX_CANDIDATES);
+    // A comic has pictures where a story has text: its pages are candidates beside the text.
+    const strips = pictureRegions(doc);
     const state = `Page title: ${title}\nURL: ${url}`;
     const locked = () =>
       new LockedContentError(t("This chapter needs a login on the site, which the app does not bypass: {url}", { url }));
 
-    // No block of text at all: the page is a wall or an empty shell. The AI says which.
-    if (top.length === 0) {
+    // No block of text and no run of pictures: the page is a wall or an empty shell. The AI says which.
+    if (top.length === 0 && strips.length === 0) {
       const verdict = await provider.choose(
         "This page has almost no text. Why?",
         `${state}\nText on the page: ${preview(flat(doc.body), 400)}`,
@@ -374,13 +692,34 @@ export async function extractChapterWithAi(provider: AiProvider, url: string, ht
     // Step 1: the region of the page that holds the chapter, or the verdict that it is locked.
     const options: Record<string, string> = {};
     top.forEach(({ el }, i) => (options[`body${i + 1}`] = describe(el)));
+    strips.forEach((region, i) => (options[`pages${i + 1}`] = describePictures(region)));
     options.locked = LOCKED;
     const picked = await provider.choose(
-      "Which element holds the text of the chapter itself (the story prose)? Comments, chapter lists, recommendations, descriptions and site text are not the chapter.",
+      "Which element holds the chapter itself — the story text, or for a comic the run of page pictures? Comments, chapter lists, recommendations, descriptions, adverts and site text are not the chapter.",
       state,
       options
     );
     if (picked === "locked") throw locked();
+
+    // A comic: the pages are the pictures of the strip the AI picked.
+    if (picked.startsWith("pages")) {
+      const strip = strips[Number(picked.slice(5)) - 1];
+      if (!strip) throw new Error(t("Could not extract main content from {url}", { url }));
+      const attribute = await chooseAddressAttribute(provider, strip.pictures, state);
+      const pages = await trimSitePictures(provider, strip.pictures, attribute, state);
+      const seen = new Set<string>();
+      const blocks: ExtractedChapter["blocks"] = [];
+      for (const img of pages) {
+        const src = pictureAddress(img, attribute);
+        if (!src || seen.has(src)) continue;
+        seen.add(src);
+        blocks.push({ type: "image", src, alt: "" });
+      }
+      if (blocks.length === 0) throw new Error(t("Could not extract main content from {url}", { url }));
+      const comicTitle = await chooseTitle(provider, "chapter", titleCands, state).catch(() => undefined);
+      return { sourceUrl: url, title: comicTitle ?? title, blocks, titleFromAi: comicTitle !== undefined };
+    }
+
     const first = top[Number(picked.replace("body", "")) - 1]?.el;
     if (!first) throw new Error(t("Could not extract main content from {url}", { url }));
     let chosen: Element = first;
@@ -412,8 +751,12 @@ export async function extractChapterWithAi(provider: AiProvider, url: string, ht
       chosen = part;
     }
 
+    // Step 3: each paragraph of the chapter may be built of the story text plus buttons, counters
+    // or comment widgets. Show the AI one paragraph's parts, let it say which is the story text,
+    // and take the same part of every paragraph.
+    const prose = await keepStoryText(provider, chosen, state);
+
     const blocks: ExtractedChapter["blocks"] = [];
-    const prose = chosen;
     walkToBlocks(prose, blocks);
     // A body of bare text and <br> has no child elements for walkToBlocks to see.
     if (blocks.length === 0) {
@@ -436,72 +779,156 @@ export async function extractChapterWithAi(provider: AiProvider, url: string, ht
       state
     ).catch(() => undefined);
     if (chosenTitle && starts[0] === chosenTitle && blocks[0]?.type === "paragraph") blocks.shift();
+    await trimSiteLines(provider, blocks, state);
     return { sourceUrl: url, title: chosenTitle ?? title, blocks, titleFromAi: chosenTitle !== undefined };
   } finally {
     dom.window.close();
   }
 }
 
-// Plain fetch first, a browser when the page needs scripts to show its content.
+// Plain fetch first, a browser when the page needs scripts to show its content or refuses plain
+// requests (a bot check answers 403). A site that is itself failing (a 5xx, such as Cloudflare's
+// 522 when the site's own server does not answer) is reported as such: a browser would only
+// render the error page, and the AI would be asked to find a chapter list on it.
 async function loadHtml(url: string): Promise<string> {
+  let res: Response | undefined;
   try {
-    const html = await fetchText(url);
-    if (html.length > 2000) return html;
+    res = await fetchWithRetry(url, {}, { maxAttempts: 2 });
   } catch {
-    // fall through to the renderer
+    // no answer at all: the browser may still get through
+  }
+  if (res && res.status >= 500) {
+    throw new Error(t("Failed to fetch {url} (HTTP {status}){hint}", { url, status: res.status, hint: "" }));
+  }
+  if (res?.ok) {
+    const html = await res.text();
+    if (html.length > 2000) return html;
   }
   return renderPageHtml(url);
 }
 
-const VIEW_ALL_RE = /^(xem tất cả|xem thêm|xem đầy đủ|view all|show all|see all)/i;
-const CHAPTER_TAB_RE = /danh sách chương|mục lục|chapter list|chapters|table of contents|toc/i;
+const MAX_TOC_PAGES = 300;
+const MAX_CONTROLS = 40;
 
-// Many story pages keep the chapter list behind a tab or a "show chapters" button that only
-// a click mounts. Click the ones whose label names the chapter list, then let it render.
-export async function openChapterTabs(page: Page): Promise<void> {
-  const linksBefore = await page.locator("a[href]").count();
-  const candidates = page.locator('[role="tab"], button, a[href^="#"]');
-  const count = Math.min(await candidates.count(), 60);
-  for (let i = 0; i < count; i++) {
-    const el = candidates.nth(i);
-    const text = ((await el.textContent().catch(() => "")) ?? "").trim();
-    if (text.length > 40 || !CHAPTER_TAB_RE.test(text)) continue;
-    await el.click({ timeout: 2000 }).catch(() => {});
-    await page.waitForTimeout(800);
-  }
-  // A tab often lists only the first and latest chapters and keeps the rest behind a "view
-  // all" button that shows up once the tab has loaded: wait for it rather than look once.
-  await page
-    .getByRole("button", { name: VIEW_ALL_RE })
-    .first()
-    .click({ timeout: 4000 })
-    .catch(() => {});
-  // Whatever it opened loads over the network: wait for links to appear, not for a fixed time.
-  await page
-    .waitForFunction((n) => document.querySelectorAll("a[href]").length > n + 10, linksBefore, { timeout: 6000 })
-    .catch(() => {});
-  await page.waitForTimeout(500);
+// A button, tab or link the reader can press on the story page without leaving it. The code only
+// lists them; the AI says which one reveals the chapter list or turns to its next page, so no
+// label, class or attribute is matched here.
+interface Control {
+  idx: number;
+  tag: string;
+  role: string;
+  text: string;
+  label: string;
+  title: string;
+  query: string;
+  disabled: boolean;
+  selected: boolean;
+  // A link whose address is the one the page is at: the page of a pager the reader is on.
+  here: boolean;
+  inDialog: boolean;
 }
 
-const MAX_TOC_PAGES = 300;
-const NEXT_PAGE = [
-  '[aria-label*="next page" i]',
-  '[aria-label*="trang sau" i]',
-  'a[rel="next"]',
-  'button:has-text("Next")',
-  'button:has-text("Trang sau")',
-].join(", ");
+// Self-contained on purpose: it also runs inside the browser (sent as source with toString), so
+// it may use nothing from this module. A link counts as a control only when it stays on this
+// page (the same path, or just a fragment): paging and tabs do, links to other pages do not.
+function collectControls(doc: Document, pagePath: string, checkVisible: boolean): Control[] {
+  const norm = (x: string | null) => (x ?? "").replace(/\s+/g, " ").trim();
+  const here = pagePath.replace(/\/$/, "");
+  const out: Control[] = [];
+  const els = Array.from(doc.querySelectorAll('button, [role="button"], [role="tab"], summary, a[href]'));
+  for (const el of els) {
+    if (out.length >= 60) break;
+    const tag = el.tagName.toLowerCase();
+    let query = "";
+    let sameAddress = false;
+    if (tag === "a") {
+      const href = el.getAttribute("href") ?? "";
+      let url: URL;
+      try {
+        url = new URL(href, doc.baseURI);
+      } catch {
+        continue;
+      }
+      if (!href.startsWith("#") && url.pathname.replace(/\/$/, "") !== here) continue;
+      query = url.search;
+      sameAddress = url.href.split("#")[0] === doc.URL.split("#")[0];
+    }
+    if (checkVisible && (el as HTMLElement).getClientRects().length === 0) continue;
+    const text = norm(el.textContent).slice(0, 40);
+    const label = norm(el.getAttribute("aria-label"));
+    const title = norm(el.getAttribute("title"));
+    if (!text && !label && !title) continue;
+    el.setAttribute("data-ai-ctl", String(out.length));
+    out.push({
+      idx: out.length,
+      tag,
+      role: el.getAttribute("role") ?? "",
+      text,
+      label,
+      title,
+      query,
+      disabled: (el as HTMLButtonElement).disabled === true || el.getAttribute("aria-disabled") === "true",
+      selected:
+        el.getAttribute("aria-selected") === "true" ||
+        el.getAttribute("aria-expanded") === "true" ||
+        (el.getAttribute("aria-current") ?? "false") !== "false",
+      here: sameAddress,
+      inDialog: !!el.closest('[role="dialog"], dialog'),
+    });
+  }
+  return out;
+}
 
-// A dialog (a "chapters" popup) holds the list and its own pager: read and page that, not the
-// page behind it.
-function listScope(page: Page) {
-  const dialog = page.locator('[role="dialog"]');
-  return dialog.first();
+const describeControl = (c: Control) =>
+  `${c.tag}${c.role ? ` [${c.role}]` : ""} "${c.text}"${c.label ? ` aria-label="${c.label}"` : ""}${
+    c.title ? ` title="${c.title}"` : ""
+  }${c.query ? ` link ${c.query}` : ""}${c.disabled ? " (disabled)" : ""}${c.selected ? " (open/selected)" : ""}${c.here ? " (this is the page you are on now)" : ""}${
+    c.inDialog ? " (in a popup)" : ""
+  }`;
+
+// The same control seen again after the page changed (its index is not stable, its words are).
+const sameControl = (a: Control, b: Control) =>
+  a.tag === b.tag && a.role === b.role && a.text === b.text && a.label === b.label && a.title === b.title;
+
+async function controlsOnPage(page: Page): Promise<Control[]> {
+  const path = new URL(page.url()).pathname;
+  return (await page.evaluate(`(${collectControls.toString()})(document, ${JSON.stringify(path)}, true)`)) as Control[];
+}
+
+// `none` is the answer for "no control"; leave it out to make the AI pick one.
+async function chooseControl(
+  provider: AiProvider,
+  question: string,
+  controls: Control[],
+  state: string,
+  none?: string
+): Promise<Control | undefined> {
+  const shown = controls.slice(0, MAX_CONTROLS);
+  if (shown.length === 0) return undefined;
+  const options: Record<string, string> = {};
+  shown.forEach((c, i) => (options[`ctl${i + 1}`] = describeControl(c)));
+  if (none) options.none = none;
+  const picked = await provider.choose(question, state, options);
+  return shown[Number(picked.replace("ctl", "")) - 1];
+}
+
+// "Is there more of the chapter list, and where?" as two plain questions rather than one that
+// asks for a judgement and a pick at once: first whether the page shows every chapter (with the
+// facts gathered so far and the controls on the page to judge by), then — only if it does not —
+// which control leads to the rest, with no "none" to fall back on.
+async function askMoreControl(provider: AiProvider, controls: Control[], facts: string): Promise<Control | undefined> {
+  if (controls.length === 0) return undefined;
+  const state = `${facts}\nControls on the page: ${controls.slice(0, MAX_CONTROLS).map(describeControl).join("; ")}`;
+  const verdict = await provider.choose("Does this page show every chapter of the story, or only part of them?", state, {
+    part: "Only part: more chapters are behind a tab, a pager, a show-all or a load-more button",
+    all: "All of them: the list on the page is the whole story",
+  });
+  if (verdict !== "part") return undefined;
+  return chooseControl(provider, "Which control leads to more chapters of this story's list?", controls, state);
 }
 
 async function pageAnchors(page: Page): Promise<Link[]> {
-  const scope = (await page.locator('[role="dialog"]').count()) ? listScope(page) : page.locator("body");
-  const raw = await scope.locator("a[href]").evaluateAll((as) =>
+  const raw = await page.locator("body a[href]").evaluateAll((as) =>
     as.map((a) => {
       // Same split as piecesOf(), which cannot run here.
       const norm = (x: string | null) => (x ?? "").replace(/\s+/g, " ").trim();
@@ -539,50 +966,121 @@ async function pageAnchors(page: Page): Promise<Link[]> {
     .filter((a) => a.title);
 }
 
-// Click "next page" until it is gone, disabled or changes nothing, keeping the links of every
-// page. `first` is the HTML of page one: the AI chooses the chapter list there, and the
-// links of the later pages are matched against that choice by URL shape.
-async function walkTocPages(page: Page, out: { first: string; pages: Link[][] }): Promise<void> {
-  const keyOf = async () => (await pageAnchors(page)).map((a) => a.url).join("\n");
-  let previous = "";
+const linkKey = (links: Link[]) => links.map((l) => l.url).join("\n");
+
+function onScreen(links: Link[]): string {
+  const first = links.slice(0, 4).map((l) => l.title).join(" | ");
+  const last = links.slice(-3).map((l) => l.title).join(" | ");
+  return `Links on screen: ${links.length}. first: ${first}. last: ${last}`;
+}
+
+// Press what the AI says opens the chapter list, one control at a time, looking at the page
+// between presses. A tab, a "show all" button or a "more" button are all just controls to it.
+async function revealList(provider: AiProvider, page: Page, state: string): Promise<void> {
+  const used: Control[] = [];
+  for (let step = 0; step < 4; step++) {
+    const controls = (await controlsOnPage(page)).filter((c) => !c.disabled && !used.some((u) => sameControl(u, c)));
+    const links = await pageAnchors(page);
+    const chosen = await chooseControl(
+      provider,
+      "The goal is to get the story's full list of chapters on screen. Which control should be pressed next — a tab or button that opens the contents, or one that shows all the chapters or more of them? Answer none when the whole chapter list is already on screen or no control would show it.",
+      controls,
+      `${state}\n${onScreen(links)}`,
+      "Nothing to press: the chapter list is already on screen, or no control would show it"
+    );
+    if (!chosen) return;
+    used.push(chosen);
+    const before = linkKey(links);
+    await page.locator(`[data-ai-ctl="${chosen.idx}"]`).first().click({ timeout: 3000 }).catch(() => {});
+    // What it opens loads over the network: wait for the links to change, not for a fixed time.
+    for (let wait = 0; wait < 12; wait++) {
+      await page.waitForTimeout(500);
+      if (linkKey(await pageAnchors(page)) !== before) break;
+    }
+    await page.waitForTimeout(500);
+  }
+}
+
+// Page through the chapter list. The AI says which control turns the page; after that the same
+// control (found again by its words) is pressed until it is gone or does nothing, and the AI is
+// asked again only when it cannot be found — a numbered pager changes its words every page.
+async function walkTocPages(
+  provider: AiProvider,
+  page: Page,
+  state: string,
+  out: { first: string; pages: Link[][]; snaps: { html: string; url: string }[] },
+  // The address shape of the chapters, when the plain page already told it: the AI is then told
+  // how many chapters were gathered and the addresses they run between.
+  shape?: string
+): Promise<void> {
+  let remembered: Control | undefined;
+  const gathered = new Map<string, Link>();
+  // What counts as the page having changed. Once the chapters' address shape is known, only their
+  // links do: a press that merely loads comments, thumbnails or other stories' links is not a page
+  // of the chapter list, and treating it as one makes the walk press the same button until it times out.
+  const key = (links: Link[]) => linkKey(shape ? links.filter((l) => urlShape(l.url) === shape) : links);
   for (let i = 0; i < MAX_TOC_PAGES; i++) {
     const anchors = await pageAnchors(page);
-    previous = anchors.map((a) => a.url).join("\n");
-    if (i === 0) out.first = await page.content();
+    const before = key(anchors);
+    const html = await page.content();
+    if (i === 0) out.first = html;
     out.pages.push(anchors);
-    // The button can be missing or disabled for a moment while the page re-renders: only a
-    // button that stays that way is the last page.
-    let next = page.locator(NEXT_PAGE).first();
-    let ready = false;
-    for (let look = 0; look < 12 && !ready; look++) {
-      const inDialog = (await page.locator('[role="dialog"]').count()) > 0;
-      next = (inDialog ? listScope(page) : page).locator(NEXT_PAGE).first();
-      ready =
-        (await next.count()) > 0 &&
-        (await next.isEnabled().catch(() => false)) &&
-        (await next.getAttribute("aria-disabled").catch(() => null)) !== "true";
-      if (!ready) await page.waitForTimeout(500);
-    }
-    if (!ready) break;
-    // The next page arrives from the network, and a click can land while the previous page
-    // is still mounting: wait for the links to change, click again a few times, and only
-    // then decide there is nothing more — a slow page must not end the walk early.
+    out.snaps.push({ html, url: page.url() });
+    if (shape) for (const a of anchors) if (urlShape(a.url) === shape) gathered.set(a.url, a);
+
+    // First the control pressed last time, found again by its words; if that does nothing (a
+    // numbered pager keeps the number of the page it is already on), or it cannot be found, the
+    // AI is asked again. Two tries, then this was the last page.
     let changed = false;
-    for (let click = 0; click < 4 && !changed; click++) {
-      await next.click({ timeout: 3000 }).catch(() => {});
-      for (let wait = 0; wait < 10 && !changed; wait++) {
-        await page.waitForTimeout(500);
-        changed = (await keyOf()) !== previous;
+    let done = false;
+    let useless: Control | undefined;
+    for (let attempt = 0; attempt < 2 && !changed && !done; attempt++) {
+      let next: Control | undefined;
+      if (attempt === 0 && remembered) {
+        // The control may be missing or disabled for a moment while the page re-renders: only
+        // one that stays that way is gone.
+        for (let look = 0; look < 4 && !next; look++) {
+          const controls = await controlsOnPage(page);
+          const again = controls.find((c) => sameControl(c, remembered as Control));
+          if (again && !again.disabled) next = again;
+          else if (!again) break;
+          else await page.waitForTimeout(1500);
+        }
       }
+      if (!next) {
+        const sofar = readingOrder([...gathered.values()]);
+        const facts = sofar.length
+          ? `Chapters gathered so far: ${sofar.length}, from ${pathOf(sofar[0].url)} to ${pathOf(sofar[sofar.length - 1].url)}`
+          : onScreen(anchors);
+        // The address the browser is at now says which page of a numbered pager this is.
+        next = await askMoreControl(provider, await controlsOnPage(page), `${state}\nAddress now: ${page.url()}\n${facts}`);
+        // The AI names again the control that was just pressed to no effect: nothing more to try.
+        if (!next || next.disabled || (useless && sameControl(next, useless))) {
+          done = true;
+          break;
+        }
+        remembered = next;
+      }
+
+      // The next page arrives from the network, and a press can land while the previous page is
+      // still mounting: wait for the links to change and press again a few times before deciding
+      // it did nothing.
+      for (let press = 0; press < 2 && !changed; press++) {
+        await page.locator(`[data-ai-ctl="${next.idx}"]`).first().click({ timeout: 3000 }).catch(() => {});
+        for (let wait = 0; wait < 8 && !changed; wait++) {
+          await page.waitForTimeout(500);
+          changed = key(await pageAnchors(page)) !== before;
+        }
+      }
+      if (!changed) useless = next;
     }
     if (!changed) break;
-    // The links change while the page is still loading (a skeleton, half a list). Read it
-    // only once two looks in a row agree, or a page gets skipped when the next click lands
-    // before it finished.
+    // The links change while the page is still loading (a skeleton, half a list). Read it only
+    // once two looks in a row agree, or a page gets skipped when the next press lands early.
     for (let look = 0; look < 12; look++) {
-      const before = await keyOf();
+      const seen = key(await pageAnchors(page));
       await page.waitForTimeout(400);
-      if (before === (await keyOf()) && before !== "") break;
+      if (seen === key(await pageAnchors(page)) && seen !== "") break;
     }
   }
 }
@@ -595,80 +1093,176 @@ function onStoryHost(url: string, storyUrl: string): string {
   return u.href;
 }
 
-// "https://x/truyen/a/chuong-12" -> any path with the same shape and another number. The host
-// is left out on purpose: some sites link later pages' chapters on a mirror domain.
-function chapterShape(sample: string): RegExp {
-  const u = new URL(sample);
-  const escaped = u.pathname.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-  return new RegExp(`^${escaped.replace(/\d+/g, "\\d+")}/?$`);
+// The number in an address: the last run of digits outside long ids (the same ids urlShape blanks
+// out). "/truyen/a/chuong-12.html" → 12, "/a.1147/trang-3" → 3, "/doc/a/6ab0767…" → NaN.
+function addressNumber(url: string): number {
+  const u = new URL(url);
+  let last = NaN;
+  for (const seg of [...u.pathname.split("/"), ...u.searchParams.values()]) {
+    if (/\d/.test(seg) && /^[0-9a-z]{12,}$/i.test(seg)) continue;
+    const runs = seg.match(/\d+/g);
+    if (runs) last = Number(runs[runs.length - 1]);
+  }
+  return last;
 }
 
+// Chapters in reading order: by the number in their address when every one has its own,
+// otherwise in the order they were found. "Its own" matters: in "/doc/hen-duyen-1/<id>" every
+// chapter carries the story's "1", which says nothing about order.
 function readingOrder(chapters: Link[]): Link[] {
-  const n = (c: Link) => Number(c.url.match(/(\d+)\/?$/)?.[1] ?? NaN);
-  return chapters.every((c) => Number.isFinite(n(c))) ? [...chapters].sort((a, b) => n(a) - n(b)) : chapters;
+  const nums = chapters.map((c) => addressNumber(c.url));
+  const usable = nums.every(Number.isFinite) && new Set(nums).size === nums.length;
+  if (!usable) return chapters;
+  return chapters
+    .map((c, i) => ({ c, n: nums[i] }))
+    .sort((a, b) => a.n - b.n)
+    .map(({ c }) => c);
 }
 
-// Chapter lists paged by URL (?page=2): the first page links to the others. Fetch them in turn
-// until one adds no chapter of the shape the AI picked.
-const PAGE_PARAM_RE = /[?&](page|p|trang)=(\d+)/i;
+const pathOf = (url: string) => {
+  const u = new URL(url);
+  return u.pathname + u.search;
+};
 
-async function withUrlPages(toc: AiToc, storyUrl: string, html: string): Promise<AiToc> {
+// What the AI is told about a chapter list read so far: how many, the first and last titles,
+// and the addresses they run between — "2 chapters, /chuong-1 to /chuong-1281" says plainly
+// that most of the list is somewhere else.
+function listSoFar(toc: AiToc): string {
+  const first = toc.chapters.slice(0, 3).map((c) => titleOf(c, toc.titlePiece)).join(" | ");
+  const last = toc.chapters.slice(-2).map((c) => titleOf(c, toc.titlePiece)).join(" | ");
+  return `Chapters read from the page: ${toc.chapters.length}, from ${pathOf(toc.chapters[0].url)} to ${pathOf(
+    toc.chapters[toc.chapters.length - 1].url
+  )}. first: ${first}. last: ${last}`;
+}
+
+// Where the rest of a chapter list is: behind a control pressed in the browser (a tab, a
+// show-all button), or on further pages reached through a group of links (a pager) — which is
+// followed with plain requests.
+type More = { control: Control } | { pager: string };
+
+// After reading the list from the plain page: is that the whole list, and if not, which control
+// or which group of links leads to the rest? Pagers are often plain links to other addresses
+// ("/a.1147/trang-2"), so the other link groups on the page are offered next to the controls.
+async function moreChapters(provider: AiProvider, storyUrl: string, html: string, toc: AiToc): Promise<More | undefined> {
   const dom = new JSDOM(html, { url: storyUrl });
-  let param: string | undefined;
   try {
-    const story = new URL(storyUrl);
-    for (const a of Array.from(dom.window.document.querySelectorAll("a[href]"))) {
-      const href = new URL(a.getAttribute("href") as string, storyUrl);
-      const m = PAGE_PARAM_RE.exec(href.search);
-      if (m && href.hostname === story.hostname && href.pathname.replace(/\/$/, "") === story.pathname.replace(/\/$/, "")) {
-        param = m[1];
-        break;
-      }
+    const doc = dom.window.document;
+    const controls = collectControls(doc, new URL(storyUrl).pathname, false).slice(0, MAX_CONTROLS);
+    const groups = linkClusters(doc, storyUrl).filter((c) => c.shape !== toc.shape);
+    if (controls.length === 0 && groups.length === 0) return undefined;
+    const options: Record<string, string> = {};
+    controls.forEach((c, i) => (options[`ctl${i + 1}`] = describeControl(c)));
+    groups.forEach((g, i) => {
+      const titles = g.links.slice(0, 5).map((l) => l.title).join(" | ");
+      options[`links${i + 1}`] = `a group of ${g.links.length} links to other pages: ${titles} (addresses like ${g.shape})`;
+    });
+    const state = `URL: ${storyUrl}\n${listSoFar(toc)}\nOn the page: ${Object.values(options).join("; ")}`;
+    // Two plain questions rather than one asking for a judgement and a pick at once.
+    const verdict = await provider.choose("Does this page show every chapter of the story, or only part of them?", state, {
+      part: "Only part: more chapters are behind a tab, a pager, a show-all or a load-more button",
+      all: "All of them: the list on the page is the whole story",
+    });
+    if (verdict !== "part") return undefined;
+    const picked = await provider.choose(
+      "Which of these leads to more chapters of this story's list — a tab, a button, or a group of page links?",
+      state,
+      options
+    );
+    if (picked.startsWith("ctl")) {
+      const control = controls[Number(picked.slice(3)) - 1];
+      return control ? { control } : undefined;
     }
+    const group = groups[Number(picked.slice(5)) - 1];
+    return group ? { pager: group.shape } : undefined;
   } finally {
     dom.window.close();
   }
-  if (!param) return toc;
+}
 
-  const shape = chapterShape(toc.chapters[0].url);
-  const byUrl = new Map(toc.chapters.map((c) => [c.url, c]));
-  // Chapter links of one page, on the story's host. Counts how many were new.
-  const collect = (pageHtml: string, pageUrl: string): number => {
-    const pageDom = new JSDOM(pageHtml, { url: pageUrl });
-    let added = 0;
+// Add the chapters found on further pages to a list. `preferNew`: the further pages' titles win
+// for chapters already listed — when the first list was only a couple of buttons ("read from
+// the start", "latest chapter"), the full list names them properly.
+function mergeChapters(base: AiToc, pages: Link[][], preferNew: boolean): AiToc {
+  const byUrl = new Map(base.chapters.map((c) => [c.url, c]));
+  for (const links of pages) {
+    for (const link of links) {
+      const known = byUrl.get(link.url);
+      // A title taken from inside a list replaces one taken from a button, never the reverse.
+      if (!known || (link.inList && (!known.inList || preferNew))) byUrl.set(link.url, link);
+    }
+  }
+  return { ...base, chapters: readingOrder([...byUrl.values()]) };
+}
+
+// Follow a pager made of links: every page whose address has the pager's shape, as each page
+// reveals more of them (a pager shows a window of page numbers). Plain requests, a browser only
+// for a page that refuses them. Pages are read in the order of their number.
+async function followPager(storyUrl: string, firstHtml: string, pagerShape: string, base: AiToc): Promise<AiToc> {
+  const visited = new Set<string>([new URL(storyUrl).href]);
+  const queue: string[] = [];
+  const enqueue = (html: string, pageUrl: string) => {
+    const dom = new JSDOM(html, { url: pageUrl });
     try {
-      for (const a of Array.from(pageDom.window.document.querySelectorAll("a[href]"))) {
-        let url: string;
+      for (const a of Array.from(dom.window.document.querySelectorAll("a[href]"))) {
+        let u: URL;
         try {
-          url = onStoryHost(new URL(a.getAttribute("href") as string, pageUrl).href.split("#")[0], storyUrl);
+          u = new URL(a.getAttribute("href") as string, pageUrl);
         } catch {
           continue;
         }
-        const title = preview(a.textContent ?? "", 200);
-        if (title && shape.test(new URL(url).pathname) && !byUrl.has(url)) {
-          byUrl.set(url, { url, title, pieces: piecesOf(a) });
-          added++;
-        }
+        u.hash = "";
+        if (urlShape(u.href) === pagerShape && !visited.has(u.href) && !queue.includes(u.href)) queue.push(u.href);
       }
     } finally {
-      pageDom.window.close();
+      dom.window.close();
     }
-    return added;
   };
-  // Page one too: a chapter linked there on a mirror domain was dropped as "another site".
-  collect(html, storyUrl);
-  for (let n = 2; n <= MAX_TOC_PAGES; n++) {
-    const pageUrl = new URL(storyUrl);
-    pageUrl.searchParams.set(param, String(n));
-    let pageHtml: string;
+  enqueue(firstHtml, storyUrl);
+  const pages: { no: number; links: Link[] }[] = [];
+  const known = new Set(base.chapters.map((c) => c.url));
+  // A page of a pager brings chapters the others did not. When the first page followed brings
+  // none, the group was not the pager (genre links, say); and two pages in a row with nothing new
+  // mean the list is done. Either way, stop instead of loading every page the group links to.
+  let barren = 0;
+  while (queue.length > 0 && visited.size <= MAX_TOC_PAGES) {
+    const url = queue.shift() as string;
+    if (visited.has(url)) continue;
+    visited.add(url);
+    let html: string;
     try {
-      pageHtml = await fetchText(pageUrl.href);
+      html = await loadHtml(url);
     } catch {
-      break;
+      continue;
     }
-    if (collect(pageHtml, pageUrl.href) === 0) break;
+    const links = chapterLinksIn(html, url, storyUrl, base.shape);
+    const fresh = links.filter((l) => !known.has(l.url));
+    fresh.forEach((l) => known.add(l.url));
+    if (fresh.length === 0) {
+      barren++;
+      if (pages.length === 0 || barren >= 2) break;
+      continue;
+    }
+    barren = 0;
+    pages.push({ no: addressNumber(url), links });
+    enqueue(html, url);
   }
-  return { ...toc, chapters: readingOrder([...byUrl.values()]) };
+  pages.sort((a, b) => (Number.isFinite(a.no) ? a.no : 0) - (Number.isFinite(b.no) ? b.no : 0));
+  return mergeChapters(base, pages.map((p) => p.links), false);
+}
+
+// Press, in the browser, a control the AI picked on the plain page (found again by its words),
+// and wait for what it brings to load. False when the page has no such control.
+async function pressControl(page: Page, wanted: Control): Promise<boolean> {
+  const target = (await controlsOnPage(page)).find((c) => sameControl(c, wanted));
+  if (!target) return false;
+  const before = linkKey(await pageAnchors(page));
+  await page.locator(`[data-ai-ctl="${target.idx}"]`).first().click({ timeout: 3000 }).catch(() => {});
+  for (let wait = 0; wait < 12; wait++) {
+    await page.waitForTimeout(500);
+    if (linkKey(await pageAnchors(page)) !== before) break;
+  }
+  await page.waitForTimeout(500);
+  return true;
 }
 
 // Used for every story URL outside the allowlist, when AI crawling is on.
@@ -678,50 +1272,153 @@ export function createAiTocAdapter(): TocAdapter {
     normalizeStoryUrl: (url) => url,
     async fetchToc(storyUrl) {
       const provider = requireProvider();
+      const state = `URL: ${storyUrl}`;
+      // The plain page first. When it shows a list, the AI also says whether a control on it leads
+      // to the rest — and that control is what gets pressed in the browser, rather than having
+      // the AI look for a way to a list that is already on screen.
+      let plain: AiToc | undefined;
+      let lead: Control | undefined;
       try {
         const html = await loadHtml(storyUrl);
-        return finalizeToc(await withUrlPages(await parseToc(provider, storyUrl, html), storyUrl, html));
+        plain = await parseToc(provider, storyUrl, html);
+        const more = await moreChapters(provider, storyUrl, html, plain);
+        if (!more) return finalizeToc(plain);
+        // A pager of links needs no browser: its pages are fetched like the first one.
+        if ("pager" in more) return finalizeToc(await followPager(storyUrl, html, more.pager, plain));
+        lead = more.control;
       } catch (err) {
         if (!(err instanceof NoChapterListError)) throw err;
       }
-      // A click can land before the page's scripts are attached and do nothing, so the list
-      // never opens: load the page again a couple of times before giving up.
-      let toc: AiToc | undefined;
-      let walked = { first: "", pages: [] as Link[][] };
-      for (let attempt = 1; !toc; attempt++) {
-        walked = { first: "", pages: [] };
-        const current = walked;
+
+      // The list is hidden or paged: open a browser, press the way to it, turn the pages. A press
+      // can land before the page's scripts are attached and do nothing, so load the page again a
+      // couple of times before settling for less.
+      let best: AiToc | undefined = plain;
+      // With a list already in hand a second look is enough; with none, give it three tries.
+      const attempts = plain ? 2 : 3;
+      for (let attempt = 1; attempt <= attempts; attempt++) {
+        const walked = { first: "", pages: [] as Link[][], snaps: [] as { html: string; url: string }[] };
         const rendered = await renderPageHtml(storyUrl, {
           afterOpen: async (page) => {
-            await openChapterTabs(page);
-            await walkTocPages(page, current);
+            if (!lead || !(await pressControl(page, lead))) await revealList(provider, page, state);
+            await walkTocPages(provider, page, state, walked, plain?.shape);
           },
         });
-        try {
-          toc = await parseToc(provider, storyUrl, walked.first || rendered);
-        } catch (err) {
-          if (!(err instanceof NoChapterListError) || attempt >= 3) throw err;
+        let base = plain;
+        if (!base) {
+          try {
+            base = await parseToc(provider, storyUrl, walked.first || rendered);
+          } catch (err) {
+            if (!(err instanceof NoChapterListError) || attempt >= attempts) throw err;
+            continue;
+          }
         }
+        // Every chapter link on the pages walked, titled from the list it sits in. When the plain
+        // page only had a few of them (it needed a press), the walked list's titles win.
+        const shape = base.shape;
+        const merged = mergeChapters(
+          base,
+          walked.snaps.map((snap) => chapterLinksIn(snap.html, snap.url, storyUrl, shape)),
+          plain !== undefined
+        );
+        if (!best || merged.chapters.length > best.chapters.length) best = merged;
+        // A second look is for a page whose scripts had not attached yet: the browser could not even
+        // see the chapters the plain page showed. When it saw them all the page was alive, and
+        // finding nothing more means the lead was a false one — loading the page again would only
+        // repeat that.
+        if (!plain || merged.chapters.length >= plain.chapters.length) break;
       }
-      // Later pages: every link shaped like the chapters the AI picked on the first one.
-      const shape = chapterShape(toc.chapters[0].url);
-      const byUrl = new Map(toc.chapters.map((c) => [c.url, c]));
-      for (const anchor of walked.pages.flat()) {
-        const url = onStoryHost(anchor.url, storyUrl);
-        if (shape.test(new URL(url).pathname) && !byUrl.has(url)) byUrl.set(url, { ...anchor, url });
-      }
-      return finalizeToc({ ...toc, chapters: readingOrder([...byUrl.values()]) });
+      if (!best) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
+      return finalizeToc(best);
     },
   };
 }
 
-export async function fetchChapterWithAi(url: string): Promise<ExtractedChapter> {
-  const provider = requireProvider();
+// How a site's chapter pages have to be read: as the server sends them, or after a browser has run
+// their scripts. Some sites send the chapter's text or pictures only that way (the page as sent
+// holds a first picture and a notice). Decided once per host, by the AI, and remembered.
+const MODE_TTL_MS = 30 * 60 * 1000;
+const readingModes = new Map<string, { mode: "plain" | "browser"; at: number }>();
+
+export function forgetReadingModes(): void {
+  readingModes.clear();
+}
+
+const hostOfUrl = (url: string) => {
   try {
-    return await extractChapterWithAi(provider, url, await loadHtml(url));
-  } catch (err) {
-    if (err instanceof AiNotConfiguredError || err instanceof LockedContentError) throw err;
-    // The plain page may be an empty shell that scripts fill in: read what a browser shows.
-    return extractChapterWithAi(provider, url, await renderPageHtml(url));
+    return new URL(url).host;
+  } catch {
+    return "";
   }
+};
+
+// What a reading of a chapter amounts to, in a line the AI can compare with another.
+function summarizeReading(chapter: ExtractedChapter): string {
+  const pictures = chapter.blocks.filter((b) => b.type === "image");
+  const text = chapter.blocks.filter((b) => b.type !== "image");
+  const chars = text.reduce((n, b) => n + blockText(b).length, 0);
+  const firstText = text[0] ? preview(blockText(text[0]), 90) : "";
+  const lastText = text.length > 1 ? preview(blockText(text[text.length - 1]), 90) : "";
+  const shown = (src?: string) => (src ? tail(src) : "");
+  return `${pictures.length} pictures${pictures.length ? ` (first ${shown(pictures[0].src)}, last ${shown(pictures[pictures.length - 1].src)})` : ""}; ${text.length} text blocks, ${chars} characters${
+    firstText ? `; text starts "${firstText}"` : ""
+  }${lastText ? `, ends "${lastText}"` : ""}`;
+}
+
+const sameReading = (a: ExtractedChapter, b: ExtractedChapter) =>
+  a.blocks.length === b.blocks.length &&
+  a.blocks.every((block, i) => block.type === b.blocks[i].type && block.src === b.blocks[i].src && blockText(block) === blockText(b.blocks[i]));
+
+export async function fetchChapterWithAi(url: string, context?: ChapterFetchContext): Promise<ExtractedChapter> {
+  const provider = requireProvider();
+  const host = hostOfUrl(url);
+  const known = readingModes.get(host);
+  const mode = known && Date.now() - known.at < MODE_TTL_MS ? known.mode : undefined;
+
+  let chapter: ExtractedChapter;
+  if (mode === "browser") {
+    chapter = await extractChapterWithAi(provider, url, await renderPageHtml(url));
+  } else {
+    try {
+      chapter = await extractChapterWithAi(provider, url, await loadHtml(url));
+    } catch (err) {
+      if (err instanceof AiNotConfiguredError || err instanceof LockedContentError) throw err;
+      // The plain page may be an empty shell that scripts fill in: read what a browser shows.
+      chapter = await extractChapterWithAi(provider, url, await renderPageHtml(url));
+      readingModes.set(host, { mode: "browser", at: Date.now() });
+    }
+    // First chapter of this host: is the page as sent enough? Read it the other way too and let the
+    // AI say which holds the complete chapter. Identical readings need no question.
+    if (!mode && !readingModes.has(host)) {
+      let rendered: ExtractedChapter | undefined;
+      try {
+        rendered = await extractChapterWithAi(provider, url, await renderPageHtml(url));
+      } catch (err) {
+        if (err instanceof AiNotConfiguredError) throw err;
+      }
+      let chosen: "plain" | "browser" = "plain";
+      if (rendered && !sameReading(chapter, rendered)) {
+        const verdict = await provider.choose(
+          "These are two readings of the same chapter page: one of the page as the server sent it, one after a browser ran the page's scripts. Which one holds the complete chapter — the story text, or all of a comic's pages?",
+          `URL: ${url}`,
+          {
+            plain: `The page as sent: ${summarizeReading(chapter)}`,
+            browser: `After the scripts ran: ${summarizeReading(rendered)}`,
+          }
+        );
+        if (verdict === "browser") {
+          chosen = "browser";
+          chapter = rendered;
+        }
+      }
+      readingModes.set(host, { mode: chosen, at: Date.now() });
+    }
+  }
+  // A comic's pictures are kept as links while the site lets anyone load them, and saved in the story's
+  // media folder, fetched with the chapter's address as the referrer, when it does not; without a
+  // store (nowhere to keep them) the block keeps the picture's address.
+  if (context && chapter.blocks.some((b) => b.type === "image")) {
+    chapter = { ...chapter, blocks: await savePictures(chapter.blocks, url, context) };
+  }
+  return chapter;
 }

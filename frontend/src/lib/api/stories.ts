@@ -129,6 +129,21 @@ export async function fetchStory(id: string): Promise<StoredStory> {  const res 
   return data.story as StoredStory;
 }
 
+// What a story takes on disk, in bytes: its text, pictures, narration audio and cover.
+export interface StorySize {
+  text: number;
+  images: number;
+  audio: number;
+  cover: number;
+  total: number;
+}
+
+export async function fetchStorySize(id: string): Promise<StorySize> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/size`, { headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not load the story's size")));
+  return ((await res.json()) as { size: StorySize }).size;
+}
+
 // Save book metadata from detail view (multipart because may include new cover image).
 export async function saveStoryMeta(id: string, form: FormData): Promise<StoredStory> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(id)}/meta`, {

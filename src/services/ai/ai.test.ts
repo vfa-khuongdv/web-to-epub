@@ -153,7 +153,9 @@ describe("cover chosen by the AI", () => {
     expect(toc.coverUrl).toBe("https://x.test/media/covers/a.jpg");
     const text = Object.values(offered).join("\n");
     expect(text).toContain("https://x.test/img/site-logo.png");
-    expect(text).not.toContain("avatar.png"); // 32px wide: not a candidate
+    // Small images are not filtered out by a size rule; the AI is told the width and decides.
+    expect(text).toContain("avatar.png");
+    expect(text).toContain("32px wide");
     expect(text).toContain("inside a link to /truyen/khac");
   });
 
@@ -161,6 +163,132 @@ describe("cover chosen by the AI", () => {
     const provider: AiProvider = { choose: async (_q, _s, o) => ("image1" in o || "title1" in o ? "none" : "list1") };
     const toc = await parseTocWithAi(provider, "https://x.test/truyen/a", html);
     expect(toc.coverUrl).toBeUndefined();
+  });
+});
+
+describe("chapter list beside other links", () => {
+  const tags = ["Truyện ngắn", "Hiện thực", "Hoa Thanh", "Lãng mạn", "HE", "Hiện đại"]
+    .map((n, i) => `<a href="/the-loai/${i}">${n}</a>`)
+    .join("");
+  const chapters = [1, 2, 3].map((n) => `<li><a href="/doc/${n}">${n} Chương ${n} 1500 từ</a></li>`).join("");
+  const html = `<h1>Truyện ngắn</h1><div id="box"><div class="tags">${tags}</div><ol class="chapters">${chapters}</ol></div>`;
+
+  // Links are grouped by address shape: the AI is shown "/doc/#" apart from "/the-loai/#".
+  const pickShape = (shape: string): AiProvider => ({
+    choose: async (_q, _s, o) => {
+      if ("title1" in o || "image1" in o || "ctl1" in o) return "none";
+      if ("whole" in o) return "whole";
+      return Object.keys(o).find((k) => o[k].includes(`like ${shape} `)) ?? "none";
+    },
+  });
+
+  it("finds a story of three chapters sitting beside more genre links than chapters", async () => {
+    const provider = pickShape("/doc/#");
+    const toc = await parseTocWithAi(provider, "https://x.test/truyen/a", html);
+    expect(toc.chapters.map((c) => c.url)).toEqual([1, 2, 3].map((n) => `https://x.test/doc/${n}`));
+  });
+
+  it("finds chapters inside a site's own container elements, apart from 'related stories'", async () => {
+    const related = [1, 2, 3, 4, 5, 6, 7].map((n) => `<li><a href="/tac-pham/khac-${n}"><p>Truyện khác ${n}</p></a></li>`).join("");
+    const toc = [1, 2, 3].map((n) => `<a href="/doc/${n}"><span>${n}</span><div><p>Tên ${n}</p><p>900 từ</p></div></a>`).join("");
+    const page = `<h1>T</h1><main><div class="mx-auto"><el-tab-group><el-tab-panels>
+      <div><ul>${related}</ul></div><div id="tab-panel-toc"><h3>Mục lục</h3><div>${toc}</div></div></el-tab-panels></el-tab-group></div></main>`;
+    const result = await parseTocWithAi(pickShape("/doc/#"), "https://x.test/tac-pham/a", page);
+    expect(result.chapters.map((c) => c.url)).toEqual([1, 2, 3].map((n) => `https://x.test/doc/${n}`));
+  });
+
+  it("keeps chapters split over two blocks together, since they share one address shape", async () => {
+    const only = `<h1>T</h1><div id="box"><div class="a">${[1, 2, 3].map((n) => `<a href="/doc/${n}">Chương ${n}</a>`).join("")}</div><div class="b">${[4, 5, 6].map((n) => `<a href="/doc/${n}">Chương ${n}</a>`).join("")}</div></div>`;
+    const provider: AiProvider = {
+      choose: async (_q, _s, o) => ("title1" in o || "image1" in o ? "none" : "whole" in o ? "whole" : "list1"),
+    };
+    const toc = await parseTocWithAi(provider, "https://x.test/truyen/a", only);
+    expect(toc.chapters).toHaveLength(6);
+  });
+});
+
+describe("story text inside each paragraph", () => {
+  const unit = (n: number, text: string) =>
+    `<div class="para"><div class="row"><div class="grow"><p>${text}</p></div><div class="tools"><button><span>${n}</span></button><button><span>0</span></button></div></div><dialog-box><h3>Bình luận đoạn văn</h3></dialog-box></div>`;
+  const prose = (n: number) => `Đoạn truyện số ${n} đủ dài để thành một đoạn của chương, có kèm chữ thật. `.repeat(2);
+  const html = `<body><div id="reader">${[1, 2, 3, 4].map((n) => unit(n, prose(n))).join("")}</div></body>`;
+
+  it("lets the AI pick the story text in a paragraph and applies it to every paragraph", async () => {
+    const asked: string[] = [];
+    const provider: AiProvider = {
+      choose: async (q, _s, o) => {
+        asked.push(q.slice(0, 40));
+        if ("title1" in o) return "none";
+        // The region of the chapter is the whole #reader; only inside one paragraph is a part picked.
+        if ("whole" in o && q.startsWith("The chapter text is somewhere")) return "whole";
+        if ("whole" in o) {
+          // at each level of a paragraph, the part that holds the prose text
+          return Object.keys(o).find((k) => k.startsWith("part") && o[k].includes("Đoạn truyện")) as string;
+        }
+        return "body1";
+      },
+    };
+    const chapter = await extractChapterWithAi(provider, "https://x.test/c/1", html);
+    expect(chapter.blocks.map((b) => b.text)).toEqual([1, 2, 3, 4].map((n) => prose(n).trim()));
+    // none of the counters or the "comment" widget text reached the chapter
+    expect(chapter.blocks.map((b) => b.text).join(" ")).not.toContain("Bình luận");
+  });
+
+  it("keeps whole paragraphs when the AI says all of it is story text", async () => {
+    const provider: AiProvider = {
+      choose: async (_q, _s, o) => ("title1" in o ? "none" : "whole" in o ? "whole" : "body1"),
+    };
+    const chapter = await extractChapterWithAi(provider, "https://x.test/c/1", html);
+    expect(chapter.blocks.map((b) => b.text).join(" ")).toContain("Bình luận");
+  });
+});
+
+describe("urlShape", () => {
+  it("blanks chapter numbers and long ids, keeps the story's own path", async () => {
+    const { urlShape } = await import("./aiLocate");
+    expect(urlShape("https://a.vn/truyen/hop-dong/chuong-12/")).toBe("/truyen/hop-dong/chuong-#");
+    expect(urlShape("https://a.vn/truyen/hop-dong/chuong-13")).toBe("/truyen/hop-dong/chuong-#");
+    expect(urlShape("https://a.vn/doc-truyen/x/6ab07673311741f1f4eebcfa")).toBe("/doc-truyen/x/#");
+    expect(urlShape("https://a.vn/read.php?id=5&story=9")).toBe("/read.php?id=#&story=#");
+  });
+
+  it("gives another story's chapters a different shape", async () => {
+    const { urlShape } = await import("./aiLocate");
+    expect(urlShape("https://a.vn/truyen/mai-ha/chuong-31/")).not.toBe(urlShape("https://a.vn/truyen/hop-dong/chuong-31/"));
+  });
+
+  it("ignores the host, so a mirror domain's chapter links join the list", async () => {
+    const { urlShape } = await import("./aiLocate");
+    expect(urlShape("https://mirror.me/truyen/a/chuong-51/")).toBe(urlShape("https://site.vn/truyen/a/chuong-50/"));
+  });
+});
+
+describe("site lines at the edges of a chapter", () => {
+  const prose = (n: number) => `Đoạn truyện ${n} đủ dài để thành nội dung của chương, kể chuyện tiếp. `.repeat(3);
+  const html = `<body><div id="c"><p>Đọc truyện mới nhất tại trang chúng tôi.</p>${[1, 2, 3]
+    .map((n) => `<p>${prose(n)}</p>`)
+    .join("")}<p>Bên khác copy sẽ thiếu nội dung.</p><p>Hãy chia sẻ nếu thấy hay.</p></div></body>`;
+
+  it("drops the site's lines at the start and the end, walking inwards", async () => {
+    const provider: AiProvider = {
+      choose: async (q, _s, o) => {
+        if ("title1" in o) return "none";
+        if ("site" in o) return /Đọc truyện mới|copy|chia sẻ/.test(q) ? "site" : "story";
+        return "whole" in o ? "whole" : "body1";
+      },
+    };
+    const chapter = await extractChapterWithAi(provider, "https://x.test/c/1", html);
+    expect(chapter.blocks.map((b) => b.text)).toEqual([1, 2, 3].map((n) => prose(n).trim()));
+  });
+
+  it("never removes a paragraph from the middle, even if the AI calls every paragraph a site line", async () => {
+    const ten = `<body><div id="c">${Array.from({ length: 10 }, (_, i) => `<p>${prose(i + 1)}</p>`).join("")}</div></body>`;
+    const provider: AiProvider = {
+      choose: async (_q, _s, o) => ("title1" in o ? "none" : "site" in o ? "site" : "whole" in o ? "whole" : "body1"),
+    };
+    const chapter = await extractChapterWithAi(provider, "https://x.test/c/1", ten);
+    // at most three from each end: paragraphs 4 to 7 stay
+    expect(chapter.blocks.map((b) => b.text)).toEqual([4, 5, 6, 7].map((n) => prose(n).trim()));
   });
 });
 

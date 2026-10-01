@@ -97,7 +97,6 @@ export interface LiveCrawl {
 // Toasts the app can raise. Kept as data, not text, so the stack re-renders them
 // in whichever language is on screen.
 export type NoticeInput =
-  | { kind: "toc-loaded"; count: number }
   | { kind: "session-saved"; username?: string }
   | { kind: "export-done"; fileCount: number }
   | { kind: "epub-imported"; title: string };

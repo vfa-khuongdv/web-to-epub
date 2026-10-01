@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from "react";
-import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, refreshStoryToc, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../../lib/api";
+import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, fetchStorySize, refreshStoryToc, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../../lib/api";
 import { blocksToHtml } from "../../lib/reader/blocksToHtml";
+import { formatBytes } from "../../lib/format/formatBytes";
 import { formatEta } from "../../lib/format/formatEta";
 import { useLang } from "../../i18n";
 import { IMPORTED_SITE, storySourceLabel } from "../../lib/sources/storySource";
 import { timeAgo } from "../../lib/format/timeAgo";
+import type { StorySize } from "../../lib/api";
 import { StoredStory } from "../../types";
 import { ChapterState, toChapterState } from "../../lib/library/chapterState";
 import { CrawlJobState, liveCounts, NoticeInput } from "../../hooks/useCrawlJob";
@@ -57,6 +59,9 @@ export default function StoryDetail({
   // changes each time crawl finishes since refreshStory reloads from server.
   const [coverUrl, setCoverUrl] = useState(story.coverUrl);
   const [coverBroken, setCoverBroken] = useState(false);
+  // What the story takes on disk. Asked for when the story opens and again when a crawl ends or
+  // the chapters change, since those are what add pictures and text; a failure just hides the line.
+  const [size, setSize] = useState<StorySize | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const coverInput = useRef<HTMLInputElement>(null);
@@ -168,6 +173,20 @@ export default function StoryDetail({
     runOrders.current = undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [job.running]);
+
+  // The story's size follows what changes it: opening it, a crawl ending, chapters crawled or removed.
+  useEffect(() => {
+    if (job.running) return;
+    let cancelled = false;
+    fetchStorySize(story.id).then(
+      (next) => !cancelled && setSize(next),
+      () => !cancelled && setSize(null)
+    );
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [story.id, story.updatedAt, doneCount, job.running]);
 
   async function refreshStory(orders?: number[]) {
     const single = orders?.length === 1 ? orders[0] : undefined;
@@ -410,6 +429,19 @@ export default function StoryDetail({
               {remaining === 0 && <span>{t("All chapters crawled")}</span>}
           </p>
             {etaText && <p className="mt-1.5 text-xs text-ink-2">{etaText}</p>}
+            {size && (
+              <p
+                className="mt-1.5 text-xs text-ink-3"
+                title={t("Text {text} · Images {images} · Audio {audio} · Cover {cover}", {
+                  text: formatBytes(size.text),
+                  images: formatBytes(size.images),
+                  audio: formatBytes(size.audio),
+                  cover: formatBytes(size.cover),
+                })}
+              >
+                {t("Size on disk: {size}", { size: formatBytes(size.total) })}
+              </p>
+            )}
             {story.watching && (
               <p className="mt-1.5 text-xs text-ink-3">
                 {story.lastCheckedAt

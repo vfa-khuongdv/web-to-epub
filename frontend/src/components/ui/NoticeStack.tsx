@@ -22,7 +22,6 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
     >
       <Icon name="check" size={14} className="shrink-0" />
       <p>
-        {notice.kind === "toc-loaded" && t("Loaded {count} chapters", { count: notice.count })}
         {notice.kind === "session-saved" &&
           (notice.username
             ? t("Saved login for {username}", { username: notice.username })
@@ -45,9 +44,9 @@ function Toast({ notice, onDismiss }: { notice: Notice; onDismiss: (id: number) 
   );
 }
 
-// Toasts for background work that finished while the app was open: a story's
-// chapter list after an import, a saved login, an export. A crawl's ending is not
-// toasted — the story's own chapter list and status chip report it.
+// Toasts for background work that finished while the app was open: a saved login, an
+// export, an imported book. Neither a crawl's ending nor a loaded chapter list is toasted —
+// the story's own chapter list and status chip report them.
 export function NoticeStack({ notices, onDismiss }: { notices: Notice[]; onDismiss: (id: number) => void }) {
   if (notices.length === 0) return null;
   return (

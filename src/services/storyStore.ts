@@ -24,6 +24,9 @@ export interface StoryStore {
   // crawled weighs tens of MB, while the UI only needs a list and status.
   getOutline(id: string): Promise<StoredStory | undefined>;
   getChapter(storyId: string, order: number): Promise<StoredChapter | undefined>;
+  // Bytes of crawled chapter text this story holds in the database (the blocks as stored), for the
+  // size shown on the story page. Images and audio are files, counted from their folders.
+  contentBytes(id: string): Promise<number>;
   save(story: StoredStory): Promise<void>;
   saveChapter(storyId: string, chapter: StoredChapter): Promise<void>;
   // Drop one chapter (and its highlights) from the library. Order is the TOC position,
@@ -203,6 +206,10 @@ export function createStoryStore(baseDir: string): StoryStore {
       blocks = excluded.blocks
   `);
   const deleteChapters = db.prepare(`DELETE FROM chapters WHERE story_id = ?`);
+  // CAST to BLOB so LENGTH counts bytes, not characters: Vietnamese text is mostly 2-3 bytes a letter.
+  const selectContentBytes = db.prepare(
+    `SELECT COALESCE(SUM(LENGTH(CAST(blocks AS BLOB))), 0) AS bytes FROM chapters WHERE story_id = ?`
+  );
   const deleteChapter = db.prepare(`DELETE FROM chapters WHERE story_id = ? AND "order" = ?`);
   const deleteChapterHighlights = db.prepare(`DELETE FROM highlights WHERE story_id = ? AND chapter_order = ?`);
   const selectHighlights = db.prepare(
@@ -330,6 +337,11 @@ export function createStoryStore(baseDir: string): StoryStore {
         createdAt: story.created_at,
         updatedAt: story.updated_at,
       };
+    },
+
+    async contentBytes(id: string): Promise<number> {
+      if (!STORY_ID_RE.test(id)) return 0;
+      return Number((selectContentBytes.get(id) as unknown as { bytes: number }).bytes);
     },
 
     async getOutline(id: string): Promise<StoredStory | undefined> {

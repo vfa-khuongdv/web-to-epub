@@ -19,6 +19,25 @@ export interface UpdateStatus {
   releaseUrl: string | null;
   // The asset to install from on this OS (name kept from when it was macOS-only).
   zipUrl: string | null;
+  // What the release says about itself — the notes the maintainer wrote on GitHub, as markdown —
+  // so the update dialog shows what is actually new instead of a fixed sentence.
+  notes: string | null;
+}
+
+// A release body is free text the maintainer wrote; the dialog shows it in a small box, so it is
+// capped. Cut at a line end, not mid-word, and say that it was cut.
+export const MAX_NOTES_CHARS = 6000;
+
+export function releaseNotes(body: unknown): string | null {
+  if (typeof body !== "string") return null;
+  const text = body
+    .replace(/\r\n?/g, "\n")
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .trim();
+  if (!text) return null;
+  if (text.length <= MAX_NOTES_CHARS) return text;
+  const cut = text.slice(0, MAX_NOTES_CHARS);
+  return `${cut.slice(0, cut.lastIndexOf("\n") > 0 ? cut.lastIndexOf("\n") : MAX_NOTES_CHARS).trimEnd()}\n…`;
 }
 
 // Numeric-segment comparison. A leading "v" and non-numeric suffixes ("-beta.1") are
@@ -88,6 +107,7 @@ export function createAppUpdateChecker(
         hasUpdate: false,
         releaseUrl: null,
         zipUrl: null,
+        notes: null,
       };
       const at = now();
       if (cached && at - cached.at < SUCCESS_TTL_MS) return { ...cached.status, current };
@@ -100,6 +120,7 @@ export function createAppUpdateChecker(
           tag_name?: unknown;
           html_url?: unknown;
           assets?: unknown;
+          body?: unknown;
         };
         if (typeof release.tag_name !== "string" || typeof release.html_url !== "string") {
           throw new Error("Unexpected release shape");
@@ -111,6 +132,7 @@ export function createAppUpdateChecker(
           hasUpdate: compareVersions(latest, current) > 0,
           releaseUrl: release.html_url,
           zipUrl: pickUpdateAsset(Array.isArray(release.assets) ? (release.assets as GithubAsset[]) : [], latest, platform),
+          notes: releaseNotes(release.body),
         };
         cached = { at, status };
         failedAt = null;
