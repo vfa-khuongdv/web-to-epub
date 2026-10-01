@@ -1,0 +1,808 @@
+import { useEffect, useRef, useState } from "react";
+import { useNarrationPlayer } from "../../hooks/narrationPlayer";
+import {
+  ApiError,
+  checkStoryUpdates,
+  createStory,
+  fetchAiConfig,
+  deleteStory,
+  fetchSiteSession,
+  fetchStories,
+  fetchStory,
+  importEpub,
+  setStoryWatch,
+} from "../../lib/api";
+import { useLang } from "../../i18n";
+import { DEFAULT_SORTS, PAGE_SIZE, SortKey, SortState, StoryRow, compareRows, crawlStatus, fold } from "../../lib/library/libraryRows";
+import { bookUrlSourceFor } from "../../lib/sources/bookUrlSources";
+import { isSupportedUrl } from "../../lib/sources/isSupportedUrl";
+import { storySourceLabel } from "../../lib/sources/storySource";
+import { SessionSite, sessionSiteForUrl } from "../../lib/sources/siteSessions";
+import { timeAgo } from "../../lib/format/timeAgo";
+import { StoredStory, StorySummary, SupportedSite } from "../../types";
+import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../../hooks/useCrawlJob";
+import { AI_CONFIG_CHANGED } from "../settings/AiSettings";
+import AddStoryBox, { PendingImport } from "./AddStoryBox";
+import { Icon } from "../ui/Icon";
+import SortTh from "./SortTh";
+import SiteSessionDialog from "../settings/SiteSessionDialog";
+import { StatusChip } from "../ui/StatusChip";
+import StoryDetail from "../story/StoryDetail";
+import StoryDetailSkeleton from "../story/StoryDetailSkeleton";
+
+export default function LibraryView({
+  job,
+  live,
+  attach,
+  clearChapters,
+  supportedSites,
+  pushNotice,
+  autoScan,
+  onOpenSettings,
+}: {
+  job: CrawlJobState;
+  live: Record<string, LiveCrawl | undefined>;
+  attach: (label: string, storyId: string) => () => void;
+  clearChapters: () => void;
+  supportedSites: SupportedSite[];
+  pushNotice: (notice: NoticeInput) => void;
+  // The settings page's "check when the app opens". Undefined while it is still being
+  // read: the launch check waits rather than guessing.
+  autoScan: boolean | undefined;
+  // Reached from a story page that needs something set up first (narration).
+  onOpenSettings: () => void;
+}) {
+  const { lang, t } = useLang();
+  const [stories, setStories] = useState<StorySummary[]>([]);
+  const [storyUrl, setStoryUrl] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [importBusy, setImportBusy] = useState(false);
+  const [pendingImport, setPendingImport] = useState<PendingImport | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [selected, setSelected] = useState<StoredStory | null>(null);
+  // A story's outline is a few hundred KB on a long story, so opening one shows the
+  // detail pane's skeleton rather than leaving the previous story on screen.
+  const [opening, setOpening] = useState(false);
+  const openRequest = useRef(0);
+  const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [sorts, setSorts] = useState<SortState[]>(DEFAULT_SORTS);
+  const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState(false);
+  // Whether the AI crawler is on with a key; follows the settings page.
+  const [aiReady, setAiReady] = useState(false);
+  const [page, setPage] = useState(1);
+  const [checking, setChecking] = useState(false);
+  useEffect(() => {
+    const load = () =>
+      void fetchAiConfig().then(
+        (c) => setAiReady(c.enabled && !!c.providers.find((p) => p.id === c.active && (p.hasKey || !p.keyRequired))),
+        () => setAiReady(false)
+      );
+    load();
+    window.addEventListener(AI_CONFIG_CHANGED, load);
+    return () => window.removeEventListener(AI_CONFIG_CHANGED, load);
+  }, []);
+  const checkedOnOpen = useRef(false);
+  // The URL waiting behind the site session dialog: sites that need a saved browser session (Asianfanfics, TruyenFull, Internet Archive).
+  const [sessionPrompt, setSessionPrompt] = useState<{ url: string; site: SessionSite; action: "story" | "import" } | null>(
+    null
+  );
+  // Split by kind, because the two need different words everywhere they are listed: a crawl
+  // site is loaded page by page, a book site is read as one file.
+  const crawlSites = supportedSites.filter((site) => site.mode === "crawl");
+  const importSites = supportedSites.filter((site) => site.mode === "import");
+
+  async function loadStories() {
+    try {
+      setStories(await fetchStories());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  // Check TOC for watched stories, max 2 in parallel; update each row when its
+  // result arrives, preserve old count and show warning on error.
+  async function runChecks(targets: StorySummary[]) {
+    if (targets.length === 0) return;
+    setChecking(true);
+    const queue = [...targets];
+    const worker = async () => {
+      while (queue.length > 0) {
+        const story = queue.shift();
+        if (!story) break;
+        try {
+          const result = await checkStoryUpdates(story.id);
+          setStories((current) =>
+            current.map((s) => (s.id === story.id ? { ...s, ...result, checkError: undefined } : s))
+          );
+        } catch (err) {
+          // Story being crawled: server refuses the check with 409 — the crawl chip
+          // replaces it. Matched by status, not by message text, which is translated.
+          if ((err as ApiError).status === 409) continue;
+          const message = (err as Error).message;
+          setStories((current) =>
+            current.map((s) => (s.id === story.id ? { ...s, checkError: message } : s))
+          );
+        }
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(2, targets.length) }, worker));
+    setChecking(false);
+    await loadStories();
+  }
+
+  useEffect(() => {
+    loadStories().finally(() => setLoading(false));
+  }, []);
+
+  // On app open: check watched stories once (no background, no schedule), unless the
+  // settings page has that turned off. Crawling stories are skipped — server blocks
+  // them too.
+  useEffect(() => {
+    if (loading || autoScan === undefined || checkedOnOpen.current) return;
+    checkedOnOpen.current = true;
+    if (!autoScan) return;
+    const targets = stories.filter((s) => s.watching && !live[s.id]);
+    if (targets.length > 0) void runChecks(targets);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, autoScan, stories, live]);
+
+  // Selected story: StoryDetail refetches when crawl done. Others don't, so we
+  // refetch when a story leaves the realtime channel so status chip doesn't stale.
+  const crawlingIds = Object.keys(live).filter((id) => live[id]).sort().join(",");
+  const prevCrawlingIds = useRef(crawlingIds);
+  useEffect(() => {
+    const before = prevCrawlingIds.current.split(",").filter(Boolean);
+    const after = crawlingIds.split(",").filter(Boolean);
+    prevCrawlingIds.current = crawlingIds;
+    if (before.some((id) => !after.includes(id))) void loadStories();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [crawlingIds]);
+
+  // Clicking a second story before the first arrives must not end with the first one
+  // on screen, and must not clear the skeleton the second one is still waiting behind:
+  // only the newest request is allowed to finish.
+  // The player's "show what is playing": open that story (its page then opens the reader).
+  const player = useNarrationPlayer();
+  const playerRequest = player.openRequest;
+  useEffect(() => {
+    if (playerRequest && selected?.id !== playerRequest.storyId) void openStory(playerRequest.storyId);
+    // openStory is recreated every render; only a new request should trigger this.
+  }, [playerRequest]);
+
+  async function openStory(id: string) {
+    const request = ++openRequest.current;
+    setOpening(true);
+    try {
+      const story = await fetchStory(id);
+      if (openRequest.current !== request) return;
+      setSelected(story);
+      setError(null);
+    } catch (err) {
+      if (openRequest.current !== request) return;
+      setError((err as Error).message);
+    } finally {
+      if (openRequest.current === request) setOpening(false);
+    }
+  }
+
+  async function handleCreate() {
+    if (busy || importBusy) return;
+    const url = storyUrl.trim();
+    if (!url) {
+      setError(t("Paste a story URL first."));
+      return;
+    }
+    // Book-hosting sites (archive.org, DTV Ebook — see lib/bookUrlSources.ts) are imported
+    // instead of crawled. Everything else must be a crawl site.
+    const bookSource = bookUrlSourceFor(url);
+    // Outside the supported list the AI crawler reads the page instead, when it is on.
+    if (!bookSource && !isSupportedUrl(url, supportedSites, "crawl") && aiReady) {
+      if (!/^https?:\/\//i.test(url)) {
+        setError(t("Paste a story URL first."));
+        return;
+      }
+      await createStoryFrom(url, true);
+      return;
+    }
+    if (!bookSource && !isSupportedUrl(url, supportedSites, "crawl")) {
+      // The message answers "do you support this?", so it names both kinds — a reader
+      // who pasted an archive.org URL should be able to see it belongs somewhere.
+      setError(
+        t("URL is not from a supported site. Supported: {sites}.", {
+          sites: supportedSites.map((s) => s.domain).join(", "),
+        })
+      );
+      return;
+    }
+    // Sites whose crawls need a session saved from the reader's browser ask for one first
+    // (skippable — the import then reports what the site refused). Checked per add, so a
+    // session imported here is picked up by the next one; a failed check never blocks.
+    const sessionSite = sessionSiteForUrl(url);
+    if (sessionSite && (await needsSessionPrompt(sessionSite))) {
+      setSessionPrompt({ url, site: sessionSite, action: bookSource ? "import" : "story" });
+      return;
+    }
+    if (bookSource) await importUrlFrom(url);
+    else await createStoryFrom(url);
+  }
+
+  // The AI button: any http(s) page, no allowlist or session step. The chapter list is read
+  // and saved here; the normal crawl button then has the AI read each chapter.
+  async function handleCreateWithAi() {
+    if (busy || importBusy) return;
+    const url = storyUrl.trim();
+    if (!/^https?:\/\//i.test(url)) {
+      setError(t("Paste a story URL first."));
+      return;
+    }
+    await createStoryFrom(url, true);
+  }
+
+  async function needsSessionPrompt(site: SessionSite): Promise<boolean> {
+    return fetchSiteSession(site.slug)
+      .then(
+        (status) =>
+          !status.configured ||
+          (site.showsExpiry && !!status.expiresAt && Date.parse(status.expiresAt) <= Date.now())
+      )
+      .catch(() => false);
+  }
+
+  async function createStoryFrom(url: string, ai = false) {
+    setBusy(true);
+    setError(null);
+    try {
+      const created = await createStory(url, { ai });
+      setSelected(created);
+      setStoryUrl("");
+      pushNotice({ kind: "toc-loaded", count: created.chapters.length });
+      await loadStories();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  // Import one .epub or .pdf file (the server converts a PDF into chapters). A 409 comes back as code "exists" — ask before overwriting
+  // (the file hash is the story id, so it is the same book), then retry with the flag.
+  async function handleImport(file: File, overwrite = false) {
+    setImportBusy(true);
+    setError(null);
+    try {
+      const imported = await importEpub(file, { overwrite });
+      setPendingImport(null);
+      await loadStories();
+      setSelected(imported);
+      pushNotice({ kind: "epub-imported", title: imported.title });
+    } catch (err) {
+      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "file", file });
+      else setError((err as Error).message);
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  // Import a book from a URL (see lib/bookUrlSources.ts). A 409 asks before overwriting,
+  // like a file import. Runs on the "Load chapters" busy state: that button launched it and
+  // must show it.
+  async function importUrlFrom(url: string, overwrite = false) {
+    const source = bookUrlSourceFor(url);
+    if (!source) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const imported = await source.importBook(url, { overwrite });
+      await finishUrlImport(url, imported);
+    } catch (err) {
+      if (!overwrite && (err as { code?: string }).code === "exists") setPendingImport({ kind: "url", url });
+      else setError((err as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function finishUrlImport(url: string, imported: StoredStory) {
+    setPendingImport(null);
+    setStoryUrl("");
+    await loadStories();
+    setSelected(imported);
+    pushNotice({ kind: "epub-imported", title: imported.title });
+  }
+
+  function handleImportFiles(files: FileList | null) {
+    const file = files?.[0];
+    if (!file) return;
+    if (!/\.(epub|pdf)$/i.test(file.name)) {
+      setError(t("Please choose an .epub or .pdf file."));
+      return;
+    }
+    void handleImport(file);
+  }
+
+  async function handleDelete(id: string) {
+    try {
+      await deleteStory(id);
+      setConfirmDelete(null);
+      if (selected?.id === id) setSelected(null);
+      await loadStories();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  // Toggle watch, then refetch: server clears new chapter + error counts when
+  // unwatching, so local state must follow saved version, not guess.
+  async function handleWatchToggle(story: StorySummary) {
+    try {
+      await setStoryWatch(story.id, !story.watching);
+      await loadStories();
+      if (selected?.id === story.id) {
+        try {
+          setSelected(await fetchStory(story.id));
+        } catch {
+          /* loadStories already showed the error */
+        }
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  // Delete multiple stories: call DELETE /stories/:id sequentially — library is
+  // just a few dozen rows, not worth adding a batch delete endpoint.
+  async function handleBulkDelete(ids: string[]) {
+    setBulkBusy(true);
+    // One story the server refuses (being narrated) must not stop the rest, nor leave the
+    // list showing stories that are already gone: delete what can be, then report the first
+    // refusal and keep only the refused ones picked.
+    const failed = new Map<string, string>();
+    for (const id of ids) {
+      try {
+        await deleteStory(id);
+      } catch (err) {
+        failed.set(id, (err as Error).message);
+      }
+    }
+    setPicked(new Set(failed.keys()));
+    setConfirmBulk(false);
+    if (selected && ids.includes(selected.id) && !failed.has(selected.id)) setSelected(null);
+    if (failed.size > 0) setError(failed.values().next().value as string);
+    await loadStories();
+    setBulkBusy(false);
+  }
+
+  function togglePicked(id: string) {
+    setPicked((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+    setConfirmBulk(false);
+  }
+
+  async function handleStoryChanged() {
+    await loadStories();
+    if (selected) {
+      try {
+        setSelected(await fetchStory(selected.id));
+      } catch {
+        /* loadStories already surfaced the failure */
+      }
+    }
+  }
+
+  // Filter, sort, and paginate on client: library is one person's stories (just
+  // a few dozen rows), loading once is lighter than adding API params and SQL pagination.
+  const rows: StoryRow[] = stories.map((s) => {
+    // The selected story may be mid-crawl: its stored summary lags
+    // behind the chapters this run has already finished.
+    const overlay = selected?.id === s.id ? liveCounts(selected.chapters, job.chapters) : { done: 0, error: 0 };
+    const done = s.doneCount + overlay.done;
+    const errors = s.errorCount + overlay.error;
+    // Crawl status for ALL stories comes from the shared realtime channel, so
+    // crawling rows show chips even if not selected.
+    const crawling = live[s.id];
+    return {
+      ...s,
+      done,
+      errors,
+      remaining: s.chapterCount - done - errors,
+      crawling,
+      status: crawlStatus(s.chapterCount, done, errors, s.newChapterCount, crawling, t),
+    };
+  });
+
+  const needle = fold(query.trim());
+  const filtered = needle ? rows.filter((r) => fold(`${r.title} ${r.site}`).includes(needle)) : rows;
+  const sorted = [...filtered].sort((a, b) => {
+    for (const s of sorts) {
+      const diff = compareRows(a, b, s.key) * (s.dir === "asc" ? 1 : -1);
+      if (diff !== 0) return diff;
+    }
+    return 0;
+  });
+  const pageCount = Math.max(1, Math.ceil(sorted.length / PAGE_SIZE));
+  // Clamp page instead of fixing in effect: when list shrinks (delete, filter),
+  // automatically go back to the last valid page.
+  const currentPage = Math.min(page, pageCount);
+  const visible = sorted.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  // Crawling stories can't be deleted, so don't let them be picked; selections
+  // persist across pages so you can delete many at once.
+  const pickable = visible.filter((r) => !r.crawling);
+  const pickedIds = rows.filter((r) => picked.has(r.id) && !r.crawling).map((r) => r.id);
+  const allPagePicked = pickable.length > 0 && pickable.every((r) => picked.has(r.id));
+  const somePagePicked = pickable.some((r) => picked.has(r.id));
+
+  function toggleSort(key: SortKey, additive: boolean) {
+    const firstDir = key === "title" || key === "site" ? "asc" : "desc";
+    setSorts((current) => {
+      const at = current.findIndex((s) => s.key === key);
+      const flipped = (s: SortState): SortState => ({ key: s.key, dir: s.dir === "asc" ? "desc" : "asc" });
+      if (!additive) {
+        return at === 0 && current.length === 1 ? [flipped(current[0])] : [{ key, dir: firstDir }];
+      }
+      if (at === -1) return [...current, { key, dir: firstDir }];
+      return current.map((s, i) => (i === at ? flipped(s) : s));
+    });
+    setPage(1);
+  }
+
+  return (
+    <>
+      <section className="pane">
+        <div className="pane-head">
+          <h2>{t("My Stories")}</h2>
+          <span className="end flex items-center gap-2 text-xs text-ink-2">
+            {stories.some((s) => s.watching) && (
+              <button
+                type="button"
+                className="btn btn-tiny btn-quiet"
+                disabled={checking}
+                onClick={() => runChecks(stories.filter((s) => s.watching && !live[s.id]))}
+              >
+                <Icon
+                  name={checking ? "dot" : "retry"}
+                  size={12}
+                  className={checking ? "animate-pulse" : undefined}
+                />
+                {checking ? t("Checking…") : t("Check for new chapters")}
+              </button>
+            )}
+            <span>
+              {stories.length === 0
+                ? ""
+                : needle
+                  ? t("{shown}/{total} stories", { shown: filtered.length, total: stories.length })
+                  : t("{count} stories", { count: stories.length })}
+            </span>
+          </span>
+        </div>
+
+        <AddStoryBox
+          storyUrl={storyUrl}
+          onStoryUrl={setStoryUrl}
+          busy={busy}
+          importBusy={importBusy}
+          onCreate={handleCreate}
+          aiReady={aiReady}
+          onCreateAi={() => void handleCreateWithAi()}
+          onImportFiles={handleImportFiles}
+          pendingImport={pendingImport}
+          onOverwrite={() =>
+            void (pendingImport?.kind === "file"
+              ? handleImport(pendingImport.file, true)
+              : pendingImport && importUrlFrom(pendingImport.url, true))
+          }
+          onCancelOverwrite={() => setPendingImport(null)}
+          crawlSites={crawlSites}
+          importSites={importSites}
+        />
+
+        {!loading && stories.length > 0 && (
+          <div className="border-b border-rule p-3">
+            <label className="visually-hidden" htmlFor="story-search">
+              {t("Search stories")}
+            </label>
+            <input
+              id="story-search"
+              type="search"
+              className="input"
+              placeholder={t("Search by story name or site…")}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(1);
+              }}
+            />
+          </div>
+        )}
+
+        {pickedIds.length > 0 && (
+          <div className="flex items-center gap-2 border-b border-rule px-3 py-2 text-xs text-ink-2">
+            <span>{t("Selected {count} stories", { count: pickedIds.length })}</span>
+            <span className="ml-auto flex gap-1.5">
+              {confirmBulk ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn btn-tiny btn-danger"
+                    disabled={bulkBusy}
+                    onClick={() => handleBulkDelete(pickedIds)}
+                  >
+                    {bulkBusy ? t("Deleting…") : t("Delete {count} stories", { count: pickedIds.length })}
+                  </button>
+                  <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setConfirmBulk(false)}>
+                    {t("Cancel")}
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setConfirmBulk(true)}>
+                    <Icon name="trash" size={12} />
+                    {t("Delete selected")}
+                  </button>
+                  <button type="button" className="btn btn-tiny btn-quiet" onClick={() => setPicked(new Set())}>
+                    {t("Deselect")}
+                  </button>
+                </>
+              )}
+            </span>
+          </div>
+        )}
+
+        {error && (
+          <div className="banner m-3">
+            <Icon name="alert" size={14} />
+            <p className="min-w-0">{error}</p>
+          </div>
+        )}
+
+        <div className="pane-body">
+          {loading ? (
+            <div className="flex flex-col gap-3 p-3" aria-hidden="true">
+              {[0, 1, 2].map((i) => (
+                <div key={i} className="h-3 animate-pulse rounded-[2px] bg-sunken" style={{ width: `${92 - i * 14}%` }} />
+              ))}
+              <span className="visually-hidden">{t("Loading story list")}</span>
+            </div>
+          ) : stories.length === 0 ? (
+            <div className="empty">
+              <h3>{t("Library is empty")}</h3>
+              <ol>
+                <li>{t("Paste a story URL above and click Load chapters.")}</li>
+                <li>{t("The entire chapter list loads with Pending status.")}</li>
+                <li>
+                  {t(
+                    "Click Crawl to crawl gradually. Close the tab anytime — progress is saved in the library, reopen to see where you left off."
+                  )}
+                </li>
+              </ol>
+            </div>
+          ) : sorted.length === 0 ? (
+            <div className="empty">
+              <h3>{t("No stories match")}</h3>
+              <p>{t("No stories with name or site containing “{query}”. Try shorter keywords.", { query: query.trim() })}</p>
+            </div>
+          ) : (
+            <table className="tbl">
+              <thead>
+                <tr>
+                  <th className="w-9">
+                    <input
+                      type="checkbox"
+                      className="checkbox"
+                      aria-label={t("Select all stories on this page")}
+                      checked={allPagePicked}
+                      ref={(el) => {
+                        if (el) el.indeterminate = somePagePicked && !allPagePicked;
+                      }}
+                      disabled={pickable.length === 0}
+                      onChange={() => {
+                        setPicked((current) => {
+                          const next = new Set(current);
+                          for (const row of pickable) {
+                            if (allPagePicked) next.delete(row.id);
+                            else next.add(row.id);
+                          }
+                          return next;
+                        });
+                        setConfirmBulk(false);
+                      }}
+                    />
+                  </th>
+                  <SortTh label="Story" sortKey="title" sorts={sorts} onSort={toggleSort} />
+                  <SortTh label="Site" sortKey="site" sorts={sorts} onSort={toggleSort} className="w-28" />
+                  <SortTh label="Chapters" sortKey="chapterCount" sorts={sorts} onSort={toggleSort} className="num w-20" />
+                  <SortTh label="Done" sortKey="done" sorts={sorts} onSort={toggleSort} className="num w-16" />
+                  <SortTh label="Errors" sortKey="errors" sorts={sorts} onSort={toggleSort} className="num w-14" />
+                  <SortTh label="Status" sortKey="remaining" sorts={sorts} onSort={toggleSort} className="w-40" />
+                  <SortTh label="Updated" sortKey="updatedAt" sorts={sorts} onSort={toggleSort} className="w-24" />
+                  <th className="w-16" />
+                </tr>
+              </thead>
+              <tbody>
+                {visible.map((s) => (
+                  <tr
+                    key={s.id}
+                    className={selected?.id === s.id ? "is-selected" : undefined}
+                    onClick={() => openStory(s.id)}
+                  >
+                    <td onClick={(e) => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        className="checkbox"
+                        aria-label={`Select ${s.title}`}
+                        checked={picked.has(s.id)}
+                        disabled={!!s.crawling}
+                        onChange={() => togglePicked(s.id)}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="row-btn"
+                        aria-current={selected?.id === s.id ? "true" : undefined}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openStory(s.id);
+                        }}
+                      >
+                        <span className="t" title={s.title}>
+                          {s.title}
+                        </span>
+                      </button>
+                    </td>
+                    <td className="dim">
+                      {storySourceLabel(s, t)}
+                    </td>
+                    <td className="num">{s.chapterCount}</td>
+                    <td className="num">
+                      <b>{s.done}</b>
+                    </td>
+                    <td className={s.errors > 0 ? "num bad" : "num"}>
+                      <b>{s.errors}</b>
+                    </td>
+                    <td>
+                      <StatusChip state={s.status.state} label={s.status.label} />
+                      {s.checkError && (
+                        <span className="mt-1 flex items-center gap-1 text-xs text-error" title={s.checkError}>
+                          <Icon name="alert" size={11} />
+                          {t("Check error")}
+                        </span>
+                      )}
+                    </td>
+                    <td className="dim">{timeAgo(s.updatedAt, lang)}</td>
+                    <td onClick={(e) => e.stopPropagation()}>
+                      {confirmDelete === s.id ? (
+                        <span className="flex items-center justify-end gap-1.5">
+                          <button
+                            type="button"
+                            className="btn btn-tiny btn-danger"
+                            onClick={() => handleDelete(s.id)}
+                          >
+                            {t("Delete")}
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-tiny btn-quiet"
+                            onClick={() => setConfirmDelete(null)}
+                          >
+                            {t("Cancel")}
+                          </button>
+                        </span>
+                      ) : (
+                        <span className="flex items-center justify-end gap-1">
+                          {s.site !== "epub" && (
+                            <button
+                              type="button"
+                              className={`btn btn-quiet btn-tiny${s.watching ? " text-select-deep" : ""}`}
+                              title={s.watching ? t("Stop watching for new chapters") : t("Watch for new chapters")}
+                              aria-label={s.watching ? t("Stop watching {title}", { title: s.title }) : t("Watch {title}", { title: s.title })}
+                              aria-pressed={s.watching}
+                              onClick={() => handleWatchToggle(s)}
+                            >
+                              <Icon name="bell" size={13} filled={s.watching} />
+                            </button>
+                          )}
+                          <button
+                            type="button"
+                            className="btn btn-quiet btn-tiny"
+                            title={s.crawling ? t("Crawling, cannot delete") : t("Delete story from library")}
+                            aria-label={t("Delete {title}", { title: s.title })}
+                            disabled={!!s.crawling}
+                            onClick={() => setConfirmDelete(s.id)}
+                          >
+                            <Icon name="trash" size={13} />
+                          </button>
+                        </span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </div>
+
+        {pageCount > 1 && (
+          <div className="flex items-center gap-2 border-t border-rule px-3 py-2 text-xs text-ink-2">
+            <span>{t("Page {page}/{total}", { page: currentPage, total: pageCount })}</span>
+            <span className="ml-auto flex gap-1.5">
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                disabled={currentPage <= 1}
+                onClick={() => setPage(currentPage - 1)}
+              >
+                {t("Previous")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                disabled={currentPage >= pageCount}
+                onClick={() => setPage(currentPage + 1)}
+              >
+                {t("Next")}
+              </button>
+            </span>
+          </div>
+        )}
+      </section>
+
+      {opening ? (
+        <StoryDetailSkeleton />
+      ) : selected ? (
+        <StoryDetail
+          key={selected.id}
+          story={selected}
+          job={job}
+          attach={attach}
+          clearChapters={clearChapters}
+          onStoryChanged={handleStoryChanged}
+          onClear={() => setSelected(null)}
+          pushNotice={pushNotice}
+          onOpenSettings={onOpenSettings}
+        />
+      ) : (
+        <section className="pane">
+          <div className="pane-head">
+            <h2 className="ml-auto">{t("Story details")}</h2>
+          </div>
+          <div className="empty">
+            <h3>{t("No story selected")}</h3>
+            <p>
+              {t(
+                "The table on the left lists saved stories with progress. Select a story to view its chapters, continue crawling, edit content, and export to EPUB."
+              )}
+            </p>
+          </div>
+        </section>
+      )}
+
+      {sessionPrompt && (
+        <SiteSessionDialog
+          site={sessionPrompt.site}
+          onSaved={(result) => {
+            const { url, action } = sessionPrompt;
+            setSessionPrompt(null);
+            pushNotice({ kind: "session-saved", username: result.username });
+            if (action === "import") void importUrlFrom(url);
+            else void createStoryFrom(url);
+          }}
+          onSkip={() => {
+            const { url, action } = sessionPrompt;
+            setSessionPrompt(null);
+            if (action === "import") void importUrlFrom(url);
+            else void createStoryFrom(url);
+          }}
+        />
+      )}
+    </>
+  );
+}

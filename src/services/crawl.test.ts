@@ -1,13 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { fetchWattpadChapter } from "./chapters/wattpad";
+import { fetchWattpadChapter } from "../sites/wattpad/chapter";
 import type { ChapterFetchContext } from "./chapters/types";
 import { estimateRemainingMs, extractWithRetry, MAX_ATTEMPTS } from "./crawl";
 import type { EpubMediaStore } from "./epubMedia";
 import { LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
-vi.mock("./chapters/wattpad", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./chapters/wattpad")>();
+vi.mock("../sites/wattpad/chapter", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../sites/wattpad/chapter")>();
   return { ...actual, fetchWattpadChapter: vi.fn() };
 });
 

@@ -24,7 +24,8 @@ const STORY_URL = "https://xtruyen.vn/truyen/truyen-thu/";
 // author (the default only fills in the gap it leaves).
 const toc = vi.hoisted(() => ({ author: undefined as string | undefined }));
 
-vi.mock("../services/toc", () => ({
+vi.mock("../sites", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../sites")>()),
   getTocAdapter: (url: string) =>
     new URL(url).hostname === "xtruyen.vn"
       ? {

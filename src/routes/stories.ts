@@ -15,13 +15,17 @@ import {
   archiveItemId,
   importArchiveItem,
 } from "../services/archiveImport";
-import { DrmError, EpubTooLargeError, NotEpubError, parseEpub } from "../services/epubImport";
+import { DrmError, EpubTooLargeError, ImportedBook, NotEpubError, parseEpub } from "../services/epubImport";
+import { DtvEbookNoEpubError, DtvEbookNotFoundError, dtvEbookId, importDtvEbook } from "../services/dtvEbookImport";
+import { HeyzineNotFoundError, HeyzineUnavailableError, heyzineId, importHeyzine } from "../services/heyzineImport";
 import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
 import { settingsStore } from "../services/settingsStore";
 import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
-import { getTocAdapter } from "../services/toc";
+import { getTocAdapter } from "../sites";
+import { activeAiProvider } from "../services/ai/aiConfig";
+import { createAiTocAdapter } from "../services/ai/aiLocate";
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";
@@ -65,6 +69,24 @@ async function refreshStoryToc(params: {
   return story;
 }
 
+// The adapter and site label for a story URL: a supported site's own, else — only when AI
+// crawling is on AND the request asked for it (`ai: true`, the home page's AI button) — the
+// AI adapter, labelled by hostname. Stories already added that way keep using it for
+// check/refresh, which pass allowAi themselves.
+function resolveToc(url: string, allowAi: boolean): { site: string; adapter: TocAdapter } | { error: "unsupported" | "no-adapter"; name?: string } {
+  const supported = findSupportedSite(url);
+  if (supported) {
+    const adapter = getTocAdapter(url);
+    return adapter ? { site: supported.domain, adapter } : { error: "no-adapter", name: supported.name };
+  }
+  if (!allowAi || !activeAiProvider()) return { error: "unsupported" };
+  try {
+    return { site: new URL(url).hostname.replace(/^www\./, ""), adapter: createAiTocAdapter() };
+  } catch {
+    return { error: "unsupported" };
+  }
+}
+
 storiesRouter.post("/stories", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) return;
@@ -77,18 +99,25 @@ storiesRouter.post("/stories", async (req, res) => {
     res.status(400).json({ message: t("Internet Archive books are imported, not crawled") });
     return;
   }
-  const site = findSupportedSite(url);
-  if (!site) {
-    res.status(400).json({ message: t("This site is not yet supported: {url}", { url }) });
+  if (dtvEbookId(url)) {
+    res.status(400).json({ message: t("DTV Ebook books are imported, not crawled") });
     return;
   }
-  const adapter = getTocAdapter(url);
-  if (!adapter) {
+  if (heyzineId(url)) {
+    res.status(400).json({ message: t("Heyzine flipbooks are imported, not crawled") });
+    return;
+  }
+  const resolved = resolveToc(url, (req.body as { ai?: unknown }).ai === true);
+  if ("error" in resolved) {
     res.status(400).json({
-      message: t("{site} does not yet support automatic chapter list loading", { site: site.name }),
+      message:
+        resolved.error === "no-adapter"
+          ? t("{site} does not yet support automatic chapter list loading", { site: resolved.name as string })
+          : t("This site is not yet supported: {url}", { url }),
     });
     return;
   }
+  const { site, adapter } = resolved;
 
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
@@ -98,7 +127,7 @@ storiesRouter.post("/stories", async (req, res) => {
   }
   try {
     const existing = await library.stories.get(id);
-    const story = await refreshStoryToc({ library, existing, storyUrl, site: site.domain, adapter });
+    const story = await refreshStoryToc({ library, existing, storyUrl, site, adapter });
     // User just manually loaded TOC: the "N new chapters" chip from the previous check
     // is now stale (new chapters became pending).
     await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
@@ -107,6 +136,47 @@ storiesRouter.post("/stories", async (req, res) => {
     res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });
+
+// Save a book that came from a source with no chapter list (a file, archive.org, a site
+// that only hosts the EPUB) as an imported story: site "epub" so the crawl/watch controls
+// stay hidden, every chapter already done. The book's own metadata wins; a re-import
+// keeps what the reader edited, and a new story starts from the settings defaults.
+async function saveImportedBook(
+  library: Library,
+  params: { id: string; storyUrl: string; book: ImportedBook; existing?: StoredStory }
+): Promise<StoredStory> {
+  const { id, storyUrl, book, existing } = params;
+  let coverUrl = existing?.coverUrl;
+  if (book.cover) {
+    const saved = library.covers.saveBytes(id, book.cover.bytes);
+    if (saved) coverUrl = saved;
+  }
+  const defaults = settingsStore.get();
+  const now = new Date().toISOString();
+  const story: StoredStory = {
+    id,
+    storyUrl,
+    site: "epub",
+    title: book.title,
+    author: book.author ?? existing?.author ?? (defaults.defaultAuthor || undefined),
+    language: book.language ?? existing?.language ?? defaults.defaultBookLanguage,
+    coverUrl,
+    watching: false,
+    newChapterCount: 0,
+    chapters: book.chapters.map((chapter, index) => ({
+      order: index + 1,
+      url: `${storyUrl}#${index + 1}`,
+      title: chapter.title,
+      status: "done" as const,
+      blocks: chapter.blocks,
+    })),
+    createdAt: existing?.createdAt ?? now,
+    updatedAt: now,
+  };
+  await library.stories.save(story);
+  // getOutline only drops the chapter bodies, so it is the same story the routes answer with.
+  return (await library.stories.getOutline(id)) as StoredStory;
+}
 
 // Import an .epub file as a story. A file hash gives the story a stable URL and id, so
 // re-importing the same file targets the same story; without ?overwrite=1 that answers
@@ -149,39 +219,8 @@ storiesRouter.post(
         storeImage: (imageBytes: Buffer, extension: string) => library.epubMedia.save(id, imageBytes, extension),
       };
       const book = pdf ? await parsePdf(bytes, parseOptions) : await parseEpub(bytes, parseOptions);
-
-      let coverUrl = existing?.coverUrl;
-      if (book.cover) {
-        const saved = library.covers.saveBytes(id, book.cover.bytes);
-        if (saved) coverUrl = saved;
-      }
-
-      const defaults = settingsStore.get();
-      const now = new Date().toISOString();
-      const story: StoredStory = {
-        id,
-        storyUrl,
-        site: "epub",
-        title: book.title,
-        // The file wins when it carries metadata; otherwise a re-import keeps what the
-        // reader edited, and a new story starts from the settings defaults.
-        author: book.author ?? existing?.author ?? (defaults.defaultAuthor || undefined),
-        language: book.language ?? existing?.language ?? defaults.defaultBookLanguage,
-        coverUrl,
-        watching: false,
-        newChapterCount: 0,
-        chapters: book.chapters.map((chapter, index) => ({
-          order: index + 1,
-          url: `${storyUrl}#${index + 1}`,
-          title: chapter.title,
-          status: "done" as const,
-          blocks: chapter.blocks,
-        })),
-        createdAt: existing?.createdAt ?? now,
-        updatedAt: now,
-      };
-      await library.stories.save(story);
-      res.status(existing ? 200 : 201).json({ story: await library.stories.getOutline(id) });
+      const story = await saveImportedBook(library, { id, storyUrl, book, existing });
+      res.status(existing ? 200 : 201).json({ story });
     } catch (err) {
       // Only the parser's own, already-translated errors are safe to echo; anything else
       // (raw parser messages, FS/SQLite failures with absolute paths) gets the generic
@@ -235,37 +274,8 @@ storiesRouter.post("/stories/import-archive", async (req, res) => {
       storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
       session: loadSiteSession(`https://archive.org/details/${itemId}`),
     });
-
-    let coverUrl = existing?.coverUrl;
-    if (book.cover) {
-      const saved = library.covers.saveBytes(id, book.cover.bytes);
-      if (saved) coverUrl = saved;
-    }
-
-    const defaults = settingsStore.get();
-    const now = new Date().toISOString();
-    const story: StoredStory = {
-      id,
-      storyUrl,
-      site: "epub",
-      title: book.title,
-      author: book.author ?? existing?.author ?? (defaults.defaultAuthor || undefined),
-      language: book.language ?? existing?.language ?? defaults.defaultBookLanguage,
-      coverUrl,
-      watching: false,
-      newChapterCount: 0,
-      chapters: book.chapters.map((chapter, index) => ({
-        order: index + 1,
-        url: `${storyUrl}#${index + 1}`,
-        title: chapter.title,
-        status: "done" as const,
-        blocks: chapter.blocks,
-      })),
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-    await library.stories.save(story);
-    res.status(existing ? 200 : 201).json({ story: await library.stories.getOutline(id) });
+    const story = await saveImportedBook(library, { id, storyUrl, book, existing });
+    res.status(existing ? 200 : 201).json({ story });
   } catch (err) {
     // Only the service's own, already-translated errors are safe to echo; anything else
     // (network failure, parser internals) gets the generic wording.
@@ -280,6 +290,101 @@ storiesRouter.post("/stories/import-archive", async (req, res) => {
       err instanceof SiteSessionUnreadableError
         ? err.message
         : t("Could not import from Internet Archive");
+    res.status(400).json({ message });
+  }
+});
+
+// Import a book from dtv-ebook.com.vn. The site has no chapter pages — each book is one
+// EPUB the site hosts, named by its "Đọc online" reader page — so this reads that file
+// (services/dtvEbookImport.ts) instead of crawling. The book id is the story URL, so
+// re-adding the same book asks before overwriting, like the other imports.
+storiesRouter.post("/stories/import-dtvebook", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { url } = (req.body ?? {}) as { url?: string };
+  if (!url) {
+    res.status(400).json({ message: t("url is required") });
+    return;
+  }
+  const bookId = dtvEbookId(url);
+  if (!bookId) {
+    res.status(400).json({
+      message: t("This is not a DTV Ebook book page: {url} — paste a URL like https://dtv-ebook.com.vn/<name>_<id>.html", {
+        url,
+      }),
+    });
+    return;
+  }
+  const storyUrl = `dtv:${bookId}`;
+  const id = storyId(storyUrl);
+  const overwrite = req.query.overwrite === "1";
+  const existing = await library.stories.getOutline(id);
+  if (existing && !overwrite) {
+    res.status(409).json({ code: "exists", message: t("This book is already in the library"), story: existing });
+    return;
+  }
+
+  try {
+    const book = await importDtvEbook(bookId, {
+      storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
+    });
+    const story = await saveImportedBook(library, { id, storyUrl, book, existing });
+    res.status(existing ? 200 : 201).json({ story });
+  } catch (err) {
+    const message =
+      err instanceof DtvEbookNotFoundError || err instanceof DtvEbookNoEpubError
+        ? err.message
+        : t("Could not import from DTV Ebook");
+    res.status(400).json({ message });
+  }
+});
+
+// Import a book from a heyzine.com flipbook. The flipbook renders a PDF the site hosts,
+// so services/heyzineImport.ts reads that file instead of crawling page images. A
+// password-protected flipbook exposes no PDF and is refused. The flipbook id is the story
+// URL, so re-adding the same book asks before overwriting, like the other imports.
+storiesRouter.post("/stories/import-heyzine", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { url } = (req.body ?? {}) as { url?: string };
+  if (!url) {
+    res.status(400).json({ message: t("url is required") });
+    return;
+  }
+  const bookId = heyzineId(url);
+  if (!bookId) {
+    res.status(400).json({
+      message: t("This is not a Heyzine flipbook: {url} — paste a URL like https://heyzine.com/flip-book/<id>.html", {
+        url,
+      }),
+    });
+    return;
+  }
+  const storyUrl = `heyzine:${bookId}`;
+  const id = storyId(storyUrl);
+  const overwrite = req.query.overwrite === "1";
+  const existing = await library.stories.getOutline(id);
+  if (existing && !overwrite) {
+    res.status(409).json({ code: "exists", message: t("This book is already in the library"), story: existing });
+    return;
+  }
+
+  try {
+    const book = await importHeyzine(bookId, {
+      storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
+    });
+    const story = await saveImportedBook(library, { id, storyUrl, book, existing });
+    res.status(existing ? 200 : 201).json({ story });
+  } catch (err) {
+    // Only already-translated errors are echoed; anything else gets the generic wording.
+    const message =
+      err instanceof HeyzineNotFoundError ||
+      err instanceof HeyzineUnavailableError ||
+      err instanceof NotPdfError ||
+      err instanceof PdfLockedError ||
+      err instanceof PdfTooLargeError
+        ? err.message
+        : t("Could not import from Heyzine");
     res.status(400).json({ message });
   }
 });
@@ -411,7 +516,8 @@ storiesRouter.post("/stories/:id/check", async (req, res) => {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  const adapter = getTocAdapter(story.storyUrl);
+  const resolved = resolveToc(story.storyUrl, true);
+  const adapter = "adapter" in resolved ? resolved.adapter : undefined;
   if (!adapter) {
     res.status(400).json({ message: t("This story has no TOC adapter for checking") });
     return;
@@ -447,9 +553,8 @@ storiesRouter.post("/stories/:id/refresh", async (req, res) => {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  const site = findSupportedSite(existing.storyUrl);
-  const adapter = getTocAdapter(existing.storyUrl);
-  if (!site || !adapter) {
+  const resolved = resolveToc(existing.storyUrl, true);
+  if (!("adapter" in resolved)) {
     res.status(400).json({ message: t("This story has no TOC adapter") });
     return;
   }
@@ -463,8 +568,8 @@ storiesRouter.post("/stories/:id/refresh", async (req, res) => {
       library,
       existing,
       storyUrl: existing.storyUrl,
-      site: site.domain,
-      adapter,
+      site: resolved.site,
+      adapter: resolved.adapter,
     });
     await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });

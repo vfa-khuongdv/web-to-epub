@@ -1,7 +1,8 @@
 {
   "name": "web-to-epub",
-  "version": "1.6.0",
+  "version": "1.6.1",
   "description": "Extract rendered web page text (bypassing copy-protection) and export to Kindle-ready EPUB",
+  "author": "vfa-khuongdv <khuongdv@vitalify.asia>",
   "repository": {
     "type": "git",
     "url": "https://github.com/vfa-khuongdv/web-to-epub.git"
@@ -20,8 +21,10 @@
     "dev:frontend": "npm run dev -w frontend",
     "test": "vitest run",
     "test:e2e": "npm run build && playwright test",
-    "app:mac": "npm run build && npm run app:browser && npm run app:icon && electron-builder --mac --arm64",
-    "app:browser": "PLAYWRIGHT_BROWSERS_PATH=\"$PWD/build/ms-playwright\" playwright install --only-shell chromium",
+    "app:mac": "npm run build && npm run app:browser && npm run app:icon && electron-builder --mac --arm64 --publish never",
+    "app:win": "npm run build && npm run app:browser && electron-builder --win --x64 --publish never",
+    "app:linux": "npm run build && npm run app:browser && electron-builder --linux --x64 --publish never",
+    "app:browser": "node scripts/install-browser.js",
     "app:icon": "node scripts/make-icon.js"
   },
   "dependencies": {
@@ -77,6 +80,46 @@
       "category": "public.app-category.productivity",
       "identity": null,
       "icon": "build/icon.icns"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon-1024.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Office",
+      "icon": "build/icon-1024.png",
+      "maintainer": "vfa-khuongdv"
     },
     "afterPack": "scripts/adhoc-sign.js"
   }

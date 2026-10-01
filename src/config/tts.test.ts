@@ -2,10 +2,35 @@ import { describe, expect, it } from "vitest";
 import { omnivoiceUvDownloadUrl, uvDownloadUrl } from "./tts";
 
 describe("omnivoiceUvDownloadUrl", () => {
-  it("is offered on Apple Silicon only, where it runs on MPS", () => {
-    expect(omnivoiceUvDownloadUrl("darwin", "arm64")).toBe(uvDownloadUrl("darwin", "arm64"));
-    expect(omnivoiceUvDownloadUrl("darwin", "x64")).toBeUndefined();
-    expect(omnivoiceUvDownloadUrl("linux", "x64")).toBeUndefined();
-    expect(omnivoiceUvDownloadUrl("linux", "arm64")).toBeUndefined();
+  const gpu = () => true;
+  const noGpu = () => false;
+
+  it("is offered on Apple Silicon, where it runs on MPS", () => {
+    expect(omnivoiceUvDownloadUrl("darwin", "arm64", noGpu)).toBe(uvDownloadUrl("darwin", "arm64"));
+    expect(omnivoiceUvDownloadUrl("darwin", "x64", gpu)).toBeUndefined();
+  });
+
+  it("is offered on Windows/Linux x64 only with an NVIDIA GPU (CPU is ~17x real time)", () => {
+    expect(omnivoiceUvDownloadUrl("linux", "x64", gpu)).toBe(uvDownloadUrl("linux", "x64"));
+    expect(omnivoiceUvDownloadUrl("win32", "x64", gpu)).toBe(uvDownloadUrl("win32", "x64"));
+    expect(omnivoiceUvDownloadUrl("linux", "x64", noGpu)).toBeUndefined();
+    expect(omnivoiceUvDownloadUrl("win32", "x64", noGpu)).toBeUndefined();
+    expect(omnivoiceUvDownloadUrl("linux", "arm64", gpu)).toBeUndefined();
+  });
+
+  it("does not look for a GPU where the answer is already known", () => {
+    const probe = () => {
+      throw new Error("probed");
+    };
+    expect(() => omnivoiceUvDownloadUrl("darwin", "arm64", probe)).not.toThrow();
+    expect(() => omnivoiceUvDownloadUrl("linux", "arm64", probe)).not.toThrow();
+  });
+});
+
+describe("uvDownloadUrl", () => {
+  it("is a tarball on macOS/Linux and a zip on Windows", () => {
+    expect(uvDownloadUrl("linux", "x64")).toMatch(/x86_64-unknown-linux-gnu\.tar\.gz$/);
+    expect(uvDownloadUrl("win32", "x64")).toMatch(/x86_64-pc-windows-msvc\.zip$/);
+    expect(uvDownloadUrl("win32", "arm64")).toBeUndefined();
   });
 });

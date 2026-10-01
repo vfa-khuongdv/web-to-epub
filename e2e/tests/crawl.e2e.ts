@@ -24,11 +24,9 @@ test("crawls pending chapters with live progress and stores extracted content", 
   await page.locator("header").getByRole("button", { name: /^Crawling/ }).click();
   const log = page.getByRole("dialog", { name: "Crawl log" });
   await expect(log.getByRole("progressbar", { name: "Crawl progress" })).toBeVisible();
-  await expect(page.getByRole("status").filter({ hasText: "Downloaded 3 chapters" })).toBeVisible({
-    timeout: 90_000,
-  });
+  // No toast when a crawl ends any more: the dialog itself switches to "completed".
+  await expect(log.getByRole("progressbar", { name: "Crawl completed" })).toBeVisible({ timeout: 90_000 });
   await expect(log.getByText("Done · Story: Crawl happy path")).toBeVisible();
-  await expect(log.getByRole("progressbar", { name: "Crawl completed" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(log).toHaveCount(0);
   // Closed, the last run stays one click away.
@@ -56,9 +54,8 @@ test("recovers from a blanked page and fails fast on a locked chapter", async ({
   await page.goto("/");
   await page.getByRole("button", { name: "Crawl failures", exact: true }).click();
   await page.getByRole("button", { name: "Continue crawl (2 chapters)" }).click();
-  await expect(page.getByRole("status").filter({ hasText: "Downloaded" })).toBeVisible({
-    timeout: 90_000,
-  });
+  // A finished crawl leaves "Crawl log" in the header (there is no completion toast).
+  await expect(page.locator("header").getByRole("button", { name: /^Crawl log/ })).toBeVisible({ timeout: 90_000 });
 
   const stored = await store.get(story.id);
   expect(stored?.chapters[0].status).toBe("done");

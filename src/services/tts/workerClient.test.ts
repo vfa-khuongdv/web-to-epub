@@ -1,7 +1,7 @@
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NarrationCancelled, TtsWorker, startTtsWorker } from "./workerClient";
 
 const FAKE = path.join(__dirname, "__fixtures__", "fakeWorker.js");
@@ -24,7 +24,8 @@ describe("TTS worker client", () => {
   it("loads a model and lists its voices; forwards stderr to the log", async () => {
     const loaded = await worker!.load("nano");
     expect(loaded).toEqual({ variant: "nano", voices: [{ id: "A", label: "A — test" }], sampleRate: 24000 });
-    expect(logs).toContain("loading nano");
+    // stderr is a separate pipe from the reply, so its line can land just after it.
+    await vi.waitFor(() => expect(logs).toContain("loading nano"));
   });
 
   it("synthesizes with per-part progress", async () => {

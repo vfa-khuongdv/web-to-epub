@@ -172,3 +172,61 @@ export function cleanupUpdateLeftovers(appBundlePath: string): void {
     // ignore
   }
 }
+
+// ---- Windows and Linux --------------------------------------------------------------
+
+export type UpdateKind = "mac" | "win" | "appimage";
+
+/**
+ * How this install can replace itself, or null when it cannot (then the update banner only
+ * links to the release page):
+ *  - mac: the .app bundle, swapped from the release zip;
+ *  - win: an NSIS install (the uninstaller sits next to the exe) — the portable zip has none
+ *    and must not sprout a second, installed copy;
+ *  - appimage: only the AppImage runtime sets APPIMAGE. A .deb lives in root-owned /opt.
+ */
+export function updateKind(
+  platform: string,
+  env: NodeJS.ProcessEnv,
+  execPath: string,
+  exists: (file: string) => boolean = fs.existsSync
+): UpdateKind | null {
+  if (platform === "darwin") return execPath.includes(".app/Contents/MacOS/") ? "mac" : null;
+  if (platform === "win32") {
+    return listNames(path.dirname(execPath)).some((name) => /^Uninstall .*\.exe$/i.test(name)) ? "win" : null;
+  }
+  if (platform === "linux") return env.APPIMAGE && exists(env.APPIMAGE) ? "appimage" : null;
+  return null;
+}
+
+/**
+ * Puts a downloaded AppImage in place of the running one. Written next to it and renamed
+ * over it: same volume, atomic, and the running process keeps the old file's inode. The
+ * caller starts the new file (electron/main.js).
+ */
+export function installAppImage(options: {
+  downloadPath: string;
+  appImagePath: string;
+  rename?: (from: string, to: string) => void;
+}): void {
+  const rename = options.rename ?? fs.renameSync;
+  const target = path.resolve(options.appImagePath);
+  if (!fs.existsSync(options.downloadPath)) throw new Error(`Update file not found: ${options.downloadPath}`);
+
+  const staged = path.join(path.dirname(target), `.web-to-epub-update-${process.pid}.AppImage`);
+  try {
+    fs.copyFileSync(options.downloadPath, staged);
+    fs.chmodSync(staged, 0o755);
+    rename(staged, target);
+  } catch (error) {
+    fs.rmSync(staged, { force: true });
+    const code = (error as NodeJS.ErrnoException | null)?.code;
+    if (code === "EACCES" || code === "EPERM" || code === "EROFS") {
+      throw errorWithCause(
+        "The AppImage cannot replace itself here — move it to a folder you can write to and try again, or download the new version from the release page.",
+        error
+      );
+    }
+    throw error;
+  }
+}

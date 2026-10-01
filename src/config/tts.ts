@@ -1,3 +1,4 @@
+import { execFileSync } from "child_process";
 import path from "path";
 import { DATA_DIR } from "./paths";
 
@@ -24,18 +25,43 @@ const UV_TARGETS: Record<string, string> = {
   "darwin-x64": "x86_64-apple-darwin",
   "linux-arm64": "aarch64-unknown-linux-gnu",
   "linux-x64": "x86_64-unknown-linux-gnu",
+  "win32-x64": "x86_64-pc-windows-msvc",
 };
 
-// OmniVoice is only offered where it runs on the GPU (MPS): on CPU it takes ~17 s per
-// second of speech, which no book survives.
-export function omnivoiceUvDownloadUrl(platform: string = process.platform, arch: string = process.arch): string | undefined {
-  return platform === "darwin" && arch === "arm64" ? uvDownloadUrl(platform, arch) : undefined;
+let nvidiaGpu: boolean | undefined;
+// True when an NVIDIA driver answers (nvidia-smi ships with it). Checked once.
+export function hasNvidiaGpu(): boolean {
+  if (nvidiaGpu === undefined) {
+    try {
+      execFileSync("nvidia-smi", ["-L"], { stdio: "ignore", timeout: 5000 });
+      nvidiaGpu = true;
+    } catch {
+      nvidiaGpu = false;
+    }
+  }
+  return nvidiaGpu;
 }
+
+// OmniVoice is only offered where it runs on a GPU: Metal (Apple Silicon) or CUDA (an NVIDIA
+// card on Windows/Linux x64). On CPU it takes ~17 s per second of speech, which no book survives.
+export function omnivoiceUvDownloadUrl(
+  platform: string = process.platform,
+  arch: string = process.arch,
+  nvidia: () => boolean = hasNvidiaGpu
+): string | undefined {
+  if (platform === "darwin") return arch === "arm64" ? uvDownloadUrl(platform, arch) : undefined;
+  return (platform === "linux" || platform === "win32") && arch === "x64" && nvidia() ? uvDownloadUrl(platform, arch) : undefined;
+}
+
+// CUDA build of torch for Windows/Linux, from PyTorch's own index (PyPI's Windows wheel is
+// CPU-only). cu126 runs on drivers from 2024 on; macOS uses the plain PyPI wheel (Metal).
+export const TORCH_CUDA_TAG = "cu126";
+export const TORCH_CUDA_INDEX = `https://download.pytorch.org/whl/${TORCH_CUDA_TAG}`;
 
 export function uvDownloadUrl(platform: string = process.platform, arch: string = process.arch): string | undefined {
   const target = UV_TARGETS[`${platform}-${arch}`];
   if (!target) return undefined;
-  return `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${target}.tar.gz`;
+  return `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${target}.${platform === "win32" ? "zip" : "tar.gz"}`;
 }
 
 // The full dependency set VieNeu was tested with, installed as uv constraints: pinning

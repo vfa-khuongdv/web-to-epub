@@ -85,6 +85,7 @@ const vi: Record<string, string> = {
   // Crawling and extraction
   "Loading & extracting…{attempt}": "Đang tải & trích xuất…{attempt}",
   "Could not extract main content from {url}": "Không trích xuất được nội dung chính từ {url}",
+  "This chapter needs a login on the site, which the app does not bypass: {url}": "Chương này cần đăng nhập vào trang, ứng dụng không vượt qua bước đăng nhập: {url}",
   "Page loaded empty (temporary error, can retry): {url}":
     "Trang tải về rỗng (lỗi tạm thời, thử lại được): {url}",
   "Failed to fetch {url} (HTTP {status}){hint}": "Không tải được {url} (HTTP {status}){hint}",
@@ -259,6 +260,20 @@ const vi: Record<string, string> = {
     "Sách từ Internet Archive có quá nhiều trang để nhập (tối đa {count})",
   "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
   "Internet Archive books are imported, not crawled": "Sách Internet Archive được nhập về, không crawl",
+  "DTV Ebook could not serve this book: {url}": "DTV Ebook không phục vụ được sách này: {url}",
+  "This DTV Ebook book has no EPUB to import — the site only offers other formats: {url}":
+    "Sách DTV Ebook này không có file EPUB để nhập — site chỉ có định dạng khác: {url}",
+  "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
+  "DTV Ebook books are imported, not crawled": "Sách DTV Ebook được nhập về, không crawl",
+  "This is not a DTV Ebook book page: {url} — paste a URL like https://dtv-ebook.com.vn/<name>_<id>.html":
+    "Đây không phải trang sách DTV Ebook: {url} — dán URL dạng https://dtv-ebook.com.vn/<ten>_<id>.html",
+  "Heyzine could not serve this flipbook: {url}": "Heyzine không phục vụ được flipbook này: {url}",
+  "This Heyzine flipbook is not publicly readable (it may be password-protected or removed): {url}":
+    "Flipbook Heyzine này không đọc được công khai (có thể đang được bảo vệ bằng mật khẩu hoặc đã bị xoá): {url}",
+  "Could not import from Heyzine": "Không nhập được sách từ Heyzine",
+  "Heyzine flipbooks are imported, not crawled": "Flipbook Heyzine được nhập về, không crawl",
+  "This is not a Heyzine flipbook: {url} — paste a URL like https://heyzine.com/flip-book/<id>.html":
+    "Đây không phải flipbook Heyzine: {url} — dán URL dạng https://heyzine.com/flip-book/<id>.html",
 };
 
 let current: Lang = DEFAULT_LANG;

@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { t } from "../services/lang";
+import { SESSION_SITES } from "../sites";
 import {
   parseSessionCurl,
   removeSiteSession,
@@ -10,18 +11,7 @@ import {
 
 export const siteSessionsRouter = Router();
 
-// The sites whose crawls need a session saved from the reader's own browser: Asianfanfics
-// for its rated-M / subscribers-only stories, truyenfull.live for the Cloudflare check its
-// story pages sit behind, Scribd for documents that only load for a logged-in account,
-// archive.org for borrow-only imports (the login that lets the loans API act on the
-// reader's behalf). Kept as a slug allowlist rather than a :domain parameter so no
-// request can name a file to write.
-const SESSION_SITES: Record<string, string> = {
-  asianfanfics: "asianfanfics.com",
-  truyenfull: "truyenfull.live",
-  scribd: "scribd.com",
-  archive: "archive.org",
-};
+// Which sites keep a session is declared by each site (src/sites/<id>/index.ts).
 
 siteSessionsRouter.get("/site-sessions/:site", (req, res) => {
   const domain = SESSION_SITES[req.params.site];
