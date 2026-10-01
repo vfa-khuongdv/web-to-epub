@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import { compareVersions, createAppUpdateChecker, pickUpdateAsset, pickZipAsset } from "./appUpdate";
+import { MAX_NOTES_CHARS, compareVersions, createAppUpdateChecker, pickUpdateAsset, pickZipAsset, releaseNotes } from "./appUpdate";
 
 const release = (overrides: Record<string, unknown> = {}) => ({
   tag_name: "v1.6.0",
@@ -77,7 +77,50 @@ describe("pickUpdateAsset", () => {
   });
 });
 
+describe("releaseNotes", () => {
+  it("returns what the maintainer wrote on the release, as markdown", () => {
+    expect(releaseNotes("Adds an AI crawler.\n\n## AI crawler\n\n- Read any site")).toBe(
+      "Adds an AI crawler.\n\n## AI crawler\n\n- Read any site"
+    );
+  });
+
+  it("normalizes line endings and drops HTML comments", () => {
+    expect(releaseNotes("Line one\r\n<!-- note for the editor -->Line two\r\n")).toBe("Line one\nLine two");
+  });
+
+  it("is null when there is nothing to show", () => {
+    expect(releaseNotes(undefined)).toBeNull();
+    expect(releaseNotes(null)).toBeNull();
+    expect(releaseNotes(42)).toBeNull();
+    expect(releaseNotes("  \n  ")).toBeNull();
+    expect(releaseNotes("<!-- only a comment -->")).toBeNull();
+  });
+
+  it("cuts a very long body at a line end and marks the cut", () => {
+    const line = "- a bullet of the changelog that goes on for a while";
+    const body = Array.from({ length: 400 }, () => line).join("\n");
+    const notes = releaseNotes(body) as string;
+    expect(notes.length).toBeLessThanOrEqual(MAX_NOTES_CHARS + 2);
+    expect(notes.endsWith("\n…")).toBe(true);
+    // every kept line is whole
+    expect(notes.split("\n").slice(0, -1).every((l) => l === line)).toBe(true);
+  });
+});
+
 describe("createAppUpdateChecker", () => {
+  it("carries the release's notes to the dialog", async () => {
+    const fetchImpl = async () => jsonResponse(release({ body: "## What's new\n\n- A thing" }));
+    const checker = createAppUpdateChecker({ platform: "darwin", fetchImpl: fetchImpl as unknown as typeof fetch });
+    await expect(checker.check("1.5.1")).resolves.toMatchObject({ hasUpdate: true, notes: "## What's new\n\n- A thing" });
+  });
+
+  it("has no notes when the release has none, or when the check fails", async () => {
+    const empty = createAppUpdateChecker({ platform: "darwin", fetchImpl: (async () => jsonResponse(release({ body: "" }))) as unknown as typeof fetch });
+    await expect(empty.check("1.5.1")).resolves.toMatchObject({ hasUpdate: true, notes: null });
+    const failing = createAppUpdateChecker({ platform: "darwin", fetchImpl: (async () => jsonResponse({}, false, 500)) as unknown as typeof fetch });
+    await expect(failing.check("1.5.1")).resolves.toMatchObject({ hasUpdate: false, notes: null });
+  });
+
   it("reports an update with the release and zip urls", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse(release()));
     const checker = createAppUpdateChecker({ platform: "darwin", fetchImpl: fetchImpl as unknown as typeof fetch });
@@ -87,6 +130,7 @@ describe("createAppUpdateChecker", () => {
       hasUpdate: true,
       releaseUrl: "https://github.com/vfa-khuongdv/web-to-epub/releases/tag/v1.6.0",
       zipUrl: "https://github.com/dl/x.zip",
+      notes: null,
     });
     expect(fetchImpl).toHaveBeenCalledOnce();
   });
@@ -115,6 +159,7 @@ describe("createAppUpdateChecker", () => {
       hasUpdate: false,
       releaseUrl: null,
       zipUrl: null,
+      notes: null,
     });
   });
 
