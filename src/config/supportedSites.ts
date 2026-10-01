@@ -26,4 +26,5 @@ export function findSupportedSite(url: string): SupportedSite | undefined {
 // there would make POST /stories accept a URL it cannot crawl. The add box still lists
 // them as supported, under a separate heading, because a reader can paste one.
 // archive.org: POST /stories/import-archive. dtv-ebook.com.vn: POST /stories/import-dtvebook.
+// heyzine.com: POST /stories/import-heyzine.
 export const IMPORT_SOURCES: SupportedSite[] = SITE_IMPORT_SOURCES;

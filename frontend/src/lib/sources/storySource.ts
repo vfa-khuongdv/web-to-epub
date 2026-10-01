@@ -9,6 +9,7 @@ const IMPORTED_SOURCE_LABELS: [prefix: string, label: string][] = [
   ["pdf:", "PDF file"],
   ["archive:", "Internet Archive"],
   ["dtv:", "DTV Ebook"],
+  ["heyzine:", "Heyzine"],
 ];
 
 export function storySourceLabel(story: { site: string; storyUrl: string }, t: Translate): string {

@@ -587,6 +587,8 @@ export const en: Record<string, string> = {
   "Could not import from Internet Archive": "Could not import from Internet Archive",
   "DTV Ebook": "DTV Ebook",
   "Could not import from DTV Ebook": "Could not import from DTV Ebook",
+  "Heyzine": "Heyzine",
+  "Could not import from Heyzine": "Could not import from Heyzine",
   "Could not import the file": "Could not import the file",
   "AI crawler": "AI crawler",
   "Crawl any site with AI": "Crawl any site with AI",

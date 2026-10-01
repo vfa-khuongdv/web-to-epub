@@ -267,6 +267,13 @@ const vi: Record<string, string> = {
   "DTV Ebook books are imported, not crawled": "Sách DTV Ebook được nhập về, không crawl",
   "This is not a DTV Ebook book page: {url} — paste a URL like https://dtv-ebook.com.vn/<name>_<id>.html":
     "Đây không phải trang sách DTV Ebook: {url} — dán URL dạng https://dtv-ebook.com.vn/<ten>_<id>.html",
+  "Heyzine could not serve this flipbook: {url}": "Heyzine không phục vụ được flipbook này: {url}",
+  "This Heyzine flipbook is not publicly readable (it may be password-protected or removed): {url}":
+    "Flipbook Heyzine này không đọc được công khai (có thể đang được bảo vệ bằng mật khẩu hoặc đã bị xoá): {url}",
+  "Could not import from Heyzine": "Không nhập được sách từ Heyzine",
+  "Heyzine flipbooks are imported, not crawled": "Flipbook Heyzine được nhập về, không crawl",
+  "This is not a Heyzine flipbook: {url} — paste a URL like https://heyzine.com/flip-book/<id>.html":
+    "Đây không phải flipbook Heyzine: {url} — dán URL dạng https://heyzine.com/flip-book/<id>.html",
 };
 
 let current: Lang = DEFAULT_LANG;

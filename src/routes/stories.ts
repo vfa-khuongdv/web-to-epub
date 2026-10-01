@@ -17,6 +17,7 @@ import {
 } from "../services/archiveImport";
 import { DrmError, EpubTooLargeError, ImportedBook, NotEpubError, parseEpub } from "../services/epubImport";
 import { DtvEbookNoEpubError, DtvEbookNotFoundError, dtvEbookId, importDtvEbook } from "../services/dtvEbookImport";
+import { HeyzineNotFoundError, HeyzineUnavailableError, heyzineId, importHeyzine } from "../services/heyzineImport";
 import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
 import { settingsStore } from "../services/settingsStore";
 import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
@@ -100,6 +101,10 @@ storiesRouter.post("/stories", async (req, res) => {
   }
   if (dtvEbookId(url)) {
     res.status(400).json({ message: t("DTV Ebook books are imported, not crawled") });
+    return;
+  }
+  if (heyzineId(url)) {
+    res.status(400).json({ message: t("Heyzine flipbooks are imported, not crawled") });
     return;
   }
   const resolved = resolveToc(url, (req.body as { ai?: unknown }).ai === true);
@@ -330,6 +335,56 @@ storiesRouter.post("/stories/import-dtvebook", async (req, res) => {
       err instanceof DtvEbookNotFoundError || err instanceof DtvEbookNoEpubError
         ? err.message
         : t("Could not import from DTV Ebook");
+    res.status(400).json({ message });
+  }
+});
+
+// Import a book from a heyzine.com flipbook. The flipbook renders a PDF the site hosts,
+// so services/heyzineImport.ts reads that file instead of crawling page images. A
+// password-protected flipbook exposes no PDF and is refused. The flipbook id is the story
+// URL, so re-adding the same book asks before overwriting, like the other imports.
+storiesRouter.post("/stories/import-heyzine", async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) return;
+  const { url } = (req.body ?? {}) as { url?: string };
+  if (!url) {
+    res.status(400).json({ message: t("url is required") });
+    return;
+  }
+  const bookId = heyzineId(url);
+  if (!bookId) {
+    res.status(400).json({
+      message: t("This is not a Heyzine flipbook: {url} — paste a URL like https://heyzine.com/flip-book/<id>.html", {
+        url,
+      }),
+    });
+    return;
+  }
+  const storyUrl = `heyzine:${bookId}`;
+  const id = storyId(storyUrl);
+  const overwrite = req.query.overwrite === "1";
+  const existing = await library.stories.getOutline(id);
+  if (existing && !overwrite) {
+    res.status(409).json({ code: "exists", message: t("This book is already in the library"), story: existing });
+    return;
+  }
+
+  try {
+    const book = await importHeyzine(bookId, {
+      storeImage: (imageBytes, extension) => library.epubMedia.save(id, imageBytes, extension),
+    });
+    const story = await saveImportedBook(library, { id, storyUrl, book, existing });
+    res.status(existing ? 200 : 201).json({ story });
+  } catch (err) {
+    // Only already-translated errors are echoed; anything else gets the generic wording.
+    const message =
+      err instanceof HeyzineNotFoundError ||
+      err instanceof HeyzineUnavailableError ||
+      err instanceof NotPdfError ||
+      err instanceof PdfLockedError ||
+      err instanceof PdfTooLargeError
+        ? err.message
+        : t("Could not import from Heyzine");
     res.status(400).json({ message });
   }
 });
