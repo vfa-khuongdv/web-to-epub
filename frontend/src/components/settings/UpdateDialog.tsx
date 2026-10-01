@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useLang } from "../../i18n";
 import { AppUpdateInfo } from "../../types";
 import { Icon } from "../ui/Icon";
+import ReleaseNotes from "./ReleaseNotes";
 
 type InstallState =
   | { phase: "idle" }
@@ -62,7 +63,7 @@ export function UpdateDialog({ update, onDismiss }: { update: AppUpdateInfo; onD
       onMouseDown={(event) => event.target === event.currentTarget && !busy && onDismiss()}
     >
       <div
-        className="w-full max-w-md rounded-tool border border-rule-2 bg-raised p-5 shadow-xl"
+        className="w-full max-w-lg rounded-tool border border-rule-2 bg-raised p-5 shadow-xl"
         role="dialog"
         aria-modal="true"
         aria-label={t("Update available")}
@@ -77,6 +78,15 @@ export function UpdateDialog({ update, onDismiss }: { update: AppUpdateInfo; onD
             current: update.current,
           })}
         </p>
+
+        {update.notes && (
+          <section className="mt-3" aria-label={t("What's new")}>
+            <h3 className="mb-1.5 text-[10.5px] font-[650] uppercase tracking-[0.07em] text-ink-2">{t("What's new")}</h3>
+            <div className="max-h-[40vh] overflow-y-auto rounded-tool border border-rule bg-sunken px-3 py-2.5">
+              <ReleaseNotes markdown={update.notes} />
+            </div>
+          </section>
+        )}
 
         {state.phase === "downloading" && (
           <p className="mt-2 text-[12.5px] text-ink-2" role="status">

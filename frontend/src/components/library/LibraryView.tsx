@@ -259,7 +259,6 @@ export default function LibraryView({
       const created = await createStory(url, { ai });
       setSelected(created);
       setStoryUrl("");
-      pushNotice({ kind: "toc-loaded", count: created.chapters.length });
       await loadStories();
     } catch (err) {
       setError((err as Error).message);

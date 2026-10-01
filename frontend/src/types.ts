@@ -176,4 +176,6 @@ export interface AppUpdateInfo {
   hasUpdate: boolean;
   releaseUrl: string | null;
   zipUrl: string | null;
+  // The release's own notes (markdown) from GitHub; null when it has none.
+  notes: string | null;
 }

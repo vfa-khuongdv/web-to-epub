@@ -43,7 +43,6 @@ export const vi: Record<string, string> = {
   "{count} errors": "{count} lỗi",
   "Exported EPUB": "Đã xuất xong EPUB",
   "Exported {count} EPUB files": "Đã xuất xong {count} file EPUB",
-  "Loaded {count} chapters": "Đã tải xong danh sách {count} chương",
 
   // Update dialog
   "Update available": "Có bản cập nhật",
@@ -603,4 +602,8 @@ export const vi: Record<string, string> = {
   "Could not save the AI settings": "Không lưu được cài đặt AI",
   "Load with AI": "Tải bằng AI",
   "Read this page with the AI crawler, even if the site is not supported": "Đọc trang này bằng AI, kể cả khi trang chưa được hỗ trợ",
+  "Size on disk: {size}": "Dung lượng: {size}",
+  "Text {text} · Images {images} · Audio {audio} · Cover {cover}": "Chữ {text} · Ảnh {images} · Giọng đọc {audio} · Bìa {cover}",
+  "Could not load the story's size": "Không tải được dung lượng của truyện",
+  "What's new": "Có gì mới",
 };

@@ -3,6 +3,10 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<!-- Pictures of a comic chapter may be links to the site's own CDN. They are loaded with no referrer
+     everywhere (the reader's frame already does), the way the EPUB export asks for them, so a picture
+     that loads here also loads in the book. -->
+<meta name="referrer" content="no-referrer" />
 <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
 <meta name="theme-color" content="#ececec" media="(prefers-color-scheme: light)" />
 <meta name="theme-color" content="#262626" media="(prefers-color-scheme: dark)" />

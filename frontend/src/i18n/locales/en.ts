@@ -42,7 +42,6 @@ export const en: Record<string, string> = {
   "{count} errors": "{count} errors",
   "Exported EPUB": "Exported EPUB",
   "Exported {count} EPUB files": "Exported {count} EPUB files",
-  "Loaded {count} chapters": "Loaded {count} chapters",
 
   // Update dialog
   "Update available": "Update available",
@@ -601,4 +600,8 @@ export const en: Record<string, string> = {
   "Could not save the AI settings": "Could not save the AI settings",
   "Load with AI": "Load with AI",
   "Read this page with the AI crawler, even if the site is not supported": "Read this page with the AI crawler, even if the site is not supported",
+  "Size on disk: {size}": "Size on disk: {size}",
+  "Text {text} · Images {images} · Audio {audio} · Cover {cover}": "Text {text} · Images {images} · Audio {audio} · Cover {cover}",
+  "Could not load the story's size": "Could not load the story's size",
+  "What's new": "What's new",
 };

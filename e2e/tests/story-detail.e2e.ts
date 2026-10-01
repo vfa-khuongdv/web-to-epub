@@ -26,6 +26,21 @@ test("saves edited metadata and clears the author", async ({ page }) => {
   await expect(page.getByLabel("Book title")).toHaveValue("Meta story renamed");
 });
 
+test("shows what the story takes on disk, with the split in its tooltip", async ({ page }) => {
+  await seedStory({
+    title: "Size story",
+    chapters: [
+      { title: "Chương 1", url: fixtureChapterUrl("size", 1), status: "done", blocks: blocksFor("Size story", 1) },
+    ],
+  });
+
+  await page.goto("/");
+  await page.getByRole("button", { name: "Size story", exact: true }).click();
+  const size = page.getByText(/^Size on disk: /);
+  await expect(size).toBeVisible();
+  await expect(size).toHaveAttribute("title", /^Text .+ · Images .+ · Audio .+ · Cover .+$/);
+});
+
 test("uploads a cover image and shows a placeholder without one", async ({ page, request }) => {
   const story = await seedStory({ title: "Cover story", chapters: [] });
   await seedStory({ title: "No cover story", chapters: [] });
