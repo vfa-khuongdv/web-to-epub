@@ -14,7 +14,7 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { closeVault, fetchVaultStatus, openVault } from "../lib/api";
 import { onVaultExpired, setVaultToken } from "./token";
-import VaultPrompt from "../components/VaultPrompt";
+import VaultPrompt from "../components/settings/VaultPrompt";
 
 // "setup" the first time (pick a code and confirm it), "unlock" every time after.
 export type VaultPromptMode = "setup" | "unlock";

@@ -16,7 +16,7 @@ Then:
    instead of crawled goes in `imports`, never in `supported`.
 3. User-facing text goes through `t()` (`services/lang.ts` server-side, `frontend/src/i18n/`).
 4. A site that needs a browser session sets `session: { slug, domain }`; the dialog copy lives in
-   `frontend/src/lib/siteSessions.ts`.
+   `frontend/src/lib/sources/siteSessions.ts`.
 5. A browser step only that site needs (a click-through gate, say) is a function you pass to
    `renderPageHtml(url, { afterOpen })` from your own `toc.ts`/`chapter.ts`; the renderer stays site-agnostic
    (see `asianfanfics/ageGate.ts`).

@@ -11,7 +11,7 @@ import {
   upNextOrders,
   writePosition,
 } from "./narrationPlayer";
-import { formatClock } from "../components/PlayerBar";
+import { formatClock } from "../components/narration/PlayerBar";
 
 describe("chapter order among narrated chapters", () => {
   const ready = [1, 2, 5, 9];
