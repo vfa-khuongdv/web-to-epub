@@ -2,7 +2,7 @@ export { fetchSupportedSites } from "./supportedSites";
 export type { ApiError } from "./http";
 export { fetchVaultStatus, openVault, changeVaultCode, closeVault } from "./vault";
 export type { VaultStatus } from "./vault";
-export { startStoryCrawl, stopStoryCrawl, fetchStories, createStory, importEpub, importArchive, importDtvEbook, fetchStory, saveStoryMeta, saveChapterEdit, saveChapterUrl, saveChapterTitle, saveChapterSpellChecked, deleteStory, deleteChapter, setStoryWatch, checkStoryUpdates, refreshStoryToc, uploadCover, fetchChapterContent } from "./stories";
+export { startStoryCrawl, stopStoryCrawl, fetchStories, createStory, importEpub, importArchive, importDtvEbook, importHeyzine, fetchStory, saveStoryMeta, saveChapterEdit, saveChapterUrl, saveChapterTitle, saveChapterSpellChecked, deleteStory, deleteChapter, setStoryWatch, checkStoryUpdates, refreshStoryToc, uploadCover, fetchChapterContent } from "./stories";
 export type { StoryCheckResult } from "./stories";
 export { exportStoryEpub } from "./epubExport";
 export type { StoryExportChapter, ExportProgress, ExportedFile } from "./epubExport";

@@ -2,6 +2,7 @@ import { archive } from "./archive";
 import { asianfanfics } from "./asianfanfics";
 import { dtvebook } from "./dtvebook";
 import { fanfiction } from "./fanfiction";
+import { heyzine } from "./heyzine";
 import { scribd } from "./scribd";
 import { truyenfull } from "./truyenfull";
 import type { SiteModule, SupportedSite } from "./types";
@@ -24,6 +25,7 @@ export const SITES: SiteModule[] = [
   scribd,
   archive,
   dtvebook,
+  heyzine,
 ];
 
 export const SUPPORTED_SITES: SupportedSite[] = SITES.flatMap((site) => site.supported ?? []);

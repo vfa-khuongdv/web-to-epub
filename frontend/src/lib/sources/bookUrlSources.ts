@@ -1,6 +1,7 @@
-import { importArchive, importDtvEbook } from "../api";
+import { importArchive, importDtvEbook, importHeyzine } from "../api";
 import { isArchiveItemUrl } from "./archiveUrl";
 import { isDtvEbookUrl } from "./dtvEbookUrl";
+import { isHeyzineUrl } from "./heyzineUrl";
 import type { StoredStory } from "../../types";
 
 /**
@@ -17,6 +18,7 @@ export interface BookUrlSource {
 export const BOOK_URL_SOURCES: BookUrlSource[] = [
   { matches: isArchiveItemUrl, importBook: importArchive },
   { matches: isDtvEbookUrl, importBook: importDtvEbook },
+  { matches: isHeyzineUrl, importBook: importHeyzine },
 ];
 
 export function bookUrlSourceFor(url: string): BookUrlSource | undefined {

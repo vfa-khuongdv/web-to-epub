@@ -140,7 +140,7 @@ describe("IMPORT_SOURCES", () => {
     }
   });
 
-  it("giữ đúng hai nguồn sách dạng file", () => {
-    expect(IMPORT_SOURCES.map((site) => site.domain)).toEqual(["archive.org", "dtv-ebook.com.vn"]);
+  it("giữ đúng các nguồn sách dạng file", () => {
+    expect(IMPORT_SOURCES.map((site) => site.domain)).toEqual(["archive.org", "dtv-ebook.com.vn", "heyzine.com"]);
   });
 });

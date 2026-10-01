@@ -99,7 +99,7 @@ describe("registry", () => {
   });
 
   it("keeps book-file sources out of the crawl allowlist", () => {
-    expect(IMPORT_SOURCES.map((site) => site.domain)).toEqual(["archive.org", "dtv-ebook.com.vn"]);
+    expect(IMPORT_SOURCES.map((site) => site.domain)).toEqual(["archive.org", "dtv-ebook.com.vn", "heyzine.com"]);
     const crawl = new Set(SUPPORTED_SITES.map((site) => site.domain));
     expect(IMPORT_SOURCES.some((site) => crawl.has(site.domain))).toBe(false);
   });
