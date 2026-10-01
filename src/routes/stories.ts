@@ -24,6 +24,8 @@ import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSes
 import { storyId } from "../services/storyStore";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../sites";
+import { activeAiProvider } from "../services/ai/aiConfig";
+import { createAiTocAdapter } from "../services/ai/aiLocate";
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";
@@ -67,6 +69,24 @@ async function refreshStoryToc(params: {
   return story;
 }
 
+// The adapter and site label for a story URL: a supported site's own, else — only when AI
+// crawling is on AND the request asked for it (`ai: true`, the home page's AI button) — the
+// AI adapter, labelled by hostname. Stories already added that way keep using it for
+// check/refresh, which pass allowAi themselves.
+function resolveToc(url: string, allowAi: boolean): { site: string; adapter: TocAdapter } | { error: "unsupported" | "no-adapter"; name?: string } {
+  const supported = findSupportedSite(url);
+  if (supported) {
+    const adapter = getTocAdapter(url);
+    return adapter ? { site: supported.domain, adapter } : { error: "no-adapter", name: supported.name };
+  }
+  if (!allowAi || !activeAiProvider()) return { error: "unsupported" };
+  try {
+    return { site: new URL(url).hostname.replace(/^www\./, ""), adapter: createAiTocAdapter() };
+  } catch {
+    return { error: "unsupported" };
+  }
+}
+
 storiesRouter.post("/stories", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) return;
@@ -87,18 +107,17 @@ storiesRouter.post("/stories", async (req, res) => {
     res.status(400).json({ message: t("Heyzine flipbooks are imported, not crawled") });
     return;
   }
-  const site = findSupportedSite(url);
-  if (!site) {
-    res.status(400).json({ message: t("This site is not yet supported: {url}", { url }) });
-    return;
-  }
-  const adapter = getTocAdapter(url);
-  if (!adapter) {
+  const resolved = resolveToc(url, (req.body as { ai?: unknown }).ai === true);
+  if ("error" in resolved) {
     res.status(400).json({
-      message: t("{site} does not yet support automatic chapter list loading", { site: site.name }),
+      message:
+        resolved.error === "no-adapter"
+          ? t("{site} does not yet support automatic chapter list loading", { site: resolved.name as string })
+          : t("This site is not yet supported: {url}", { url }),
     });
     return;
   }
+  const { site, adapter } = resolved;
 
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
@@ -108,7 +127,7 @@ storiesRouter.post("/stories", async (req, res) => {
   }
   try {
     const existing = await library.stories.get(id);
-    const story = await refreshStoryToc({ library, existing, storyUrl, site: site.domain, adapter });
+    const story = await refreshStoryToc({ library, existing, storyUrl, site, adapter });
     // User just manually loaded TOC: the "N new chapters" chip from the previous check
     // is now stale (new chapters became pending).
     await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
@@ -497,7 +516,8 @@ storiesRouter.post("/stories/:id/check", async (req, res) => {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  const adapter = getTocAdapter(story.storyUrl);
+  const resolved = resolveToc(story.storyUrl, true);
+  const adapter = "adapter" in resolved ? resolved.adapter : undefined;
   if (!adapter) {
     res.status(400).json({ message: t("This story has no TOC adapter for checking") });
     return;
@@ -533,9 +553,8 @@ storiesRouter.post("/stories/:id/refresh", async (req, res) => {
     res.status(404).json({ message: t("Story not found") });
     return;
   }
-  const site = findSupportedSite(existing.storyUrl);
-  const adapter = getTocAdapter(existing.storyUrl);
-  if (!site || !adapter) {
+  const resolved = resolveToc(existing.storyUrl, true);
+  if (!("adapter" in resolved)) {
     res.status(400).json({ message: t("This story has no TOC adapter") });
     return;
   }
@@ -549,8 +568,8 @@ storiesRouter.post("/stories/:id/refresh", async (req, res) => {
       library,
       existing,
       storyUrl: existing.storyUrl,
-      site: site.domain,
-      adapter,
+      site: resolved.site,
+      adapter: resolved.adapter,
     });
     await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });

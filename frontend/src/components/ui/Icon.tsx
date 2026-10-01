@@ -1,5 +1,6 @@
 import {
   AudioLines,
+  Sparkles,
   Bell,
   BookOpen,
   Check,
@@ -74,7 +75,8 @@ export type IconName =
   | "music"
   | "stop"
   | "spellcheck"
-  | "regenerate";
+  | "regenerate"
+  | "sparkles";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
 // as intent ("retry", "open") and swapping a glyph is a one-line change here.
@@ -115,6 +117,7 @@ const icons: Record<IconName, LucideIcon> = {
   stop: Square,
   spellcheck: SpellCheck,
   regenerate: AudioLines,
+  sparkles: Sparkles,
 };
 
 // The dot is a state light (crawling, live), not an outline: it reads as a dot only

@@ -17,6 +17,8 @@ export default function AddStoryBox({
   busy,
   importBusy,
   onCreate,
+  aiReady,
+  onCreateAi,
   onImportFiles,
   pendingImport,
   onOverwrite,
@@ -29,6 +31,9 @@ export default function AddStoryBox({
   busy: boolean;
   importBusy: boolean;
   onCreate: () => void;
+  // AI crawler is on and has a key: offer the button that reads any site with it.
+  aiReady: boolean;
+  onCreateAi: () => void;
   onImportFiles: (files: FileList | null) => void;
   pendingImport: PendingImport | null;
   onOverwrite: () => void;
@@ -71,6 +76,18 @@ export default function AddStoryBox({
       <button type="button" className="btn btn-primary" disabled={busy} onClick={onCreate}>
         {busy ? t("Loading…") : t("Load chapters")}
       </button>
+      {aiReady && (
+        <button
+          type="button"
+          className="btn"
+          disabled={busy}
+          title={t("Read this page with the AI crawler, even if the site is not supported")}
+          onClick={onCreateAi}
+        >
+          <Icon name="sparkles" size={13} />
+          {t("Load with AI")}
+        </button>
+      )}
       <button type="button" className="btn" disabled={importBusy} onClick={() => fileInput.current?.click()}>
         <Icon name="upload" size={13} />
         {importBusy ? t("Importing…") : t("Import EPUB / PDF")}

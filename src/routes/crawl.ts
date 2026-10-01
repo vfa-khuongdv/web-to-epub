@@ -99,7 +99,9 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
         stored.blocks = extracted.error ? undefined : extracted.blocks;
         // New text from the site: the typos fixed in the old text are not fixed in it.
         if (!extracted.error) stored.spellChecked = undefined;
-        if (!extracted.error) stored.title = pickChapterTitle(stored.title, extracted.title, stored.url);
+        if (!extracted.error) {
+          stored.title = extracted.titleFromAi ? extracted.title : pickChapterTitle(stored.title, extracted.title, stored.url);
+        }
         await library.stories.saveChapter(story.id, stored);
         // Release content after saving: `stored` lives in story.chapters so holding it means
         // keeping the entire story in memory until crawl completes.

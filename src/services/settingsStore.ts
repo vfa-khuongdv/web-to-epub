@@ -49,6 +49,10 @@ export interface SettingsStore {
   get(): AppSettings;
   // Only the keys present are written; the rest keep their saved value.
   update(patch: Partial<AppSettings>): AppSettings;
+  // Free-form value kept under its own key, for settings that are a structure (AI
+  // providers) rather than one of the typed fields above.
+  getRaw(key: string): string | undefined;
+  setRaw(key: string, value: string): void;
 }
 
 export function createSettingsStore(baseDir: string): SettingsStore {
@@ -67,6 +71,11 @@ export function createSettingsStore(baseDir: string): SettingsStore {
     ON CONFLICT(key) DO UPDATE SET value = excluded.value
   `);
 
+  function saved(key: string): string | undefined {
+    const rows = selectAll.all() as unknown as { key: string; value: string }[];
+    return rows.find((row) => row.key === key)?.value;
+  }
+
   function get(): AppSettings {
     const rows = selectAll.all() as unknown as { key: string; value: string }[];
     const saved = new Map(rows.map((row) => [row.key, row.value]));
@@ -84,6 +93,14 @@ export function createSettingsStore(baseDir: string): SettingsStore {
 
   return {
     get,
+
+    getRaw(key: string): string | undefined {
+      return saved(key);
+    },
+
+    setRaw(key: string, value: string): void {
+      upsert.run(key, value);
+    },
 
     update(patch: Partial<AppSettings>): AppSettings {
       if (patch.autoScanOnOpen !== undefined) upsert.run("autoScanOnOpen", patch.autoScanOnOpen ? "1" : "0");

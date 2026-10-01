@@ -21,6 +21,9 @@ export interface ExtractedChapter {
   blocks: ContentBlock[];
   error?: string; // set when extraction failed after retries; blocks will be empty
   errorKind?: ChapterErrorKind;
+  // The title was chosen by the AI crawler from the chapter page itself: it replaces the list's
+  // entry instead of only extending it (see pickChapterTitle).
+  titleFromAi?: boolean;
 }
 
 export interface ExportChapter {
