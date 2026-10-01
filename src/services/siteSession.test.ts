@@ -146,10 +146,10 @@ describe("save / remove / status", () => {
   });
 
   it("đọc tên tài khoản từ claim của cookie JWT", () => {
-    const named = fakeJwt({ exp: 4102444800, name: "khuongdv" });
+    const named = fakeJwt({ exp: 4102444800, name: "tester" });
     const noName = fakeJwt({ exp: 4102444800 });
     expect(siteSession.sessionAccountName({ cookies: [{ name: "rtokun", value: noName }, { name: "atokun", value: named }] })).toBe(
-      "khuongdv"
+      "tester"
     );
     expect(siteSession.sessionAccountName({ cookies: [{ name: "csrf_token", value: "abc" }] })).toBeUndefined();
   });
@@ -160,7 +160,7 @@ describe("save / remove / status", () => {
   });
 
   it("status kèm hạn token và savedAt", () => {
-    const token = fakeJwt({ exp: 4102444800, name: "khuongdv" });
+    const token = fakeJwt({ exp: 4102444800, name: "tester" });
     siteSession.saveSiteSession("expiry.example", {
       cookies: [{ name: "atokun", value: token }],
       origins: [],
@@ -168,7 +168,7 @@ describe("save / remove / status", () => {
     const status = siteSession.siteSessionStatus("expiry.example");
     expect(status.configured).toBe(true);
     expect(status.expiresAt).toBe(new Date(4_102_444_800 * 1000).toISOString());
-    expect(status.username).toBe("khuongdv");
+    expect(status.username).toBe("tester");
     expect(typeof status.savedAt).toBe("string");
   });
 

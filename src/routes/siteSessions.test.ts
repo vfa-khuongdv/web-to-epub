@@ -19,7 +19,7 @@ process.env.DATA_DIR = DATA_DIR;
 const fakeJwt = (claims: object) =>
   [{ alg: "HS256" }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".sig";
 
-const JWT_FUTURE = fakeJwt({ exp: 4102444800, name: "khuongdv" });
+const JWT_FUTURE = fakeJwt({ exp: 4102444800, name: "tester" });
 const VALID_CURL =
   `curl 'https://www.asianfanfics.com/story/view/1191193' -H 'cookie: atokun=${JWT_FUTURE}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
 // The Cloudflare pass truyenfull.live needs: no login token, just the clearance cookie.
@@ -96,7 +96,7 @@ describe("site session routes", () => {
     expect(res.status).toBe(200);
     const body = (await res.json()) as { cookieCount: number; username?: string };
     expect(body.cookieCount).toBe(2);
-    expect(body.username).toBe("khuongdv");
+    expect(body.username).toBe("tester");
     expect(JSON.stringify(body)).not.toContain(JWT_FUTURE);
     expect(JSON.stringify(body)).not.toContain("clear-value");
     expect(existsSync(path.join(DATA_DIR, "sessions", "asianfanfics.com.json"))).toBe(true);
@@ -111,7 +111,7 @@ describe("site session routes", () => {
       username?: string;
     };
     expect(status.configured).toBe(true);
-    expect(status.username).toBe("khuongdv");
+    expect(status.username).toBe("tester");
     expect(typeof status.savedAt).toBe("string");
     expect(status.expiresAt).toBe(new Date(4_102_444_800 * 1000).toISOString());
   });

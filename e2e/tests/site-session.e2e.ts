@@ -17,7 +17,7 @@ const STORY_URL = "https://www.asianfanfics.com/story/view/1143593";
 const fakeJwt = (claims: object) =>
   [{ alg: "HS256" }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".sig";
 
-const NAMED_TOKEN = fakeJwt({ exp: 4102444800, name: "khuongdv" });
+const NAMED_TOKEN = fakeJwt({ exp: 4102444800, name: "tester" });
 const CURL =
   "curl 'https://www.asianfanfics.com/story/view/1143593' " +
   `-H 'cookie: atokun=${NAMED_TOKEN}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
@@ -81,7 +81,7 @@ test("asks for a session before loading an Asianfanfics URL, then continues with
   await dialog.getByRole("button", { name: "Save session" }).click();
   await expect(dialog).toHaveCount(0);
   // The toast names the account that was imported.
-  await expect(page.getByRole("status").filter({ hasText: "Saved login for khuongdv" })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Saved login for tester" })).toBeVisible();
   await expect.poll(() => created).toBe(1);
   expect(fs.existsSync(SESSION_FILE)).toBe(true);
 
@@ -143,9 +143,9 @@ test("settings shows the saved session and removes it", async ({ page, request }
   const row = sessionRow(panel, "Asianfanfics");
   await expect(row.getByText("A saved login is in use for rated-M and subscribers-only stories.")).toBeVisible();
 
-  await expect(row.getByRole("link", { name: "khuongdv" })).toHaveAttribute(
+  await expect(row.getByRole("link", { name: "tester" })).toHaveAttribute(
     "href",
-    "https://www.asianfanfics.com/profile/u/khuongdv"
+    "https://www.asianfanfics.com/profile/u/tester"
   );
 
   await row.getByRole("button", { name: "Remove" }).click();
