@@ -12,6 +12,10 @@ import type { SiteSession } from "./siteSession";
 const DATA_DIR = mkdtempSync(path.join(os.tmpdir(), "site-session-test-"));
 process.env.DATA_DIR = DATA_DIR;
 
+// Built at runtime from its claims, so no token-shaped literal sits in the source.
+const fakeJwt = (claims: object) =>
+  [{ alg: "HS256" }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".sig";
+
 describe("siteSession", () => {
   let siteSession: typeof import("./siteSession");
 
@@ -134,16 +138,16 @@ describe("save / remove / status", () => {
   it("báo hạn của token sớm nhất trong các cookie JWT", () => {
     // AFF hands out rtokun (a year) and atokun (an hour); the session ends with the
     // short one, so the earliest expiry is the one that matters.
-    const year = "FAKE_JWT_REMOVED";
-    const hour = "FAKE_JWT_REMOVED";
+    const year = fakeJwt({ exp: 4102444800 });
+    const hour = fakeJwt({ exp: 1000000000 });
     expect(
       siteSession.sessionExpiresAt({ cookies: [{ name: "rtokun", value: year }, { name: "atokun", value: hour }] })
     ).toBe(new Date(1_000_000_000 * 1000).toISOString());
   });
 
   it("đọc tên tài khoản từ claim của cookie JWT", () => {
-    const named = "FAKE_JWT_REMOVED";
-    const noName = "FAKE_JWT_REMOVED";
+    const named = fakeJwt({ exp: 4102444800, name: "khuongdv" });
+    const noName = fakeJwt({ exp: 4102444800 });
     expect(siteSession.sessionAccountName({ cookies: [{ name: "rtokun", value: noName }, { name: "atokun", value: named }] })).toBe(
       "khuongdv"
     );
@@ -156,7 +160,7 @@ describe("save / remove / status", () => {
   });
 
   it("status kèm hạn token và savedAt", () => {
-    const token = "FAKE_JWT_REMOVED";
+    const token = fakeJwt({ exp: 4102444800, name: "khuongdv" });
     siteSession.saveSiteSession("expiry.example", {
       cookies: [{ name: "atokun", value: token }],
       origins: [],

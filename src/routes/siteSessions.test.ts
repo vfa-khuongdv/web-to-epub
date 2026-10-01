@@ -15,7 +15,11 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 const DATA_DIR = mkdtempSync(path.join(os.tmpdir(), "site-sessions-route-test-"));
 process.env.DATA_DIR = DATA_DIR;
 
-const JWT_FUTURE = "FAKE_JWT_REMOVED";
+// Built at runtime from its claims, so no token-shaped literal sits in the source.
+const fakeJwt = (claims: object) =>
+  [{ alg: "HS256" }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".sig";
+
+const JWT_FUTURE = fakeJwt({ exp: 4102444800, name: "khuongdv" });
 const VALID_CURL =
   `curl 'https://www.asianfanfics.com/story/view/1191193' -H 'cookie: atokun=${JWT_FUTURE}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
 // The Cloudflare pass truyenfull.live needs: no login token, just the clearance cookie.

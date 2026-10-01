@@ -13,7 +13,11 @@ const SESSION_FILE = path.join(DATA_DIR, "sessions", "asianfanfics.com.json");
 const TRUYENFULL_SESSION_FILE = path.join(DATA_DIR, "sessions", "truyenfull.live.json");
 const STORY_URL = "https://www.asianfanfics.com/story/view/1143593";
 // The shape a browser's "Copy as cURL" produces: cookies in a header, UA included.
-const NAMED_TOKEN = "FAKE_JWT_REMOVED";
+// Built at runtime from its claims, so no token-shaped literal sits in the source.
+const fakeJwt = (claims: object) =>
+  [{ alg: "HS256" }, claims].map((part) => Buffer.from(JSON.stringify(part)).toString("base64url")).join(".") + ".sig";
+
+const NAMED_TOKEN = fakeJwt({ exp: 4102444800, name: "khuongdv" });
 const CURL =
   "curl 'https://www.asianfanfics.com/story/view/1143593' " +
   `-H 'cookie: atokun=${NAMED_TOKEN}; cf_clearance=clear-value' -H 'user-agent: UA-TEST'`;
@@ -171,7 +175,7 @@ test("settings imports and removes a TruyenFull Cloudflare session", async ({ pa
 // A token whose `exp` is long past: the app must treat it as needing a fresh import.
 const EXPIRED_CURL =
   "curl 'https://www.asianfanfics.com/story/view/1426810' " +
-  "-H 'cookie: atokun=FAKE_JWT_REMOVED' -H 'user-agent: UA-TEST'";
+  `-H 'cookie: atokun=${fakeJwt({ exp: 1000000000 })}' -H 'user-agent: UA-TEST'`;
 
 test("asks to import again when the saved login has expired", async ({ page, request }) => {
   await request.post("/api/site-sessions/asianfanfics", { data: { curl: EXPIRED_CURL } });
