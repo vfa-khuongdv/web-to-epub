@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { IMPORT_SOURCES, SUPPORTED_SITES } from "../config/supportedSites";
 import { setLang } from "../services/lang";
+import { aiRouter } from "./ai";
 import { appUpdateRouter } from "./appUpdate";
 import { audioExportsRouter } from "./audioExports";
 import { chaptersRouter } from "./chapters";
@@ -39,6 +40,7 @@ router.get("/supported-sites", (_req, res) => {
 
 router.use(vaultRouter);
 router.use(settingsRouter);
+router.use(aiRouter);
 router.use(appUpdateRouter);
 router.use(ttsRouter);
 router.use(musicRouter);
