@@ -589,5 +589,7 @@ export const vi: Record<string, string> = {
   "Could not import from Internet Archive": "Không nhập được sách từ Internet Archive",
   "DTV Ebook": "DTV Ebook",
   "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
+  "Heyzine": "Heyzine",
+  "Could not import from Heyzine": "Không nhập được sách từ Heyzine",
   "Could not import the file": "Không nhập được file",
 };

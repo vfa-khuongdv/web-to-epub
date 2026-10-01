@@ -12,6 +12,7 @@ describe("storySourceLabel", () => {
     expect(storySourceLabel({ site: "epub", storyUrl: "pdf:abc" }, t)).toBe("PDF file");
     expect(storySourceLabel({ site: "epub", storyUrl: "archive:some-item" }, t)).toBe("Internet Archive");
     expect(storySourceLabel({ site: "epub", storyUrl: "dtv:123" }, t)).toBe("DTV Ebook");
+    expect(storySourceLabel({ site: "epub", storyUrl: "heyzine:19b8fa685a" }, t)).toBe("Heyzine");
     expect(storySourceLabel({ site: "epub", storyUrl: "epub:abc" }, t)).toBe("EPUB file");
   });
 });
