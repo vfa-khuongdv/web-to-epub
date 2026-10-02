@@ -250,6 +250,11 @@ describe("urlShape", () => {
     expect(urlShape("https://a.vn/truyen/hop-dong/chuong-13")).toBe("/truyen/hop-dong/chuong-#");
     expect(urlShape("https://a.vn/doc-truyen/x/6ab07673311741f1f4eebcfa")).toBe("/doc-truyen/x/#");
     expect(urlShape("https://a.vn/read.php?id=5&story=9")).toBe("/read.php?id=#&story=#");
+    // a number followed by the chapter's own slug is one shape, not one per chapter
+    expect(urlShape("https://rr.test/fiction/21220/mother/chapter/301778/1-good-morning-brother")).toBe(
+      urlShape("https://rr.test/fiction/21220/mother/chapter/301779/2-the-bitter-truth")
+    );
+    expect(urlShape("https://rr.test/fiction/21220/mother/chapter/301778/1-good-morning-brother")).toBe("/fiction/#/mother/chapter/#/#-*");
   });
 
   it("gives another story's chapters a different shape", async () => {
