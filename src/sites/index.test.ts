@@ -97,6 +97,7 @@ describe("registry", () => {
       "scribd.com",
       "royalroad.com",
       "docln.net",
+      "truyenfullok.com",
     ]);
   });
 

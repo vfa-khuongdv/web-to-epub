@@ -169,4 +169,27 @@ describe("a chapter list split over pages", () => {
       [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `chuong-${n}/`)
     );
   });
+  it("tries the pager links when the AI picks a button and the pager ranks below the big link groups", async () => {
+    const noise = Array.from({ length: 9 }, (_, g) =>
+      [1, 2].map((n) => `<a href="/g${g}/item-${n}/">Mục ${n}</a>`).join("")
+    ).join("");
+    const withNoise = (html: string) => html.replace("<ul>", `<button>Xem thêm</button>${noise}<ul>`);
+    const noisy: Record<string, string> = {
+      "https://x.test/s.1/": withNoise(page([1, 2, 3]).replaceAll("/s/", "/s.1/")),
+      "https://x.test/s.1/trang-2/": page([4, 5, 6]).replaceAll("/s/", "/s.1/"),
+      "https://x.test/s.1/trang-3/": page([7, 8, 9]).replaceAll("/s/", "/s.1/"),
+    };
+    vi.mocked(fetchWithRetry).mockImplementation(async (url) => respond(noisy[String(url)] ?? "", noisy[String(url)] ? 200 : 404));
+    vi.mocked(renderPageHtml).mockResolvedValue(noisy["https://x.test/s.1/"]);
+    vi.mocked(activeAiProvider).mockReturnValue({
+      choose: async (_q, _s, o) => {
+        if ("part" in o) return "part";
+        if ("ctl1" in o) return "ctl1"; // the button, not the pager
+        if ("list1" in o) return Object.keys(o).find((k) => /chuong/.test(o[k])) ?? "list1";
+        return "none" in o ? "none" : Object.keys(o)[0];
+      },
+    });
+    const toc = await createAiTocAdapter().fetchToc("https://x.test/s.1/");
+    expect(toc.chapters).toHaveLength(9);
+  });
 });
