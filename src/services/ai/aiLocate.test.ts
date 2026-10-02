@@ -141,3 +141,32 @@ describe("fetchChapterWithAi", () => {
     expect(renderPageHtml).toHaveBeenCalled();
   });
 });
+
+describe("a chapter list split over pages", () => {
+  const pad = `<!-- ${"pad ".repeat(600)} -->`;
+  const page = (chapters: number[]) =>
+    `<html><head><title>Truyện</title></head><body><h1>Truyện</h1><ul>${chapters
+      .map((n) => `<li><a href="/s/chuong-${n}/">Chương ${n}</a></li>`)
+      .join("")}</ul><div class="pager"><a href="/s/trang-2/">2</a><a href="/s/trang-3/">3</a></div><a href="/top/100-500-chuong">100 - 500 chương</a>${pad}</body></html>`;
+  const pages: Record<string, string> = {
+    "https://x.test/s/": page([1, 2, 3]),
+    "https://x.test/s/trang-2/": page([4, 5, 6]),
+    "https://x.test/s/trang-3/": page([7, 8, 9]),
+  };
+
+  it("reads the further pages even when the AI picks the wrong group of links for them", async () => {
+    vi.mocked(fetchWithRetry).mockImplementation(async (url) => respond(pages[String(url)] ?? "", pages[String(url)] ? 200 : 404));
+    vi.mocked(activeAiProvider).mockReturnValue({
+      choose: async (_q, _s, o) => {
+        if ("part" in o) return "part";
+        if ("links1" in o) return "links2"; // the "100 - 500 chương" link, not the pager
+        if ("list1" in o) return "list1";
+        return "none" in o ? "none" : Object.keys(o)[0];
+      },
+    });
+    const toc = await createAiTocAdapter().fetchToc("https://x.test/s/");
+    expect(toc.chapters.map((c) => c.url.replace("https://x.test/s/", ""))).toEqual(
+      [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `chuong-${n}/`)
+    );
+  });
+});
