@@ -95,6 +95,8 @@ describe("registry", () => {
       "fanfiction.net",
       "vietmessenger.com",
       "scribd.com",
+      "royalroad.com",
+      "docln.net",
     ]);
   });
 
