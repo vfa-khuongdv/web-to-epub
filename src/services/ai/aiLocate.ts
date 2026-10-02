@@ -99,7 +99,7 @@ function titleOf(link: Link, piece: TitlePiece): string {
 }
 
 // The shape of a link's address, with the parts that change from one chapter to the next blanked
-// out: numbers, and long ids made of letters and digits. "/truyen/a/chuong-12/" and
+// out: numbers, a number followed by a title slug, and long ids made of letters and digits. "/truyen/a/chuong-12/" and
 // "/truyen/a/chuong-13/" share "/truyen/a/chuong-#"; "/doc-truyen/a/6ab0767331…" and
 // "/doc-truyen/a/6ab076c331…" share "/doc-truyen/a/#". The chapters of one story share a shape,
 // while genres, tags, menus and other stories — their chapters included, whose path names
@@ -109,7 +109,12 @@ export function urlShape(url: string): string {
   const u = new URL(url);
   const path = u.pathname
     .split("/")
-    .map((seg) => (/\d/.test(seg) && /^[0-9a-z]{12,}$/i.test(seg) ? "#" : seg.replace(/\d+/g, "#")))
+    .map((seg) => {
+      if (/\d/.test(seg) && /^[0-9a-z]{12,}$/i.test(seg)) return "#";
+      // "1-good-morning-brother": a chapter's number and its own slug, which differ per chapter.
+      if (/^\d+-[^/]*[a-z]/i.test(seg)) return "#-*";
+      return seg.replace(/\d+/g, "#");
+    })
     .join("/")
     .replace(/\/$/, "");
   const query = [...u.searchParams.keys()]
@@ -473,7 +478,11 @@ const PICTURE_VALUE = /^(https?:)?\/\/|^\/|\.(jpe?g|png|webp|gif|avif|bmp)(\?|#|
 function pictureAddresses(img: Element): Record<string, string> {
   const out: Record<string, string> = {};
   for (const attr of Array.from(img.attributes)) {
-    const token = (attr.value.trim().split(/\s*,\s*/).pop() ?? "").split(/\s+/)[0];
+    // Only a set with size descriptors is split: an address may hold spaces ("…/Chapter 0/a.jpg").
+    const value = attr.value.trim();
+    const token = /\s\d+(\.\d+)?[wx]\s*(,|$)/.test(value)
+      ? (value.split(/\s*,\s*/).pop() ?? "").split(/\s+/)[0]
+      : value;
     if (token && token.length < 2048 && PICTURE_VALUE.test(token)) out[attr.name] = token;
   }
   return out;
@@ -1138,7 +1147,9 @@ function listSoFar(toc: AiToc): string {
 // Where the rest of a chapter list is: behind a control pressed in the browser (a tab, a
 // show-all button), or on further pages reached through a group of links (a pager) — which is
 // followed with plain requests.
-type More = { control: Control } | { pager: string };
+// `others`: the other groups of links that continue the story page's own address, tried one after
+// another when the group picked brings no chapters (a model can pick the wrong group).
+type More = { control: Control } | { pager: string; others: string[] };
 
 // After reading the list from the plain page: is that the whole list, and if not, which control
 // or which group of links leads to the rest? Pagers are often plain links to other addresses
@@ -1154,7 +1165,10 @@ async function moreChapters(provider: AiProvider, storyUrl: string, html: string
     controls.forEach((c, i) => (options[`ctl${i + 1}`] = describeControl(c)));
     groups.forEach((g, i) => {
       const titles = g.links.slice(0, 5).map((l) => l.title).join(" | ");
-      options[`links${i + 1}`] = `a group of ${g.links.length} links to other pages: ${titles} (addresses like ${g.shape})`;
+      const own = urlShape(storyUrl);
+      const numbers = g.links.every((l) => /^[\s«»‹›<>.…]*\d+[\s«»‹›<>.…]*$/.test(l.title)) ? "; the link texts are only numbers, like page numbers" : "";
+      const under = own.length > 1 && g.shape.startsWith(`${own}/`) ? "; these addresses continue the story page's own address" : "";
+      options[`links${i + 1}`] = `a group of ${g.links.length} links to other pages: ${titles} (addresses like ${g.shape}${under}${numbers})`;
     });
     const state = `URL: ${storyUrl}\n${listSoFar(toc)}\nOn the page: ${Object.values(options).join("; ")}`;
     // Two plain questions rather than one asking for a judgement and a pick at once.
@@ -1173,7 +1187,9 @@ async function moreChapters(provider: AiProvider, storyUrl: string, html: string
       return control ? { control } : undefined;
     }
     const group = groups[Number(picked.slice(5)) - 1];
-    return group ? { pager: group.shape } : undefined;
+    if (!group) return undefined;
+    const own = `${urlShape(storyUrl)}/`;
+    return { pager: group.shape, others: groups.filter((g) => g !== group && g.shape.startsWith(own)).map((g) => g.shape) };
   } finally {
     dom.window.close();
   }
@@ -1284,7 +1300,14 @@ export function createAiTocAdapter(): TocAdapter {
         const more = await moreChapters(provider, storyUrl, html, plain);
         if (!more) return finalizeToc(plain);
         // A pager of links needs no browser: its pages are fetched like the first one.
-        if ("pager" in more) return finalizeToc(await followPager(storyUrl, html, more.pager, plain));
+        if ("pager" in more) {
+          let walked = await followPager(storyUrl, html, more.pager, plain);
+          for (const shape of more.others) {
+            if (walked.chapters.length > plain.chapters.length) break;
+            walked = await followPager(storyUrl, html, shape, plain);
+          }
+          return finalizeToc(walked);
+        }
         lead = more.control;
       } catch (err) {
         if (!(err instanceof NoChapterListError)) throw err;

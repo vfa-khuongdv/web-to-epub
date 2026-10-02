@@ -75,17 +75,34 @@ Dark theme (click the icon in the header to change, or set to "auto" to follow O
 
 ## Supported Sites
 
-Whitelist is in [`src/config/supportedSites.ts`](src/config/supportedSites.ts);
-adding a new domain only requires editing this file.
+Sites below were tried and work. The crawl allowlist is the site manifests in
+[`src/sites/`](src/sites/) (how to add one: [`src/sites/README.md`](src/sites/README.md)). Any
+other site can be tried with the optional AI crawler (Settings → AI crawler, off by default) with
+no guarantee — if it fails, please open an issue with the story URL, the failing chapter URL and
+the error. The full, dated list (including notes per site) is in
+[`docs/supported-sites.md`](docs/supported-sites.md).
 
-| Site | Auto-load TOC | Notes |
+**Built-in support (no AI needed)**
+
+| Site | Type | Notes |
 |---|---|---|
-| `xtruyen.vn` | ✅ (site JSON API) | Most thoroughly tested |
-| `truyenfull.live` / `truyenfull.vn` | ✅ (scrape TOC pages) | Real-world tested |
-| `truyencom.com` | ✅ (scrape TOC pages) | |
-| `truyenhoan.com` | ✅ (scrape TOC pages) | Same theme as truyenfull; chapters served in HTML |
-| `wattpad.com` | ✅ (internal API `/api/v3/stories/<id>`) | Paid chapters not supported |
-| `asianfanfics.com` | ✅ (render story page) | Cloudflare-protected; rated M / subscribers-only needs an imported browser session (see below) |
+| `truyenfull.vn` / `truyenfull.live` | Novels (VI) | Needs an imported browser session for the Cloudflare check |
+| `truyenhoan.com` | Novels (VI) | |
+| `truyencom.com` | Novels (VI) | |
+| `xtruyen.vn` | Novels (VI) | |
+| `vietmessenger.com` | Public-domain ebooks (VI) | Members-only books are refused |
+| `wattpad.com` | Novels (EN) | Paid chapters not supported |
+| `asianfanfics.com` | Fanfiction (EN) | Cloudflare-protected; rated M / subscribers-only needs an imported browser session (see below) |
+| `fanfiction.net` | Fanfiction (EN) | |
+| `scribd.com` | Documents | Documents the account cannot fully view are refused |
+
+**Book import (not crawled chapter by chapter):** EPUB and PDF files, `dtv-ebook.com.vn`,
+`heyzine.com`, `archive.org`.
+
+**Tried with the AI crawler and working:** `truyenfull.fit`, `webnovel.vn`, `truyennhaong.vn`,
+`metruyenhotvn.com`, `truyenfullmoi.net`, `metruyenhd.net`, `royalroad.com`, `readwn.com`,
+`wuxiaworld.site`, `czbooks.net`, `ixdzs.tw`, `ncode.syosetu.com`, and the comic sites
+`mangatooncom.vn`, `truyenqq.com.vn`, `cotruyenday1.com`, `manhuaplus.com`.
 
 ### Asianfanfics sessions
 
