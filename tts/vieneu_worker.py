@@ -27,6 +27,12 @@ import sys
 import threading
 import traceback
 
+# Windows: onnxruntime, soxr and kaldi-native-fbank need msvcp140*.dll, which the msvc-runtime
+# package puts in the venv root (msvcRuntimePackages in src/config/tts.ts). The venv's
+# python.exe is a launcher, so that folder is not on the DLL search path by itself.
+if os.name == "nt":
+    os.add_dll_directory(sys.prefix)
+
 PROTOCOL = sys.stdout
 sys.stdout = sys.stderr
 

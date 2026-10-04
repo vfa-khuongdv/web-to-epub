@@ -17,6 +17,7 @@ import {
   TTS_DIR,
   VIENEU_VERSION,
   WORKER_SCRIPT,
+  msvcRuntimePackages,
   omnivoiceUvDownloadUrl,
   uvDownloadUrl,
 } from "../../config/tts";
@@ -107,6 +108,7 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
   // Windows: uv.exe, and a venv keeps its interpreter in Scripts/ instead of bin/.
   const isWindows = process.platform === "win32";
   const uvName = isWindows ? "uv.exe" : "uv";
+  const tarCommand = isWindows ? path.join(process.env.SystemRoot ?? "C:\\Windows", "System32", "tar.exe") : "tar";
   const uvBin = path.join(deps.ttsDir, "bin", uvName);
   const venvDir = path.join(deps.ttsDir, "venv");
   const python = isWindows ? path.join(venvDir, "Scripts", "python.exe") : path.join(venvDir, "bin", "python");
@@ -185,8 +187,9 @@ export function createTtsRuntime(deps: TtsRuntimeDeps): TtsRuntime {
         await deps.download(deps.uvUrl, archive, (downloaded, total) => {
           progress = { phase: "uv", downloaded, total };
         });
-        // bsdtar (bundled with Windows 10+) reads the .zip too; -x detects gzip on its own.
-        await deps.exec("tar", ["-xf", archive, "-C", tmp], {});
+        // bsdtar (bundled with Windows 10+) reads the .zip too; -x detects gzip on its own. Named
+        // by its full path on Windows: Git's GNU tar, often first on PATH, cannot read a zip.
+        await deps.exec(tarCommand, ["-xf", archive, "-C", tmp], {});
         // The tarball holds uv-<target>/uv (the Windows zip has uv.exe at its root); take it
         // from wherever it landed.
         const folder = (await fs.readdir(tmp, { withFileTypes: true })).find((entry) => entry.isDirectory());
@@ -399,7 +402,7 @@ export const ttsRuntimes: Record<TtsEngine, TtsRuntime> = {
     ...shared,
     engine: "vieneu",
     version: VIENEU_VERSION,
-    packages: [`vieneu==${VIENEU_VERSION}`],
+    packages: [`vieneu==${VIENEU_VERSION}`, ...msvcRuntimePackages()],
     ttsDir: TTS_DIR,
     workerScript: WORKER_SCRIPT,
     constraintsFile: CONSTRAINTS_FILE,
@@ -409,7 +412,7 @@ export const ttsRuntimes: Record<TtsEngine, TtsRuntime> = {
     ...shared,
     engine: "omnivoice",
     version: OMNIVOICE_VERSION,
-    packages: [`omnivoice==${OMNIVOICE_VERSION}`],
+    packages: [`omnivoice==${OMNIVOICE_VERSION}`, ...msvcRuntimePackages()],
     // A few ops have no MPS kernel yet; let torch run those on the CPU instead of failing.
     env: { PYTORCH_ENABLE_MPS_FALLBACK: "1" },
     torchIndex: process.platform === "darwin" ? undefined : { url: TORCH_CUDA_INDEX, tag: TORCH_CUDA_TAG },
