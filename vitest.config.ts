@@ -8,6 +8,8 @@ import { defineConfig } from "vitest/config";
 const jsonReporterOnCli = process.argv.some((arg) => arg.startsWith("--reporter=json"));
 
 export default defineConfig({
+  // Frontend component tests (.tsx) use the automatic JSX runtime, like the Vite build.
+  esbuild: { jsx: "automatic" },
   test: {
     ...(jsonReporterOnCli ? { reporters: [["json", { stdout: true }]] } : {}),
   },

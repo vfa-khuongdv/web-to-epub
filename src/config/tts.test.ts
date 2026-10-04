@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { omnivoiceUvDownloadUrl, uvDownloadUrl } from "./tts";
+import { msvcRuntimePackages, omnivoiceUvDownloadUrl, uvDownloadUrl } from "./tts";
 
 describe("omnivoiceUvDownloadUrl", () => {
   const gpu = () => true;
@@ -32,5 +32,13 @@ describe("uvDownloadUrl", () => {
     expect(uvDownloadUrl("linux", "x64")).toMatch(/x86_64-unknown-linux-gnu\.tar\.gz$/);
     expect(uvDownloadUrl("win32", "x64")).toMatch(/x86_64-pc-windows-msvc\.zip$/);
     expect(uvDownloadUrl("win32", "arm64")).toBeUndefined();
+  });
+});
+
+describe("msvcRuntimePackages", () => {
+  it("adds the Visual C++ runtime DLLs on Windows only (onnxruntime cannot load without them)", () => {
+    expect(msvcRuntimePackages("win32")).toEqual([expect.stringMatching(/^msvc-runtime==/)]);
+    expect(msvcRuntimePackages("darwin")).toEqual([]);
+    expect(msvcRuntimePackages("linux")).toEqual([]);
   });
 });

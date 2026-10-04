@@ -78,6 +78,23 @@ describe("a comic chapter", () => {
     expect(chapter.blocks).toHaveLength(1);
   });
 
+  it("keeps a picture address that holds spaces whole, and still reads a srcset as its last address", async () => {
+    const spaced = `<html><body><h1>Chapter 0</h1><div class="chapters">${[1, 2, 3]
+      .map((n) => `<img src="https://cdn.comic.test/chapters/6986/Chapter 0/p${n}.jpg" class="img-chap-item">`)
+      .join("")}<img srcset="https://cdn.comic.test/s/a.jpg 640w, https://cdn.comic.test/s/b.jpg 1280w"></div></body></html>`;
+    const bySrc: AiProvider = {
+      choose: async (q, s, o) =>
+        "attr1" in o ? (Object.keys(o).find((k) => o[k].startsWith("src ")) as string) : sensible.choose(q, s, o),
+    };
+    const chapter = await extractChapterWithAi(bySrc, "https://comic.test/truyen-a/chapter-0", spaced);
+    expect(chapter.blocks.map((b) => b.src)).toEqual([
+      "https://cdn.comic.test/chapters/6986/Chapter%200/p1.jpg",
+      "https://cdn.comic.test/chapters/6986/Chapter%200/p2.jpg",
+      "https://cdn.comic.test/chapters/6986/Chapter%200/p3.jpg",
+      "https://cdn.comic.test/s/b.jpg",
+    ]);
+  });
+
   it("says it is locked when the AI says the picture-less page is a login wall", async () => {
     const { LockedContentError } = await import("../extractor");
     const wall = "<body><div>Đăng nhập để đọc chương này.</div></body>";
