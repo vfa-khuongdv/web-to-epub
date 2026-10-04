@@ -64,6 +64,15 @@ export function uvDownloadUrl(platform: string = process.platform, arch: string 
   return `https://github.com/astral-sh/uv/releases/download/${UV_VERSION}/uv-${target}.${platform === "win32" ? "zip" : "tar.gz"}`;
 }
 
+// Windows: onnxruntime, soxr and kaldi-native-fbank link msvcp140*.dll (the Visual C++
+// runtime), which uv's Python does not ship (only vcruntime140*.dll) and a fresh Windows does
+// not have — without it the model fails to load with "DLL load failed". This package puts the
+// DLLs in the venv, which needs no admin rights; the Python scripts add that folder to their
+// DLL search path (`add_dll_directory`), since the venv's python.exe is only a launcher.
+export function msvcRuntimePackages(platform: string = process.platform): string[] {
+  return platform === "win32" ? ["msvc-runtime==14.44.35112"] : [];
+}
+
 // The full dependency set VieNeu was tested with, installed as uv constraints: pinning
 // only `vieneu` let a newer onnxruntime in, which refuses the Turbo model (see the file).
 export const CONSTRAINTS_FILE = path
