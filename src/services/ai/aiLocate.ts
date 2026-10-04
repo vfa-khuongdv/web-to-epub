@@ -1149,7 +1149,10 @@ function listSoFar(toc: AiToc): string {
 // followed with plain requests.
 // `others`: the other groups of links that continue the story page's own address, tried one after
 // another when the group picked brings no chapters (a model can pick the wrong group).
-type More = { control: Control } | { pager: string; others: string[] };
+// `control` carries `pagers` too: when the control pressed brings nothing, the groups of links that
+// continue the story page's own address are tried as a pager (a model can pick a button where
+// the real way on is a "page 2, 3…" row of links).
+type More = { control: Control; pagers: string[] } | { pager: string; others: string[] };
 
 // After reading the list from the plain page: is that the whole list, and if not, which control
 // or which group of links leads to the rest? Pagers are often plain links to other addresses
@@ -1159,7 +1162,11 @@ async function moreChapters(provider: AiProvider, storyUrl: string, html: string
   try {
     const doc = dom.window.document;
     const controls = collectControls(doc, new URL(storyUrl).pathname, false).slice(0, MAX_CONTROLS);
-    const groups = linkClusters(doc, storyUrl).filter((c) => c.shape !== toc.shape);
+    // The biggest groups, plus every group continuing the story page's own address: a pager is a
+    // handful of links and can rank below the genre and tag links.
+    const everyGroup = linkClusters(doc, storyUrl, Infinity).filter((c) => c.shape !== toc.shape);
+    const ownPrefix = `${urlShape(storyUrl)}/`;
+    const groups = [...everyGroup.slice(0, MAX_CANDIDATES), ...everyGroup.slice(MAX_CANDIDATES).filter((c) => c.shape.startsWith(ownPrefix))];
     if (controls.length === 0 && groups.length === 0) return undefined;
     const options: Record<string, string> = {};
     controls.forEach((c, i) => (options[`ctl${i + 1}`] = describeControl(c)));
@@ -1182,13 +1189,13 @@ async function moreChapters(provider: AiProvider, storyUrl: string, html: string
       state,
       options
     );
+    const own = `${urlShape(storyUrl)}/`;
     if (picked.startsWith("ctl")) {
       const control = controls[Number(picked.slice(3)) - 1];
-      return control ? { control } : undefined;
+      return control ? { control, pagers: groups.filter((g) => g.shape.startsWith(own)).map((g) => g.shape) } : undefined;
     }
     const group = groups[Number(picked.slice(5)) - 1];
     if (!group) return undefined;
-    const own = `${urlShape(storyUrl)}/`;
     return { pager: group.shape, others: groups.filter((g) => g !== group && g.shape.startsWith(own)).map((g) => g.shape) };
   } finally {
     dom.window.close();
@@ -1294,8 +1301,11 @@ export function createAiTocAdapter(): TocAdapter {
       // the AI look for a way to a list that is already on screen.
       let plain: AiToc | undefined;
       let lead: Control | undefined;
+      let pagers: string[] = [];
+      let plainHtml = "";
       try {
         const html = await loadHtml(storyUrl);
+        plainHtml = html;
         plain = await parseToc(provider, storyUrl, html);
         const more = await moreChapters(provider, storyUrl, html, plain);
         if (!more) return finalizeToc(plain);
@@ -1309,6 +1319,7 @@ export function createAiTocAdapter(): TocAdapter {
           return finalizeToc(walked);
         }
         lead = more.control;
+        pagers = more.pagers;
       } catch (err) {
         if (!(err instanceof NoChapterListError)) throw err;
       }
@@ -1352,6 +1363,16 @@ export function createAiTocAdapter(): TocAdapter {
         if (!plain || merged.chapters.length >= plain.chapters.length) break;
       }
       if (!best) throw new NoChapterListError(t("Could not find a chapter list on {url}", { url: storyUrl }));
+      // The control brought nothing: try the page links the AI did not pick as a pager.
+      if (plain && best.chapters.length <= plain.chapters.length) {
+        for (const shape of pagers) {
+          const walked = await followPager(storyUrl, plainHtml, shape, plain);
+          if (walked.chapters.length > best.chapters.length) {
+            best = walked;
+            break;
+          }
+        }
+      }
       return finalizeToc(best);
     },
   };

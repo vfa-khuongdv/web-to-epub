@@ -1,9 +1,12 @@
 import { archive } from "./archive";
 import { asianfanfics } from "./asianfanfics";
+import { docln } from "./docln";
 import { dtvebook } from "./dtvebook";
 import { fanfiction } from "./fanfiction";
 import { heyzine } from "./heyzine";
+import { royalroad } from "./royalroad";
 import { scribd } from "./scribd";
+import { truyenfullok } from "./truyenfullok";
 import { truyenfull } from "./truyenfull";
 import type { SiteModule, SupportedSite } from "./types";
 import { vietmessenger } from "./vietmessenger";
@@ -26,6 +29,9 @@ export const SITES: SiteModule[] = [
   archive,
   dtvebook,
   heyzine,
+  royalroad,
+  docln,
+  truyenfullok,
 ];
 
 export const SUPPORTED_SITES: SupportedSite[] = SITES.flatMap((site) => site.supported ?? []);
