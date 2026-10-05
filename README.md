@@ -259,6 +259,7 @@ Backend serves both the built frontend and a REST API under `/api`.
 │       ├── vault/                # Private-mode provider + token
 │       └── i18n/                 # One locale file per language
 ├── electron/main.js              # Main process for macOS app
+├── electron/port.js              # Same localhost port every launch (keeps localStorage)
 ├── scripts/                      # Icon generation, ad-hoc signing
 ├── public/                       # Frontend build output (auto-generated)
 ├── data/                         # Library: stories.db + covers/ (not committed)

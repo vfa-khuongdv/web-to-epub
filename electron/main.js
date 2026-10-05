@@ -2,7 +2,6 @@
 // dist/server.js rồi mở cửa sổ trỏ vào localhost.
 const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
 const path = require("path");
-const net = require("net");
 const http = require("http");
 const fs = require("fs");
 const os = require("os");
@@ -10,6 +9,7 @@ const fsp = require("fs/promises");
 const { spawn } = require("child_process");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
+const { choosePort } = require(path.join(__dirname, "port.js"));
 const {
   cleanupUpdateLeftovers,
   installAppImage,
@@ -35,17 +35,6 @@ if (isPackaged) {
 // blocks user namespaces, so Electron exits at startup. This window only shows the
 // app's own localhost UI (chapter HTML is rendered in a sandboxed iframe).
 if (process.platform === "linux") app.commandLine.appendSwitch("no-sandbox");
-
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-  });
-}
 
 function waitForServer(port, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
@@ -171,13 +160,28 @@ ipcMain.handle("update:install", async (event, assetUrl) => {
   }
 });
 
+// One instance at a time: a second one would open the same library (SQLite) from another
+// server, and would have to run on another port, which is another origin with none of the
+// first one's settings. Opening the app again brings its window to the front instead.
+let mainWindow = null;
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 async function start() {
-  const port = await findFreePort();
+  const port = await choosePort(path.join(app.getPath("userData"), "port.json"));
   process.env.PORT = String(port);
   require(path.join(__dirname, "..", "dist", "server.js"));
   await waitForServer(port);
 
-  const win = new BrowserWindow({
+  const win = (mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 900,
@@ -187,7 +191,7 @@ async function start() {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
-  });
+  }));
 
   // Link ra ngoài (trang nguồn của truyện) mở bằng trình duyệt mặc định,
   // không nuốt vào trong cửa sổ app.
@@ -200,6 +204,8 @@ async function start() {
 }
 
 app.whenReady().then(() => {
+  // The losing instance of the lock above is already quitting.
+  if (!app.hasSingleInstanceLock()) return;
   // A previous update can leave "<app>.old" or a work dir behind; clear them before
   // anything else. Best-effort (see services/appInstaller.ts).
   if (isPackaged && currentUpdateKind() === "mac") cleanupUpdateLeftovers(resolveAppBundlePath(process.execPath));
