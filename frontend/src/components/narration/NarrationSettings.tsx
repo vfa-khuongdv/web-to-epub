@@ -1,6 +1,7 @@
 import { ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import { deleteTtsVoice, fetchTtsStatus, fetchTtsVoices, installTts, previewTts, uninstallTts, uploadTtsVoice } from "../../lib/api";
 import { formatBytes } from "../../lib/format/formatBytes";
+import { STEALTH_HIDE_EVENT } from "../../lib/ui/stealth";
 import { useLang } from "../../i18n";
 import { AppSettings, TtsEngine, TtsStatus, TtsVariant, TtsVoice } from "../../types";
 import { Icon } from "../ui/Icon";
@@ -277,6 +278,13 @@ function VoicePicker({
   }
 
   useEffect(() => stop, []);
+
+  // The boss key silences a voice sample too (skins/StealthLayer.tsx): this <audio> is
+  // not in the page, so the layer cannot reach it itself.
+  useEffect(() => {
+    window.addEventListener(STEALTH_HIDE_EVENT, stop);
+    return () => window.removeEventListener(STEALTH_HIDE_EVENT, stop);
+  }, []);
 
   // Samples are rendered ahead of time, so this is instant; only a voice without one
   // (a freshly uploaded clip) is rendered, once, by the engine.

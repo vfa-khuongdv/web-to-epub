@@ -29,3 +29,16 @@ if (ipcRenderer.sendSync("update:can-install")) {
     },
   });
 }
+
+// Disguise skins: the opt-in system-wide boss key lives in the main process (a page
+// cannot listen while another app is focused); the page turns it on and off and is told
+// when it fires.
+contextBridge.exposeInMainWorld("electronStealth", {
+  // Returns whether the shortcut could be registered (another app may own it).
+  setGlobalKey: (enabled) => ipcRenderer.sendSync("stealth:global-key", !!enabled),
+  onBossKey: (callback) => {
+    const listener = () => callback();
+    ipcRenderer.on("stealth:boss", listener);
+    return () => ipcRenderer.removeListener("stealth:boss", listener);
+  },
+});

@@ -1,6 +1,6 @@
 // Bọc server Express sẵn có thành app macOS: main process chạy thẳng
 // dist/server.js rồi mở cửa sổ trỏ vào localhost.
-const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut } = require("electron");
 const path = require("path");
 const http = require("http");
 const fs = require("fs");
@@ -160,6 +160,27 @@ ipcMain.handle("update:install", async (event, assetUrl) => {
   }
 });
 
+// ---- Disguise: system-wide boss key (opt-in, Settings → Disguise) ---------------
+// A global shortcut takes the key from every other app while it is registered, so it is
+// only registered while the page asks for it, and it is a combination nothing else uses.
+const BOSS_ACCELERATOR = "CommandOrControl+Alt+Shift+B";
+
+ipcMain.on("stealth:global-key", (event, enabled) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  globalShortcut.unregister(BOSS_ACCELERATOR);
+  if (!enabled || !win) {
+    event.returnValue = false;
+    return;
+  }
+  // The page swaps itself for its decoy; the window stays where it is, so nothing on
+  // screen jumps or disappears in a way that draws the eye.
+  event.returnValue = globalShortcut.register(BOSS_ACCELERATOR, () => {
+    if (!win.isDestroyed()) win.webContents.send("stealth:boss");
+  });
+});
+
+app.on("will-quit", () => globalShortcut.unregisterAll());
+
 // One instance at a time: a second one would open the same library (SQLite) from another
 // server, and would have to run on another port, which is another origin with none of the
 // first one's settings. Opening the app again brings its window to the front instead.
@@ -186,6 +207,9 @@ async function start() {
     height: 860,
     minWidth: 900,
     title: "Web to EPUB",
+    // Shown once the page has painted: its title (and a disguise skin, if one is on) is in
+    // place by then, instead of the window flashing the app's own name first.
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
@@ -200,6 +224,15 @@ async function start() {
     return { action: "deny" };
   });
 
+  // A page that never paints (failed load, crashed renderer) must not leave the app
+  // running with no window; the timeout is the last resort.
+  const reveal = () => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  };
+  win.once("ready-to-show", reveal);
+  win.webContents.once("did-fail-load", reveal);
+  win.webContents.once("render-process-gone", reveal);
+  setTimeout(reveal, 5000);
   await win.loadURL(`http://127.0.0.1:${port}/`);
 }
 

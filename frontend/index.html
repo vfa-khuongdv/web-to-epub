@@ -23,6 +23,23 @@
       document.documentElement.dataset.theme = "light";
     }
   })();
+  // Giao diện ngụy trang (src/skins): đặt skin, tiêu đề tab và favicon trước khi vẽ,
+  // để tab không chớp tên thật của app. Giá trị do src/lib/ui/skin.ts ghi.
+  (function () {
+    try {
+      var skin = localStorage.getItem("skin");
+      if (skin !== "code" && skin !== "sheet") return;
+      document.documentElement.dataset.skin = skin;
+      var head = JSON.parse(localStorage.getItem("skin-head") || "null");
+      if (!head || typeof head.title !== "string" || typeof head.favicon !== "string") return;
+      document.title = head.title;
+      var icon = document.querySelector('link[rel="icon"]');
+      if (icon) {
+        icon.removeAttribute("type");
+        icon.setAttribute("href", head.favicon);
+      }
+    } catch (e) {}
+  })();
 </script>
 </head>
 <body>

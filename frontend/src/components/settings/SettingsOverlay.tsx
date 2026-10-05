@@ -9,6 +9,10 @@ import {
 import { LANGUAGES, useLang } from "../../i18n";
 import { SESSION_SITES, SessionSite } from "../../lib/sources/siteSessions";
 import { Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "../../lib/ui/theme";
+import { SKIN_IDS } from "../../lib/ui/skin";
+import { requestStealthToggle } from "../../lib/ui/stealth";
+import { SKINS } from "../../skins/registry";
+import { useSkin } from "../../skins/SkinProvider";
 import { timeAgo } from "../../lib/format/timeAgo";
 import { AppInfo, AppSettings } from "../../types";
 import { Icon } from "../ui/Icon";
@@ -215,6 +219,8 @@ function SettingsBody({
           }
         />
       </Section>
+
+      <DisguiseSection />
 
       <Section title={t("Library")}>
         <Row
@@ -459,6 +465,103 @@ function SiteSessionRow({
         />
       )}
     </>
+  );
+}
+
+// The system-wide key as the desktop app registers it (electron/main.js BOSS_ACCELERATOR).
+const IS_MAC = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const GLOBAL_BOSS_KEY = IS_MAC ? "⌘⌥⇧B" : "Ctrl+Alt+Shift+B";
+
+/**
+ * Disguise: the app drawn as another program, and the boss key that covers it with fake
+ * work. Per browser, like the theme. The system-wide key is offered only in the desktop
+ * app — a web page cannot hear keys while another app is focused.
+ */
+function DisguiseSection() {
+  const { t } = useLang();
+  const { skin, setSkin, prefs, setPrefs } = useSkin();
+  const desktop = typeof window !== "undefined" && !!window.electronStealth;
+  const [globalTaken, setGlobalTaken] = useState(false);
+
+  return (
+    <Section title={t("Disguise")}>
+      <Row
+        label={t("Look")}
+        hint={t("Draws the whole app as another program. Kept in this browser only.")}
+        control={
+          <div className="tabs">
+            {SKIN_IDS.map((option) => (
+              <button key={option} type="button" aria-selected={skin === option} onClick={() => setSkin(option)}>
+                {t(SKINS[option].label)}
+              </button>
+            ))}
+          </div>
+        }
+      />
+      <Row
+        label={t("Boss key")}
+        hint={t(
+          "Press ` (the key under Esc) to cover the screen with fake work and silence the narration; press it again to come back. While typing, use Alt+`."
+        )}
+        control={
+          <button type="button" className="btn btn-tiny" onClick={requestStealthToggle}>
+            {t("Try it")}
+          </button>
+        }
+      />
+      <Row
+        label={t("Hide when I switch to another window")}
+        hint={t("Covers the screen as soon as the app loses focus.")}
+        control={
+          <input
+            type="checkbox"
+            className="size-4 accent-select"
+            aria-label={t("Hide when I switch to another window")}
+            checked={prefs.hideOnBlur}
+            onChange={(event) => setPrefs({ hideOnBlur: event.target.checked })}
+          />
+        }
+      />
+      <Row
+        label={t("Neutral names")}
+        hint={t("The disguise shows module-01 and part-0001 instead of story and chapter titles.")}
+        control={
+          <input
+            type="checkbox"
+            className="size-4 accent-select"
+            aria-label={t("Neutral names")}
+            checked={prefs.neutralNames}
+            onChange={(event) => setPrefs({ neutralNames: event.target.checked })}
+          />
+        }
+      />
+      {desktop && (
+        <Row
+          label={t("System-wide boss key ({key})", { key: GLOBAL_BOSS_KEY })}
+          hint={
+            globalTaken
+              ? t("Another app already uses this shortcut.")
+              : t("Works even while another app is in front.")
+          }
+          control={
+            <input
+              type="checkbox"
+              className="size-4 accent-select"
+              aria-label={t("System-wide boss key ({key})", { key: GLOBAL_BOSS_KEY })}
+              checked={prefs.globalKey}
+              onChange={(event) => {
+                const enabled = event.target.checked;
+                // Asked here once to tell the user when another app owns the key; the
+                // stealth layer registers it for real from the saved preference.
+                const ok = enabled ? window.electronStealth!.setGlobalKey(true) : true;
+                setGlobalTaken(!ok);
+                setPrefs({ globalKey: enabled && ok });
+              }}
+            />
+          }
+        />
+      )}
+    </Section>
   );
 }
 

@@ -38,6 +38,8 @@ export default function LibraryView({
   supportedSites,
   pushNotice,
   autoScan,
+  onLaunchCheck,
+  initialStory,
   onOpenSettings,
 }: {
   job: CrawlJobState;
@@ -49,6 +51,12 @@ export default function LibraryView({
   // The settings page's "check when the app opens". Undefined while it is still being
   // read: the launch check waits rather than guessing.
   autoScan: boolean | undefined;
+  // Told once the launch check has been decided, so App does not run it again when this
+  // view is mounted anew (coming back from a disguise skin).
+  onLaunchCheck?: () => void;
+  // Opened at this story (and its reader at the chapter) — "open in the normal view" from
+  // a disguise skin.
+  initialStory?: { storyId: string; order?: number };
   // Reached from a story page that needs something set up first (narration).
   onOpenSettings: () => void;
 }) {
@@ -144,6 +152,7 @@ export default function LibraryView({
   useEffect(() => {
     if (loading || autoScan === undefined || checkedOnOpen.current) return;
     checkedOnOpen.current = true;
+    onLaunchCheck?.();
     if (!autoScan) return;
     const targets = stories.filter((s) => s.watching && !live[s.id]);
     if (targets.length > 0) void runChecks(targets);
@@ -172,6 +181,15 @@ export default function LibraryView({
     if (playerRequest && selected?.id !== playerRequest.storyId) void openStory(playerRequest.storyId);
     // openStory is recreated every render; only a new request should trigger this.
   }, [playerRequest]);
+
+  // Mount only: the skin's target. A chapter goes through the player's "show me" request,
+  // which opens the story and then its reader there (the effect above, then StoryDetail).
+  useEffect(() => {
+    if (!initialStory) return;
+    if (initialStory.order !== undefined) player.requestOpen(initialStory.storyId, initialStory.order);
+    else void openStory(initialStory.storyId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function openStory(id: string) {
     const request = ++openRequest.current;

@@ -39,7 +39,72 @@
   --radius-tool: 3px;
 
   --ease-tool: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Disguise skins (src/skins/): each is a lookalike of another program, so each has its
+     own palette — the one place the reserved-colour rules of DESIGN.md do not apply (see
+     "Disguise skins" there). Dark values are below, under [data-theme="dark"]. */
+
+  /* Code editor skin (light / dark editor themes). */
+  --color-code-title: #dddddd;
+  --color-code-activity: #2c2c2c;
+  --color-code-activity-fg: #ffffff;
+  --color-code-activity-dim: #8b8b8b;
+  --color-code-side: #f3f3f3;
+  --color-code-editor: #ffffff;
+  --color-code-tab: #ececec;
+  --color-code-tab-active: #ffffff;
+  --color-code-panel: #ffffff;
+  --color-code-status: #007acc;
+  --color-code-status-fg: #ffffff;
+  --color-code-fg: #3b3b3b;
+  --color-code-dim: #6f6f6f;
+  --color-code-text: #1f1f1f;
+  --color-code-gutter: #237893;
+  --color-code-gutter-active: #0b216f;
+  --color-code-line: #f2f2f2;
+  --color-code-selection: #add6ff;
+  --color-code-hover: #e8e8e8;
+  --color-code-active: #e4e6f1;
+  --color-code-focus: #0090f1;
+  --color-code-border: #e5e5e5;
+  --color-code-input: #ffffff;
+  --color-code-heading: #800000;
+  --color-code-comment: #008000;
+  --color-code-string: #a31515;
+  --color-code-keyword: #0000ff;
+  --color-code-control: #af00db;
+  --color-code-function: #795e26;
+  --color-code-type: #267f99;
+  --color-code-number: #098658;
+  --color-code-variable: #001080;
+  --color-code-error: #e51400;
+  --color-code-warning: #bf8803;
+  --color-code-added: #587c0c;
+
+  /* Spreadsheet skin. */
+  --color-sheet-brand: #217346;
+  --color-sheet-brand-fg: #ffffff;
+  --color-sheet-ribbon: #f3f2f1;
+  --color-sheet-cell: #ffffff;
+  --color-sheet-grid: #e1e1e1;
+  --color-sheet-head: #f3f3f3;
+  --color-sheet-head-fg: #444444;
+  --color-sheet-head-on: #d2d2d2;
+  --color-sheet-select: #217346;
+  --color-sheet-select-soft: #e6f2ea;
+  --color-sheet-fg: #000000;
+  --color-sheet-dim: #605e5c;
+  --color-sheet-rule: #d1d1d1;
+  --color-sheet-hover: #e1dfdd;
+  --color-sheet-status: #f3f2f1;
+  --color-sheet-tab-on: #ffffff;
+  --color-sheet-negative: #c00000;
+
+  --font-sheet: Calibri, Aptos, Carlito, "Segoe UI", Arial, sans-serif;
 }
+
+/* `dark:` follows the app's theme switch (data-theme), not only the OS setting. */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
 
 @layer base {
   :root {
@@ -73,6 +138,60 @@
     --color-btn: #2f2f2f;
     --color-btn-hover: #383838;
     --color-btn-rule: #4a4a4a;
+
+    --color-code-title: #3c3c3c;
+    --color-code-activity: #333333;
+    --color-code-activity-fg: #ffffff;
+    --color-code-activity-dim: #858585;
+    --color-code-side: #252526;
+    --color-code-editor: #1e1e1e;
+    --color-code-tab: #2d2d2d;
+    --color-code-tab-active: #1e1e1e;
+    --color-code-panel: #1e1e1e;
+    --color-code-status: #007acc;
+    --color-code-status-fg: #ffffff;
+    --color-code-fg: #cccccc;
+    --color-code-dim: #8b8b8b;
+    --color-code-text: #d4d4d4;
+    --color-code-gutter: #858585;
+    --color-code-gutter-active: #c6c6c6;
+    --color-code-line: #282828;
+    --color-code-selection: #264f78;
+    --color-code-hover: #2a2d2e;
+    --color-code-active: #37373d;
+    --color-code-focus: #007fd4;
+    --color-code-border: #3c3c3c;
+    --color-code-input: #3c3c3c;
+    --color-code-heading: #569cd6;
+    --color-code-comment: #6a9955;
+    --color-code-string: #ce9178;
+    --color-code-keyword: #569cd6;
+    --color-code-control: #c586c0;
+    --color-code-function: #dcdcaa;
+    --color-code-type: #4ec9b0;
+    --color-code-number: #b5cea8;
+    --color-code-variable: #9cdcfe;
+    --color-code-error: #f14c4c;
+    --color-code-warning: #cca700;
+    --color-code-added: #81b88b;
+
+    --color-sheet-brand: #185c37;
+    --color-sheet-brand-fg: #ffffff;
+    --color-sheet-ribbon: #292929;
+    --color-sheet-cell: #1f1f1f;
+    --color-sheet-grid: #3a3a3a;
+    --color-sheet-head: #2b2b2b;
+    --color-sheet-head-fg: #cfcfcf;
+    --color-sheet-head-on: #3e3e3e;
+    --color-sheet-select: #3fa36b;
+    --color-sheet-select-soft: #23382b;
+    --color-sheet-fg: #e6e6e6;
+    --color-sheet-dim: #a6a6a6;
+    --color-sheet-rule: #3d3d3d;
+    --color-sheet-hover: #3b3b3b;
+    --color-sheet-status: #292929;
+    --color-sheet-tab-on: #1f1f1f;
+    --color-sheet-negative: #ff7b7b;
   }
 
   html,

@@ -189,6 +189,9 @@ export interface NarrationPlayer {
   // Jump to a chapter of the loaded queue (the queue popover); starts from the top.
   jumpTo: (order: number) => void;
   toggle: () => void;
+  // Stops the sound and leaves everything else as it is; does nothing when already silent.
+  // The boss key uses it — toggle() would start a paused chapter instead.
+  pause: () => void;
   seek: (time: number) => void;
   skip: (seconds: number) => void;
   next: () => void;
@@ -225,7 +228,15 @@ export function useNarrationPlayer(): NarrationPlayer {
  * App, which is remounted when switching library — locking private mode stops it.
  * A second, looping <audio> plays the chosen background track whenever the voice plays.
  */
-export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
+export function NarrationPlayerProvider({
+  children,
+  keys = true,
+}: {
+  children: ReactNode;
+  // Off while a disguise skin is shown: the player has no controls on screen there, so a
+  // Space or an arrow key meant for the skin must not start or seek the audio unseen.
+  keys?: boolean;
+}) {
   const isPrivate = useVault().active;
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const musicRef = useRef<HTMLAudioElement | null>(null);
@@ -551,6 +562,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
   // chapter. Left alone while the focused element uses the key itself (typing, a focused
   // button) or a modifier is held, so shortcuts elsewhere keep working.
   useEffect(() => {
+    if (!keys) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.defaultPrevented || event.metaKey || event.ctrlKey || event.altKey) return;
       const current = orderRef.current;
@@ -589,7 +601,7 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [load]);
+  }, [load, keys]);
 
   const value = useMemo<NarrationPlayer>(() => {
     const orders = queue?.orders ?? [];
@@ -618,6 +630,10 @@ export function NarrationPlayerProvider({ children }: { children: ReactNode }) {
         if (orderRef.current === null) return;
         if (el.paused) void el.play();
         else el.pause();
+      },
+      pause: () => {
+        audioRef.current?.pause();
+        musicRef.current?.pause();
       },
       seek: (to) => {
         audio().currentTime = Math.max(0, Math.min(to, duration || to));

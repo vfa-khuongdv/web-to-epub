@@ -426,6 +426,9 @@ A single inline SVG set: a 20×20 viewBox drawn at 12–14px, `stroke-width: 1.6
 ### Vietnamese Copy
 UI copy is Vietnamese and stays Vietnamese — labels, states, empty states, errors, and buttons. The vocabulary is fixed: "chương" (not chapter), "crawl" (kept as-is, never "thu thập"), "xuất EPUB", "Nhật ký", "Crawl tiếp", "Chờ crawl", "Đang crawl", "Truyện của tôi", "Crawl thủ công". States are sentence case in chips ("Xong", "Lỗi") and uppercase only in column headers and labels.
 
+### Disguise Skins (the exception)
+Everything above describes the default skin — the app as itself. The disguise skins in `src/skins/` deliberately look like other programs (a code editor, a spreadsheet) so the app can be used at a desk without looking like a novel reader, and inside `src/skins/` the palette, shadow and chrome rules above give way to the imitated program's: they use their own `--color-code-*` and `--color-sheet-*` tokens (light and dark, switched by `data-theme` like the rest), may use that program's shadows and accent colours, and may lay text out as editor lines or cells. What still holds there: system font stacks only (no webfont), Tailwind utilities at the call site, visible focus, and no other product's logo, icon or name — a lookalike, never a copy of a trademark. Each skin's decoy (the boss key's fake work) contains nothing from the library.
+
 ## Do's and Don'ts
 
 ### Do:
