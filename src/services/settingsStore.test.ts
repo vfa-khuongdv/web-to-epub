@@ -1,6 +1,8 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import v8 from "node:v8";
+import vm from "node:vm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSettingsStore, DEFAULT_SETTINGS, type SettingsStore } from "./settingsStore";
 
@@ -15,6 +17,22 @@ describe("settingsStore", () => {
 
   afterEach(async () => {
     await rm(dir, { recursive: true, force: true });
+  });
+
+  // node:sqlite on Node 22.13 finalizes a database's statements once the database object
+  // is garbage-collected; the store keeps only statements, so the server crashed on the
+  // first settings request after a collection ("statement has been finalized").
+  it("keeps working after a garbage collection", async () => {
+    v8.setFlagsFromString("--expose-gc");
+    const gc = vm.runInNewContext("gc") as () => void;
+    settings.update({ defaultAuthor: "A" });
+    for (let i = 0; i < 3; i++) {
+      gc();
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    expect(settings.get().defaultAuthor).toBe("A");
+    settings.setRaw("k", "v");
+    expect(settings.getRaw("k")).toBe("v");
   });
 
   it("answers with the defaults before anything is saved", () => {

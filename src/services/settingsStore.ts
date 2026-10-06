@@ -55,6 +55,11 @@ export interface SettingsStore {
   setRaw(key: string, value: string): void;
 }
 
+// node:sqlite on Node 22.13 finalizes a database's statements once the DatabaseSync itself
+// is garbage-collected, and a store keeps only its statements — so the server crashed on
+// the first settings request after a collection. Each store holds its database here.
+const databases = new WeakMap<SettingsStore, DatabaseSync>();
+
 export function createSettingsStore(baseDir: string): SettingsStore {
   fs.mkdirSync(baseDir, { recursive: true });
   const db = new DatabaseSync(path.join(baseDir, "stories.db"));
@@ -91,7 +96,7 @@ export function createSettingsStore(baseDir: string): SettingsStore {
     };
   }
 
-  return {
+  const store: SettingsStore = {
     get,
 
     getRaw(key: string): string | undefined {
@@ -111,6 +116,8 @@ export function createSettingsStore(baseDir: string): SettingsStore {
       return get();
     },
   };
+  databases.set(store, db);
+  return store;
 }
 
 export const settingsStore = createSettingsStore(DATA_DIR);
