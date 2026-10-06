@@ -1,0 +1,74 @@
+name: New site request
+description: Ask for built-in support for a novel, ebook or comic site.
+title: "[Site] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Built-in support is added for sites that are stable enough to test. Anything else can
+        still be tried with the agent crawler (**Settings → Agent crawler**). Please include a
+        story URL that is publicly readable if possible.
+  - type: input
+    id: site
+    attributes:
+      label: Site URL
+      placeholder: https://example.com
+    validations:
+      required: true
+  - type: input
+    id: story
+    attributes:
+      label: Example story URL
+      placeholder: https://example.com/story/...
+    validations:
+      required: true
+  - type: dropdown
+    id: language
+    attributes:
+      label: Content language
+      options:
+        - Vietnamese
+        - English
+        - Chinese
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: session
+    attributes:
+      label: Does reading this story need a login?
+      options:
+        - No — it reads without an account
+        - Yes — my own free account
+        - Some chapters are paid or subscribers-only
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: antibot
+    attributes:
+      label: Does the site use Cloudflare or another bot check?
+      options:
+        - Not sure
+        - "Yes"
+        - "No"
+    validations:
+      required: true
+  - type: dropdown
+    id: agent
+    attributes:
+      label: Have you tried the agent crawler on this site?
+      options:
+        - Have not tried
+        - It worked, but I want built-in support
+        - It failed
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Paywalled or DRM content is refused by design; requests to bypass it will be closed.
+    validations:
+      required: false

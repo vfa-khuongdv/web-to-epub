@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Supported sites
+    url: https://github.com/vfa-khuongdv/web-to-epub/blob/main/docs/supported-sites.md
+    about: Check the list before requesting a site — it also notes which sites need a session.
+  - name: Contributor & architecture guide
+    url: https://github.com/vfa-khuongdv/web-to-epub/blob/main/AGENTS.md
+    about: Read before opening a code PR.
+  - name: Report a security issue privately
+    url: https://github.com/vfa-khuongdv/web-to-epub/security/advisories/new
+    about: Do not open a public issue for vulnerabilities.
