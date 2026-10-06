@@ -2,7 +2,7 @@
   "name": "web-to-epub",
   "version": "1.8.0",
   "description": "Extract rendered web page text (bypassing copy-protection) and export to Kindle-ready EPUB",
-  "author": "vfa-khuongdv <khuongdv@vitalify.asia>",
+  "author": "khuongdv",
   "repository": {
     "type": "git",
     "url": "https://github.com/vfa-khuongdv/web-to-epub.git"
@@ -61,10 +61,12 @@
       "public/**",
       "electron/**",
       "tts/**",
+      "agent/**",
       "package.json"
     ],
     "asarUnpack": [
-      "tts/**"
+      "tts/**",
+      "agent/**"
     ],
     "extraResources": [
       {

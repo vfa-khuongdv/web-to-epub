@@ -41,6 +41,7 @@ COPY --from=builder /app/public ./public
 # Worker Python cho giọng đọc (VieNeu-TTS). Bản thân Python, uv và model được app tự tải
 # vào /app/data/tts khi người dùng bấm Cài đặt trong Settings → Giọng đọc.
 COPY tts ./tts
+COPY agent ./agent
 
 # Thư viện (SQLite + ảnh bìa) nằm ở /app/data — mount volume vào đây để giữ dữ liệu.
 RUN mkdir -p /app/data && chown -R node:node /app/data

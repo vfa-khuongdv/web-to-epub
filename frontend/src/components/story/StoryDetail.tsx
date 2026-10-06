@@ -20,6 +20,7 @@ import ChapterPager from "./ChapterPager";
 import PendingChapterRow from "./PendingChapterRow";
 import { Icon } from "../ui/Icon";
 import ReaderOverlay from "../reader/ReaderOverlay";
+import AgentCrawlerPanel from "./AgentCrawlerPanel";
 import StoryMetaFields from "./StoryMetaFields";
 
 // Long stories with thousands of chapters: rendering all at once creates tens of
@@ -450,6 +451,15 @@ export default function StoryDetail({
               </p>
             )}
         </div>
+
+          {/* Right under the chapter counts: it is the way out when chapters are missing, wrong or failing. */}
+          {!imported && <AgentCrawlerPanel
+              storyId={story.id}
+              onRewritten={async () => {
+                await refreshStoryToc(story.id);
+                await onStoryChanged();
+              }}
+            />}
 
           {story.newChapterCount > 0 && (
             <div className="banner banner-new">

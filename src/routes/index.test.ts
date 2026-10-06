@@ -43,7 +43,7 @@ describe("api router", () => {
   it("mounts the sub-routers", async () => {
     expect((await fetch(`${base}/vault/status`)).status).toBe(200);
     expect((await fetch(`${base}/settings`)).status).toBe(200);
-    expect((await fetch(`${base}/ai/config`)).status).toBe(200);
+    expect((await fetch(`${base}/agent-crawler/config`)).status).toBe(200);
     expect((await fetch(`${base}/music`)).status).toBe(200);
     expect((await fetch(`${base}/stories`)).status).toBe(200);
   });

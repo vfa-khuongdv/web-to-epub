@@ -31,7 +31,7 @@ export default function AddStoryBox({
   busy: boolean;
   importBusy: boolean;
   onCreate: () => void;
-  // AI crawler is on and has a key: offer the button that reads any site with it.
+  // Agent crawler is on and its agent installed: offer the button that reads any site with it.
   aiReady: boolean;
   onCreateAi: () => void;
   onImportFiles: (files: FileList | null) => void;
@@ -81,11 +81,11 @@ export default function AddStoryBox({
           type="button"
           className="btn"
           disabled={busy}
-          title={t("Read this page with the AI crawler, even if the site is not supported")}
+          title={t("Read this page with the agent crawler, even if the site is not supported")}
           onClick={onCreateAi}
         >
           <Icon name="sparkles" size={13} />
-          {t("Load with AI")}
+          {t("Load with agent")}
         </button>
       )}
       <button type="button" className="btn" disabled={importBusy} onClick={() => fileInput.current?.click()}>

@@ -25,8 +25,8 @@ import { storyId } from "../services/storyStore";
 import { storyUsage } from "../services/storyUsage";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../sites";
-import { activeAiProvider } from "../services/ai/aiConfig";
-import { createAiTocAdapter } from "../services/ai/aiLocate";
+import { activeAgent } from "../services/agent/agentConfig";
+import { AgentDocumentPageError, articleViaAgent, createAgentTocAdapter, hasArticleCrawler, webStoryUrl } from "../services/agent/agentCrawler";
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";
@@ -71,8 +71,8 @@ async function refreshStoryToc(params: {
 }
 
 // The adapter and site label for a story URL: a supported site's own, else — only when AI
-// crawling is on AND the request asked for it (`ai: true`, the home page's AI button) — the
-// AI adapter, labelled by hostname. Stories already added that way keep using it for
+// crawling is on AND the request asked for it (`ai: true`, the home page's agent button) — the
+// agent adapter, labelled by hostname. Stories already added that way keep using it for
 // check/refresh, which pass allowAi themselves.
 function resolveToc(url: string, allowAi: boolean): { site: string; adapter: TocAdapter } | { error: "unsupported" | "no-adapter"; name?: string } {
   const supported = findSupportedSite(url);
@@ -80,9 +80,9 @@ function resolveToc(url: string, allowAi: boolean): { site: string; adapter: Toc
     const adapter = getTocAdapter(url);
     return adapter ? { site: supported.domain, adapter } : { error: "no-adapter", name: supported.name };
   }
-  if (!allowAi || !activeAiProvider()) return { error: "unsupported" };
+  if (!allowAi || !activeAgent()) return { error: "unsupported" };
   try {
-    return { site: new URL(url).hostname.replace(/^www\./, ""), adapter: createAiTocAdapter() };
+    return { site: new URL(url).hostname.replace(/^www\./, ""), adapter: createAgentTocAdapter() };
   } catch {
     return { error: "unsupported" };
   }
@@ -119,6 +119,7 @@ storiesRouter.post("/stories", async (req, res) => {
     return;
   }
   const { site, adapter } = resolved;
+  const viaAgent = !findSupportedSite(url);
 
   const storyUrl = adapter.normalizeStoryUrl(url);
   const id = storyId(storyUrl);
@@ -127,6 +128,11 @@ storiesRouter.post("/stories", async (req, res) => {
     return;
   }
   try {
+    // A site the agent already wrote a page reader for: skip asking again what kind of page this is.
+    if (viaAgent && (await hasArticleCrawler(url))) {
+      res.json({ story: await importWebPage(library, url) });
+      return;
+    }
     const existing = await library.stories.get(id);
     const story = await refreshStoryToc({ library, existing, storyUrl, site, adapter });
     // User just manually loaded TOC: the "N new chapters" chip from the previous check
@@ -134,9 +140,31 @@ storiesRouter.post("/stories", async (req, res) => {
     await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
+    if (viaAgent && err instanceof AgentDocumentPageError) {
+      try {
+        res.json({ story: await importWebPage(library, url) });
+      } catch (inner) {
+        res.status(502).json({ message: inner instanceof Error ? inner.message : t("Could not read this page") });
+      }
+      return;
+    }
     res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });
+
+// A page that is one whole text (article, paper, book on a single page): the agent's page reader turns it
+// into chapters and it is saved like an imported book (site "epub", nothing to crawl or watch). The story
+// URL is `web:<address>`, so adding the same page again returns the story already in the library.
+async function importWebPage(library: Library, url: string): Promise<StoredStory> {
+  const storyUrl = webStoryUrl(url);
+  const id = storyId(storyUrl);
+  const existing = await library.stories.getOutline(id);
+  if (existing) return existing;
+  const agent = activeAgent();
+  if (!agent) throw new Error(t("The agent crawler is off or its agent is not installed (Settings → Agent crawler)"));
+  const { coverUrl, ...book } = await articleViaAgent(agent, url);
+  return saveImportedBook(library, { id, storyUrl, book, coverUrl });
+}
 
 // Save a book that came from a source with no chapter list (a file, archive.org, a site
 // that only hosts the EPUB) as an imported story: site "epub" so the crawl/watch controls
@@ -144,13 +172,16 @@ storiesRouter.post("/stories", async (req, res) => {
 // keeps what the reader edited, and a new story starts from the settings defaults.
 async function saveImportedBook(
   library: Library,
-  params: { id: string; storyUrl: string; book: ImportedBook; existing?: StoredStory }
+  params: { id: string; storyUrl: string; book: ImportedBook; existing?: StoredStory; coverUrl?: string }
 ): Promise<StoredStory> {
   const { id, storyUrl, book, existing } = params;
   let coverUrl = existing?.coverUrl;
   if (book.cover) {
     const saved = library.covers.saveBytes(id, book.cover.bytes);
     if (saved) coverUrl = saved;
+  } else if (params.coverUrl) {
+    // A page's cover is an address, not bytes: download it, or keep the address for the export to fetch.
+    coverUrl = (await library.covers.save(id, params.coverUrl, storyUrl.replace(/^web:/, ""))) ?? params.coverUrl;
   }
   const defaults = settingsStore.get();
   const now = new Date().toISOString();
