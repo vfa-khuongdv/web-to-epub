@@ -259,6 +259,7 @@ describe("agent crawler", () => {
       expect(hardcodedFrom("x.includes('chap-12')", url)).toBe("chap-12");
       expect(hardcodedFrom("a[href*='/truyen/'] a[href*='/chap-']", url)).toBeNull();
       expect(hardcodedFrom("const id = '3374';", "https://c.test/m/3374/1/")).toBe("3374");
+      expect(hardcodedFrom("book: '12345'", "https://c.test/read?book=12345")).toBe("12345");
       expect(hardcodedFrom("anything", "https://c.test/")).toBeNull();
     });
 

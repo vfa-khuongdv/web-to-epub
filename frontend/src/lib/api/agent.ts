@@ -28,6 +28,12 @@ export async function fetchAgentConfig(): Promise<AgentConfig> {
   return (await res.json()) as AgentConfig;
 }
 
+export async function fetchAgentModels(agent: string): Promise<string[]> {
+  const res = await apiFetch(`/api/agent-crawler/models?agent=${encodeURIComponent(agent)}`, { headers: langHeaders() });
+  if (!res.ok) return [];
+  return ((await res.json()) as { models: string[] }).models;
+}
+
 export async function saveAgentConfig(patch: AgentConfigPatch): Promise<void> {
   const res = await apiFetch("/api/agent-crawler/config", {
     method: "PUT",

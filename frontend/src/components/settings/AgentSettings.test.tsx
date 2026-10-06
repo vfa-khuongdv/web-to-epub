@@ -5,13 +5,14 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderEn } from "../../test/renderEn";
 
-vi.mock("../../lib/api", () => ({ fetchAgentConfig: vi.fn(), saveAgentConfig: vi.fn() }));
-import { fetchAgentConfig, saveAgentConfig } from "../../lib/api";
+vi.mock("../../lib/api", () => ({ fetchAgentConfig: vi.fn(), fetchAgentModels: vi.fn(), saveAgentConfig: vi.fn() }));
+import { fetchAgentConfig, fetchAgentModels, saveAgentConfig } from "../../lib/api";
 import type { AgentConfig } from "../../lib/api";
 import AgentSettings, { AGENT_CONFIG_CHANGED } from "./AgentSettings";
 
 const fetchMock = vi.mocked(fetchAgentConfig);
 const saveMock = vi.mocked(saveAgentConfig);
+const modelsMock = vi.mocked(fetchAgentModels);
 
 const config = (over: Partial<AgentConfig> = {}): AgentConfig => ({
   enabled: false,
@@ -29,6 +30,7 @@ const config = (over: Partial<AgentConfig> = {}): AgentConfig => ({
 beforeEach(() => {
   fetchMock.mockReset().mockResolvedValue(config());
   saveMock.mockReset().mockResolvedValue();
+  modelsMock.mockReset().mockResolvedValue(["sonnet", "opus"]);
 });
 afterEach(cleanup);
 
@@ -71,13 +73,20 @@ describe("AgentSettings", () => {
     expect(saveMock).toHaveBeenCalledWith({ agent: "claude" });
   });
 
-  it("saves the model when the field loses focus with a new value", async () => {
-    fetchMock.mockResolvedValue(config({ enabled: true, agent: "opencode", ready: true }));
+  it("lists the agent's models next to a default choice and saves the one picked", async () => {
+    fetchMock.mockResolvedValue(config({ enabled: true, agent: "claude", ready: true }));
     renderEn(<AgentSettings onSaved={vi.fn()} onError={vi.fn()} />);
     const model = await screen.findByLabelText("Model");
-    await userEvent.type(model, "sonnet");
-    await userEvent.tab();
+    expect(await screen.findByRole("option", { name: "opus" })).toBeInTheDocument();
+    expect(model).toHaveValue("");
+    await userEvent.selectOptions(model, "sonnet");
     expect(saveMock).toHaveBeenCalledWith({ model: "sonnet" });
+  });
+
+  it("keeps a saved model that the agent no longer lists", async () => {
+    fetchMock.mockResolvedValue(config({ enabled: true, agent: "claude", model: "old-model", ready: true }));
+    renderEn(<AgentSettings onSaved={vi.fn()} onError={vi.fn()} />);
+    expect(await screen.findByLabelText("Model")).toHaveValue("old-model");
   });
 
   it("says so, and cannot be turned on, when no agent is installed", async () => {

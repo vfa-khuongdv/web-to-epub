@@ -351,37 +351,42 @@ export function toTocResult(value: unknown, storyUrl: string): TocResult {
 }
 
 // Inline HTML from a page, cleaned: what the reader iframe and the EPUB should never receive as active content.
+// Returns the cleaned HTML and its plain text; `close` frees the helper document.
 function cleaner() {
   const dom = new JSDOM("<body></body>");
   const doc = dom.window.document;
-  return (html: string): string => {
-    const box = doc.createElement("div");
-    box.innerHTML = html;
+  const clean = (html: string): { html: string; text: string } => {
+    const box = doc.createElement("div");    box.innerHTML = html;
     box.querySelectorAll("script,style,iframe,object,embed,link,meta,form,base").forEach((el) => el.remove());
     for (const el of Array.from(box.querySelectorAll("*"))) {
       for (const attr of Array.from(el.attributes)) {
         if (/^on/i.test(attr.name) || (/^(href|src|xlink:href)$/i.test(attr.name) && /^\s*(javascript|data|vbscript):/i.test(attr.value))) el.removeAttribute(attr.name);
       }
     }
-    return box.innerHTML.trim();
+    return { html: box.innerHTML.trim(), text: box.textContent ?? "" };
   };
+  return { clean, close: () => dom.window.close() };
 }
 
 function cleanBlocks(items: unknown, url: string): ContentBlock[] {
-  const clean = cleaner();
+  const { clean, close } = cleaner();
   const blocks: ContentBlock[] = [];
-  for (const item of Array.isArray(items) ? items : []) {
-    const b = (item ?? {}) as Record<string, unknown>;
-    if (b.type === "heading" && typeof b.text === "string" && collapse(b.text)) {
-      const level = Number(b.level);
-      blocks.push({ type: "heading", level: level >= 1 && level <= 6 ? level : 2, text: collapse(b.text) });
-    } else if (b.type === "paragraph" && typeof b.text === "string") {
-      const text = clean(b.text);
-      if (collapse(new JSDOM(text).window.document.body.textContent ?? "")) blocks.push({ type: "paragraph", text });
-    } else if (b.type === "image") {
-      const src = http(b.src, url);
-      if (src) blocks.push({ type: "image", src, alt: typeof b.alt === "string" ? b.alt.slice(0, 200) : "" });
+  try {
+    for (const item of Array.isArray(items) ? items : []) {
+      const b = (item ?? {}) as Record<string, unknown>;
+      if (b.type === "heading" && typeof b.text === "string" && collapse(b.text)) {
+        const level = Number(b.level);
+        blocks.push({ type: "heading", level: level >= 1 && level <= 6 ? level : 2, text: collapse(b.text) });
+      } else if (b.type === "paragraph" && typeof b.text === "string") {
+        const cleaned = clean(b.text);
+        if (collapse(cleaned.text)) blocks.push({ type: "paragraph", text: cleaned.html });
+      } else if (b.type === "image") {
+        const src = http(b.src, url);
+        if (src) blocks.push({ type: "image", src, alt: typeof b.alt === "string" ? b.alt.slice(0, 200) : "" });
+      }
     }
+  } finally {
+    close();
   }
   return blocks;
 }
@@ -515,7 +520,9 @@ function broken(host: string, fn: Fn, err: unknown): AgentCrawlerError {
 // page it was written from. A path segment that looks like a story's slug or id (several words joined by
 // hyphens, or a number) found inside the code is exactly that.
 export function hardcodedFrom(code: string, pageUrl: string): string | null {
-  for (const raw of new URL(pageUrl).pathname.split("/")) {
+  const url = new URL(pageUrl);
+  // An id can sit in the query (`?book=12345`) as well as in the path.
+  for (const raw of [...url.pathname.split("/"), ...Array.from(url.searchParams.values())]) {
     let segment = raw;
     try {
       segment = decodeURIComponent(raw);
@@ -573,7 +580,7 @@ async function classifyUrl(agent: AgentModel, url: string, html: string): Promis
   try {
     const reply = await agent.complete(CLASSIFY_PROMPT(url, skeleton(html, url)));
     const answer = JSON.parse(reply.slice(reply.indexOf("{"), reply.lastIndexOf("}") + 1)) as Record<string, unknown>;
-    kind = typeof answer.kind === "string" ? answer.kind : "";
+    kind = typeof answer.kind === "string" ? answer.kind.trim().toLowerCase() : "";
     reason = typeof answer.reason === "string" ? answer.reason.slice(0, 300) : "";
   } catch {
     // An answer that cannot be read does not block the crawl: the code written next is tested on this page anyway.

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { AgentConfig, fetchAgentConfig, saveAgentConfig } from "../../lib/api";
+import { AgentConfig, fetchAgentConfig, fetchAgentModels, saveAgentConfig } from "../../lib/api";
 import { useLang } from "../../i18n";
 
 /**
@@ -14,7 +14,7 @@ export const AGENT_CONFIG_CHANGED = "agent-config-changed";
 export default function AgentSettings({ onSaved, onError }: { onSaved: () => void; onError: (m: string) => void }) {
   const { t } = useLang();
   const [config, setConfig] = useState<AgentConfig | null>(null);
-  const [model, setModel] = useState("");
+  const [models, setModels] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [failed, setFailed] = useState(false);
 
@@ -22,7 +22,6 @@ export default function AgentSettings({ onSaved, onError }: { onSaved: () => voi
     fetchAgentConfig()
       .then((c) => {
         setConfig(c);
-        setModel(c.model);
       })
       .catch((err: Error) => {
         setFailed(true);
@@ -30,13 +29,23 @@ export default function AgentSettings({ onSaved, onError }: { onSaved: () => voi
       });
   }, [onError]);
 
+  const agent = config?.agent;
+  const listed = config?.enabled && agent;
+  useEffect(() => {
+    if (!listed) return;
+    let current = true;
+    fetchAgentModels(agent).then((list) => current && setModels(list));
+    return () => {
+      current = false;
+    };
+  }, [listed, agent]);
+
   async function save(patch: Parameters<typeof saveAgentConfig>[0]) {
     setBusy(true);
     try {
       await saveAgentConfig(patch);
       const next = await fetchAgentConfig();
       setConfig(next);
-      setModel(next.model);
       window.dispatchEvent(new Event(AGENT_CONFIG_CHANGED));
       onSaved();
     } catch (err) {
@@ -92,14 +101,21 @@ export default function AgentSettings({ onSaved, onError }: { onSaved: () => voi
                 </option>
               ))}
             </select>
-            <input
+            <select
               className="input"
               aria-label={t("Model")}
-              placeholder={t("Model (empty = the agent's default)")}
-              value={model}
-              onChange={(event) => setModel(event.target.value)}
-              onBlur={() => model !== config.model && void save({ model })}
-            />
+              value={config.model}
+              disabled={busy}
+              onChange={(event) => void save({ model: event.target.value })}
+            >
+              <option value="">{t("Model default")}</option>
+              {/* A model saved earlier stays selectable even when the agent no longer lists it. */}
+              {(config.model && !models.includes(config.model) ? [config.model, ...models] : models).map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
           </div>
         )
       )}

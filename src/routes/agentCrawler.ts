@@ -2,6 +2,7 @@ import { Router } from "express";
 import { onAgentActivity, recentAgentActivity } from "../services/agent/agentActivity";
 import { hasAgentCrawler, rewriteCrawler } from "../services/agent/agentCrawler";
 import { activeAgent, AGENTS, installedAgents, loadAgentConfig, saveAgentConfig } from "../services/agent/agentConfig";
+import { listAgentModels } from "../services/agent/agentCli";
 import { t } from "../services/lang";
 import { libraryFor } from "./library";
 import { writeSse } from "./live";
@@ -20,6 +21,12 @@ agentCrawlerRouter.get("/agent-crawler/config", (_req, res) => {
     ready: config.enabled && !!config.agent && installed.includes(config.agent),
     agents: AGENTS.map((a) => ({ ...a, installed: installed.includes(a.id) })),
   });
+});
+
+// The models an installed agent offers, for the picker; [] when it cannot say.
+agentCrawlerRouter.get("/agent-crawler/models", async (req, res) => {
+  const known = AGENTS.find((a) => a.id === req.query.agent);
+  res.json({ models: known ? await listAgentModels(known.id) : [] });
 });
 
 // Body: { enabled?, agent?, model? }. Only what is present changes. Turning the crawler on with no

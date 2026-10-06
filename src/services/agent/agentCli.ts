@@ -51,12 +51,18 @@ export function findAgentBinary(agent: AgentId): string | undefined {
   return undefined;
 }
 
+// One argument for cmd.exe: wrapped in quotes, inner quotes doubled, `%` neutralised so no variable is expanded.
+const winQuote = (a: string) => `"${a.replace(/"/g, '""').replace(/%/g, '"^%"')}"`;
+
 function run(file: string, args: string[], cwd: string, stdin: string, env?: NodeJS.ProcessEnv): Promise<string> {
   return new Promise((resolve, reject) => {
+    // A .cmd shim cannot be spawned directly (Node throws EINVAL on Windows since CVE-2024-27980), so it runs
+    // through the command interpreter; `/s` + the outer quotes keep the path and each quoted argument intact.
+    const shim = process.platform === "win32" && /\.(cmd|bat)$/i.test(file);
     const child = execFile(
-      file,
-      args,
-      { cwd, timeout: TIMEOUT_MS, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...env } },
+      shim ? (process.env.ComSpec ?? "cmd.exe") : file,
+      shim ? ["/d", "/s", "/c", `"${[file, ...args].map(winQuote).join(" ")}"`] : args,
+      { cwd, timeout: TIMEOUT_MS, windowsVerbatimArguments: shim, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...env } },
       (err, stdout, stderr) => {
         if (err) reject(new Error(`AI agent failed: ${(stderr || err.message).trim().slice(-300)}`));
         else resolve(stdout);
@@ -126,5 +132,32 @@ export async function runAgent(agent: AgentId, prompt: string, model?: string): 
     });
   } finally {
     await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+// Models the person can pick for an agent, as the agent itself names them. Claude Code has no list command,
+// so its aliases are fixed; the other two are asked. A CLI that cannot answer gives an empty list.
+const CLAUDE_MODELS = ["opus", "sonnet", "haiku"];
+
+export function parseModelList(agent: AgentId, output: string): string[] {
+  if (agent === "claude") return CLAUDE_MODELS;
+  if (agent === "opencode") return output.split("\n").map((l) => l.trim()).filter((l) => /^[\w.-]+\/\S+$/.test(l));
+  try {
+    const models = (JSON.parse(output) as { models?: { slug?: unknown; visibility?: unknown }[] }).models ?? [];
+    return models.filter((m) => typeof m.slug === "string" && m.visibility !== "hide").map((m) => m.slug as string);
+  } catch {
+    return [];
+  }
+}
+
+export async function listAgentModels(agent: AgentId): Promise<string[]> {
+  if (agent === "claude") return CLAUDE_MODELS;
+  const file = findAgentBinary(agent);
+  if (!file) return [];
+  try {
+    const out = await run(file, agent === "opencode" ? ["models"] : ["debug", "models"], tmpdir(), "");
+    return parseModelList(agent, out);
+  } catch {
+    return [];
   }
 }

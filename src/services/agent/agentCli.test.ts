@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { claudeArgs, codexArgs, OPENCODE_CONFIG } from "./agentCli";
+import { claudeArgs, codexArgs, OPENCODE_CONFIG, parseModelList } from "./agentCli";
 
 // The agent reads text from a crawled page and the person's own setup may have MCP servers (with
 // credentials) in it: these are what keep every tool away from it. If one is lost, the agent can go
@@ -24,5 +24,14 @@ describe("agent tools are off", () => {
 
   it("opencode: every tool (MCP and plugins included) off and every permission refused, over the person's config", () => {
     expect(JSON.parse(OPENCODE_CONFIG)).toEqual({ tools: { "*": false }, permission: { "*": "deny" } });
+  });
+});
+
+describe("model lists", () => {
+  it("reads opencode's provider/model lines and codex's visible slugs", () => {
+    expect(parseModelList("opencode", "opencode/big-pickle\nnoise line\nanthropic/claude-opus-4-5\n")).toEqual(["opencode/big-pickle", "anthropic/claude-opus-4-5"]);
+    expect(parseModelList("codex", JSON.stringify({ models: [{ slug: "a" }, { slug: "b", visibility: "hide" }] }))).toEqual(["a"]);
+    expect(parseModelList("codex", "not json")).toEqual([]);
+    expect(parseModelList("claude", "")).toContain("sonnet");
   });
 });
