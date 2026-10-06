@@ -602,6 +602,8 @@ export const en: Record<string, string> = {
   "Agent working…": "Agent working…",
   "Clear log": "Clear log",
   "Could not clear the agent log": "Could not clear the agent log",
+  "What is wrong? (optional)": "What is wrong? (optional)",
+  "What is wrong? (optional) e.g. only 50 of about 1900 chapters": "What is wrong? (optional) e.g. only 50 of about 1900 chapters",
   "Agent log": "Agent log",
   "the agent": "the agent",
   "The agent": "The agent",

@@ -151,6 +151,21 @@ export function missedChapters(html: string, storyUrl: string, toc: TocResult): 
     }
     const onPageUrls = new Set(links.map(addressOf));
     const onPage = toc.chapters.filter((c) => onPageUrls.has(c.url)).length;
+    // A pager of numbered buttons (no address of its own, the script swaps the list): the highest number, when the
+    // buttons sit beside the chapter list (an ancestor a few levels up holds most of its links).
+    const chapterLinks = links.filter((a) => have.has(addressOf(a) ?? ""));
+    for (const button of Array.from(dom.window.document.querySelectorAll("button, a"))) {
+      if (chapterLinks.includes(button as HTMLAnchorElement)) continue;
+      const label = (button.textContent ?? "").trim();
+      if (!/^\d{1,4}$/.test(label) || Number(label) <= lastPage) continue;
+      let box: Element | null = button.parentElement;
+      for (let up = 0; box && up < 4; up++, box = box.parentElement) {
+        if (chapterLinks.filter((a) => box!.contains(a)).length >= Math.max(1, chapterLinks.length / 2)) {
+          lastPage = Number(label);
+          break;
+        }
+      }
+    }
     return { shape, missed, unreadPages: lastPage >= 3 && toc.chapters.length <= onPage ? lastPage - 1 : 0 };
   } finally {
     dom.window.close();

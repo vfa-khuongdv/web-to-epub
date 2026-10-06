@@ -93,6 +93,7 @@ export interface StorySummary {
   storyUrl: string;
   site: string;
   title: string;
+  coverUrl?: string;
   chapterCount: number;
   doneCount: number;
   errorCount: number;

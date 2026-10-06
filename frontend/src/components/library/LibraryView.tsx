@@ -25,6 +25,7 @@ import { AGENT_CONFIG_CHANGED } from "../settings/AgentSettings";
 import AddStoryBox, { PendingImport } from "./AddStoryBox";
 import { Icon } from "../ui/Icon";
 import SortTh from "./SortTh";
+import { coverSrc } from "../../lib/library/coverSrc";
 import SiteSessionDialog from "../settings/SiteSessionDialog";
 import { StatusChip } from "../ui/StatusChip";
 import StoryDetail from "../story/StoryDetail";
@@ -645,14 +646,15 @@ export default function LibraryView({
                     <td>
                       <button
                         type="button"
-                        className="row-btn"
+                        className="row-btn flex items-center gap-2.5"
                         aria-current={selected?.id === s.id ? "true" : undefined}
                         onClick={(e) => {
                           e.stopPropagation();
                           openStory(s.id);
                         }}
                       >
-                        <span className="t" title={s.title}>
+                        <RowCover key={s.coverUrl ?? ""} story={s} />
+                        <span className="t min-w-0" title={s.title}>
                           {s.title}
                         </span>
                       </button>
@@ -803,5 +805,18 @@ export default function LibraryView({
         />
       )}
     </>
+  );
+}
+
+// A small cover beside the title; a story with no cover (or one that fails to load) keeps an empty frame so rows stay aligned.
+function RowCover({ story }: { story: StoryRow }) {
+  const [broken, setBroken] = useState(false);
+  const src = coverSrc(story.id, story.coverUrl);
+  return src && !broken ? (
+    <img src={src} alt="" loading="lazy" className="h-12 w-8 shrink-0 rounded-sm border border-rule object-cover" onError={() => setBroken(true)} />
+  ) : (
+    <span aria-hidden="true" className="flex h-12 w-8 shrink-0 items-center justify-center rounded-sm border border-rule bg-sunken text-ink-3">
+      <Icon name="library" size={14} />
+    </span>
   );
 }

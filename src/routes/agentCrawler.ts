@@ -128,13 +128,14 @@ agentCrawlerRouter.post("/stories/:id/agent-crawler/rewrite", async (req, res) =
     res.status(404).json({ message: t("Story not found") });
     return;
   }
+  const note = typeof req.body?.note === "string" ? req.body.note.trim().slice(0, 500) : "";
   const agent = activeAgent();
   if (!agent) {
     res.status(409).json({ message: t("The agent crawler is off or its agent is not installed (Settings → Agent crawler)") });
     return;
   }
   try {
-    await rewriteCrawler(agent, { storyUrl: story.storyUrl, chapterUrl: story.chapters[0]?.url });
+    await rewriteCrawler(agent, { storyUrl: story.storyUrl, chapterUrl: story.chapters[0]?.url, note: note || undefined });
     res.json({ ok: true });
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : t("The agent could not rewrite the crawler") });

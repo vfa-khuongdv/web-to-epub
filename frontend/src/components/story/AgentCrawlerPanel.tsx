@@ -13,6 +13,7 @@ export default function AgentCrawlerPanel({ storyId, onRewritten }: { storyId: s
   const { t } = useLang();
   const [info, setInfo] = useState<StoryAgentCrawler | null>(null);
   const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState("");
   const [outcome, setOutcome] = useState<{ ok: boolean; text: string } | null>(null);
 
   useEffect(() => {
@@ -27,7 +28,7 @@ export default function AgentCrawlerPanel({ storyId, onRewritten }: { storyId: s
     setBusy(true);
     setOutcome(null);
     try {
-      await rewriteStoryAgentCrawler(storyId);
+      await rewriteStoryAgentCrawler(storyId, note.trim());
       await onRewritten?.();
       setOutcome({ ok: true, text: t("The crawler was rewritten and the chapter list updated. Crawl the new chapters or retry the failed ones.") });
     } catch (err) {
@@ -45,6 +46,15 @@ export default function AgentCrawlerPanel({ storyId, onRewritten }: { storyId: s
           "This site is crawled with code the agent wrote once and the app reuses. If chapters are missing, wrong or failing, ask the agent to write it again."
         )}
       </p>
+      <input
+        className="input"
+        aria-label={t("What is wrong? (optional)")}
+        placeholder={t("What is wrong? (optional) e.g. only 50 of about 1900 chapters")}
+        maxLength={500}
+        value={note}
+        disabled={busy}
+        onChange={(event) => setNote(event.target.value)}
+      />
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" className="btn btn-tiny self-start" disabled={busy || !info.ready} onClick={() => void rewrite()}>
           <Icon name="sparkles" size={13} />

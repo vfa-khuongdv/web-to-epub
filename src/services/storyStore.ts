@@ -229,7 +229,7 @@ export function createStoryStore(baseDir: string): StoryStore {
   );
   const selectChapter = db.prepare(`SELECT * FROM chapters WHERE story_id = ? AND "order" = ?`);
   const selectSummaries = db.prepare(`
-    SELECT s.id, s.story_url, s.site, s.title, s.updated_at,
+    SELECT s.id, s.story_url, s.site, s.title, s.cover_url, s.updated_at,
            s.watching, s.new_chapter_count, s.last_checked_at, s.check_error,
            COUNT(c."order") AS chapter_count,
            COALESCE(SUM(c.status = 'done'), 0) AS done_count,
@@ -296,6 +296,7 @@ export function createStoryStore(baseDir: string): StoryStore {
         storyUrl: row.story_url,
         site: row.site,
         title: row.title,
+        coverUrl: row.cover_url ?? undefined,
         chapterCount: Number(row.chapter_count),
         doneCount: Number(row.done_count),
         errorCount: Number(row.error_count),

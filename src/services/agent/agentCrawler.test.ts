@@ -13,7 +13,7 @@ vi.mock("../renderer", () => ({ renderPageHtml: vi.fn(async () => "") }));
 
 import { LockedContentError } from "../extractor";
 import { AgentActivityEvent, onAgentActivity } from "./agentActivity";
-import { AgentDocumentPageError, articleViaAgent, chapterViaAgent, hardcodedFrom, hasAgentCrawler, hasArticleCrawler, pageScripts, rewriteCrawler, skeleton, tocViaAgent } from "./agentCrawler";
+import { AgentDocumentPageError, articleViaAgent, chapterViaAgent, hardcodedFrom, hasAgentCrawler, partialList, hasArticleCrawler, pageScripts, rewriteCrawler, skeleton, tocViaAgent } from "./agentCrawler";
 import { stopSiteRunner } from "./siteSandbox";
 
 const pad = "<!-- -->".repeat(300);
@@ -248,7 +248,7 @@ describe("agent crawler", () => {
       expect(chapter.blocks).toHaveLength(7);
       expect(log.events.find((e) => e.kind === "retry")?.reason).toMatch(/returned 2 pictures, but the same list on this page has 5 more/);
       // The agent is told which attribute to look at.
-      expect(model.prompts[1]).toMatch(/Your previous code failed: chapter\(\) returned 2 pictures[\s\S]*data-original-src/);
+      expect(model.prompts[1]).toMatch(/failed: chapter\(\) returned 2 pictures[\s\S]*data-original-src/);
       log.stop();
     });
 
@@ -392,5 +392,72 @@ describe("a page that is one whole text", () => {
     expect(model.calls).toBe(2);
     expect(model.prompts[1]).toContain("left most of the text out");
     expect(read.chapters[0].blocks).toHaveLength(40);
+  });
+});
+
+describe("what the agent is told about earlier tries", () => {
+  const url = "https://learn.test/learn";
+  const html = `<html><body>${pad}<h1>L</h1><ul id="l"><li><a href="/learn/c1">One</a></li><li><a href="/learn/c2">Two</a></li></ul></body></html>`;
+  const bad = (n: number) => `async function toc(ctx) { /* attempt ${n} */ return { title: 'L', chapters: [] }; }`;
+  const good = "async function toc(ctx) { return { title: 'L', chapters: [...ctx.document.querySelectorAll('#l a')].map(a => ({ url: a.href, title: a.textContent })) }; }";
+
+  it("shows every earlier try's code and why it failed, not just the last", async () => {
+    pages[url] = html;
+    const model = agent(STORY_OK, bad(1), bad(2), good);
+    await tocViaAgent(model, url);
+    const third = model.prompts[3];
+    expect(third).toMatch(/Do not repeat these approaches/);
+    expect(third).toContain("attempt 1");
+    expect(third).toContain("attempt 2");
+    expect(third.match(/failed: toc\(\) returned no chapter/g)).toHaveLength(2);
+  });
+
+  it("starts a rewrite from the saved code, why it stopped working, and the person's note", async () => {
+    const { DATA_DIR } = await import("../../config/paths");
+    const fs = await import("node:fs/promises");
+    await fs.mkdir(`${DATA_DIR}/agent-crawlers`, { recursive: true });
+    await fs.writeFile(`${DATA_DIR}/agent-crawlers/learn.test.toc.js`, bad(0));
+    const model = agent(good);
+    await rewriteCrawler(model, { storyUrl: url, note: "only 50 chapters" });
+    expect(model.prompts[0]).toContain("attempt 0");
+    expect(model.prompts[0]).toContain("only 50 chapters");
+  });
+});
+
+describe("a list that is only part of what its own numbers say", () => {
+  const list = (titles: string[]) => ({ title: "T", chapters: titles.map((t, i) => ({ url: `https://a.test/s/${i}`, title: t })) });
+  it("is partial when the titles reach chapter 735 and only 6 are listed", () => {
+    const toc = list(["Chương 1 - A", "Chương 731 - B", "Chương 732 - C", "Chương 733 - D", "Chương 734 - E", "Chương 735 - F"]);
+    expect(partialList(toc)).toMatch(/returned 6 chapters, but their titles go up to chapter 735/);
+  });
+  it("accepts a full list, one with gaps, volumes that restart their numbers, and short stories", () => {
+    expect(partialList(list(Array.from({ length: 1917 }, (_, i) => `Chương ${i + 1 + (i > 676 ? 1 : 0)}`)))).toBeNull();
+    expect(partialList(list([...Array.from({ length: 30 }, (_, i) => `Chapter ${i + 1}`), ...Array.from({ length: 30 }, (_, i) => `Chapter ${i + 1}`)]))).toBeNull();
+    expect(partialList(list(["Chương 1", "Chương 12"]))).toBeNull();
+    expect(partialList(list(["Prologue", "Epilogue"]))).toBeNull();
+  });
+});
+
+describe("a list the page's own script requests page by page", () => {
+  const url = "https://pager.test/truyen/story";
+  const buttons = [2, 3, 33].map((n) => `<button>${n}</button>`).join("");
+  const html = `<html><head><script src="/_next/static/chunks/app.js"></script></head><body>${pad}<h1>S</h1><div id="box"><ol id="l"><li><a href="/truyen/story/1-a">C1</a></li><li><a href="/truyen/story/2-b">C2</a></li></ol><div>${buttons}</div></div></body></html>`;
+  const firstOnly = "async function toc(ctx) { return { title: 'S', chapters: [...ctx.document.querySelectorAll('#l a')].map(a => ({ url: a.href, title: a.textContent })) }; }";
+  const viaApi =
+    "async function toc(ctx) { const out = []; for (let p = 0; p < 2; p++) { const j = await ctx.fetchJson('/api/truyen/story/chuong?page=' + p + '&size=2'); for (const c of j.data) out.push({ url: new URL('/truyen/story/' + c.slug, ctx.url).href, title: c.ten }); } return { title: 'S', chapters: out }; }";
+
+  it("shows the agent the request found in the site's script files, and rejects a list that ignores the pager", async () => {
+    pages[url] = html;
+    pages["https://pager.test/_next/static/chunks/app.js"] = "var x=1;async function load(e,a=0,l=50){return get(`/truyen/${e}/chuong`,{params:{page:a,size:l}})};";
+    pages["https://pager.test/api/truyen/story/chuong?page=0&size=2"] = JSON.stringify({ data: [{ slug: "1-a", ten: "Chương 1" }, { slug: "2-b", ten: "Chương 2" }] });
+    pages["https://pager.test/api/truyen/story/chuong?page=1&size=2"] = JSON.stringify({ data: [{ slug: "3-c", ten: "Chương 3" }, { slug: "4-d", ten: "Chương 4" }] });
+    const log = recorded();
+    const model = agent(STORY_OK, firstOnly, viaApi);
+    const toc = await tocViaAgent(model, url);
+    expect(toc.chapters).toHaveLength(4);
+    expect(model.prompts[1]).toContain("params:{page:a,size:l}");
+    expect(model.prompts[1]).toContain("/truyen/${e}/chuong");
+    expect(log.events.find((e) => e.kind === "retry")?.reason).toMatch(/only the 2 chapters this page itself lists.*more pages/);
+    log.stop();
   });
 });

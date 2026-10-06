@@ -155,6 +155,14 @@ describe("LibraryView list states", () => {
     expect(within(rowOf("Story b")).getByText("4 chapters pending")).toBeInTheDocument();
   });
 
+  it("shows each story's cover beside its title, and an empty frame when there is none", async () => {
+    api.fetchStories.mockResolvedValue([summary("a", { coverUrl: "covers/a.jpg" }), summary("b")]);
+    setup();
+    const withCover = await screen.findByText("Story a").then((e) => e.closest("tr") as HTMLElement);
+    expect(withCover.querySelector("img")).toHaveAttribute("src", expect.stringContaining("/api/stories/a/cover"));
+    expect(rowOf("Story b").querySelector("img")).toBeNull();
+  });
+
   it("shows crawl chip from the live channel, and blocks delete/pick for it", async () => {
     api.fetchStories.mockResolvedValue([summary("a")]);
     setup({ live: { a: { cursor: 2, total: 6, errors: 0 } } });

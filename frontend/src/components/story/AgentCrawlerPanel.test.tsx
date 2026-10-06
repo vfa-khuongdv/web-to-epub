@@ -31,7 +31,7 @@ describe("AgentCrawlerPanel", () => {
     rewriteMock.mockReturnValue(new Promise<void>((resolve) => (finish = resolve)));
     renderEn(<AgentCrawlerPanel storyId="s1" />);
     await userEvent.click(await screen.findByRole("button", { name: "Rewrite the crawler with the agent" }));
-    expect(rewriteMock).toHaveBeenCalledWith("s1");
+    expect(rewriteMock).toHaveBeenCalledWith("s1", "");
     expect(screen.getByRole("button", { name: "Rewriting…" })).toBeDisabled();
     finish();
     expect(await screen.findByRole("status")).toHaveTextContent("The crawler was rewritten and the chapter list updated");
@@ -47,6 +47,14 @@ describe("AgentCrawlerPanel", () => {
     await userEvent.click(button);
     await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("chapter list updated"));
     expect(reload).toHaveBeenCalledTimes(2);
+  });
+
+  it("sends what the person says is wrong along with the rewrite", async () => {
+    rewriteMock.mockResolvedValue();
+    renderEn(<AgentCrawlerPanel storyId="s1" />);
+    await userEvent.type(await screen.findByLabelText("What is wrong? (optional)"), " only 50 chapters ");
+    await userEvent.click(screen.getByRole("button", { name: "Rewrite the crawler with the agent" }));
+    expect(rewriteMock).toHaveBeenCalledWith("s1", "only 50 chapters");
   });
 
   it("shows the agent's failure", async () => {

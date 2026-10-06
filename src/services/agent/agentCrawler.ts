@@ -112,7 +112,7 @@ Write the function
   async function toc(ctx) { … return { title, author, coverUrl, chapters: [{ url, title }, …] }; }
 that returns the story's title, its author and cover picture (both optional) and EVERY chapter of THIS story, oldest first (reverse the list if the page shows the newest first). Skip menus, genres, other stories and "latest chapter" buttons. The outline folds look-alike items, so do not trust the first items to show the markup of all of them: items of one list often differ (a class only some have, another wrapper) — find the chapter links by what all of them share (the shape of their address, the list they sit in), not by the classes of the first ones. If the list is split into pages or loaded by an API, follow them until all chapters are collected.
 ${API}
-${problem ? `\nYour previous code failed: ${problem}\n` : ""}
+${problem ? `\n${problem}\n` : ""}
 If the page's list or text is empty in the outline, its scripts probably load it with a request: look for it in the scripts and make the same request with ctx.post / ctx.fetchText / ctx.fetchJson, taking any value it sends (an id) from the page, never typing one in.
 
 Outline:
@@ -128,7 +128,7 @@ Write the function
 that returns the chapter's title and its text as blocks: { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML) and, for a comic whose pages are pictures, { type: "image", src, alt } for EVERY page. Pictures are often loaded lazily: some <img> have their real address in src while others keep a placeholder (a data: address) there and carry the real one in another attribute, whose name differs from site to site — the outline shows each <img>'s attributes; read them all and take the one that holds a real image address, never rely on src alone. Use an address the page itself already uses for that picture (its src, or the largest entry of its srcset): never build one by changing a size parameter such as width=, because an image server often refuses a size equal to the original's; when the full-size file is wanted, take it from the link around the picture or from that picture's own file page. Take only the chapter itself — no menus, comments, adverts, "next chapter" links or notices. A site that puts the text in one element with <br> lines needs those lines split into paragraphs.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
-${problem ? `\nYour previous code failed: ${problem}\n` : ""}
+${problem ? `\n${problem}\n` : ""}
 If the page's list or text is empty in the outline, its scripts probably load it with a request: look for it in the scripts and make the same request with ctx.post / ctx.fetchText / ctx.fetchJson, taking any value it sends (an id) from the page, never typing one in.
 
 Outline:
@@ -144,7 +144,7 @@ Write the function
 that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. Leave out menus, share buttons, comments, related links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
-${problem ? `\nYour previous code failed: ${problem}\n` : ""}
+${problem ? `\n${problem}\n` : ""}
 Outline:
 ${outline}
 
@@ -270,22 +270,41 @@ function once<T>(key: string, make: () => Promise<T>): Promise<T> {
   return started;
 }
 
+const CODE_SHOWN = 4_000;
+const TRIES_SHOWN = 3;
+
+// What the agent is told about the tries so far: the code it wrote and why each was refused, so a later try does not
+// walk the same road again (every question is a fresh agent session that remembers nothing). `seed` is what was known
+// before this run: the code saved until now and why it was found wanting.
+function triedSoFar(seed: string | undefined, tries: { code?: string; problem: string }[]): string | undefined {
+  const parts = seed ? [seed] : [];
+  const shown = tries.slice(-TRIES_SHOWN);
+  shown.forEach((t, i) => {
+    const code = t.code ? ` wrote:\n\`\`\`js\n${t.code.slice(0, CODE_SHOWN)}\n\`\`\`\nand` : "";
+    parts.push(`Try ${tries.length - shown.length + i + 1} of this run${code} failed: ${t.problem}`);
+  });
+  if (parts.length === 0) return undefined;
+  return `What was already tried. Do not repeat these approaches: where they failed, take a different one.\n\n${parts.join("\n\n")}`;
+}
+
 // Asks the agent for code until `check` accepts it (it runs the code on the page and returns how much
 // it produced: chapters, blocks), saves the accepted code and returns it. Up to ATTEMPTS tries, each
-// told what was wrong with the last.
+// told what the earlier ones wrote and why they were refused.
 async function writeCrawler(
   agent: AgentModel,
   host: string,
   fn: Fn,
-  prompt: (problem?: string) => string,
-  check: (code: string) => Promise<number>
+  prompt: (tried?: string) => string,
+  check: (code: string) => Promise<number>,
+  seed?: string
 ): Promise<string> {
-  let problem: string | undefined;
+  const tries: { code?: string; problem: string }[] = [];
   for (let attempt = 1; attempt <= ATTEMPTS; attempt++) {
+    let code: string | undefined;
     try {
       reportAgent({ kind: "ask", host, fn, agent: agent.name, attempt, of: ATTEMPTS });
       const started = Date.now();
-      const code = codeFrom(await agent.complete(prompt(problem)));
+      code = codeFrom(await agent.complete(prompt(triedSoFar(seed, tries))));
       reportAgent({ kind: "answer", host, fn, agent: agent.name, ms: Date.now() - started });
       const count = await check(code);
       await writeCode(host, fn, code);
@@ -293,12 +312,14 @@ async function writeCrawler(
       return code;
     } catch (err) {
       if (err instanceof LockedContentError) throw err;
-      problem = err instanceof Error ? err.message : String(err);
+      const problem = err instanceof Error ? err.message : String(err);
+      tries.push({ code, problem });
       if (attempt < ATTEMPTS) reportAgent({ kind: "retry", host, fn, reason: problem });
     }
   }
-  reportAgent({ kind: "failed", host, fn, reason: problem });
-  throw new AgentCrawlerError(t("The agent could not write a crawler for {host}: {reason}", { host, reason: problem ?? "" }));
+  const last = tries[tries.length - 1]?.problem;
+  reportAgent({ kind: "failed", host, fn, reason: last });
+  throw new AgentCrawlerError(t("The agent could not write a crawler for {host}: {reason}", { host, reason: last ?? "" }));
 }
 
 // The saved code, or — only when there is none — the code `write` produces. Pages fetched in parallel
@@ -320,9 +341,24 @@ function reportReuse(host: string, fn: Fn) {
   reportAgent({ kind: "reuse", host, fn });
 }
 
+// Why saved code last stopped working (this session), told to the agent when the person asks for a rewrite.
+const stale = new Map<string, string>();
+
+// What a rewrite starts from: the code saved so far, why it was found wanting, and what the person says is wrong.
+async function rewriteSeed(host: string, fn: Fn, note?: string): Promise<string | undefined> {
+  const old = await readCode(host, fn);
+  const parts: string[] = [];
+  if (old) parts.push(`The code saved for this site so far:\n\`\`\`js\n${old.slice(0, CODE_SHOWN)}\n\`\`\``);
+  const why = stale.get(`${host}:${fn}`);
+  if (why) parts.push(`It stopped working: ${why}`);
+  if (note) parts.push(`The person who asked for this rewrite says what is wrong: ${note}`);
+  return parts.length ? `${parts.join("\n\n")}\nWrite code that does not have this problem.` : undefined;
+}
+
 // Saved code that no longer works is the person's call: say so, point at the way to rewrite it.
 function broken(host: string, fn: Fn, err: unknown): AgentCrawlerError {
   const reason = err instanceof Error ? err.message : String(err);
+  stale.set(`${host}:${fn}`, reason);
   reportAgent({ kind: "stale", host, fn, reason });
   return new AgentCrawlerError(
     t("The saved crawler for {host} stopped working ({reason}). Open the story's details and rewrite it with the agent.", { host, reason })
@@ -413,7 +449,24 @@ const runToc = async (code: string, storyUrl: string, html: string) =>
   toTocResult(await runSiteCode({ code, fn: "toc", url: storyUrl, html }), storyUrl);
 
 // Links on the page, addressed like the chapters toc() returned, that it left out; null when none (or too few to matter).
+// A list whose titles number chapters up to N but that holds far fewer entries is partial: typically the first and the
+// latest chapters the page shows, the rest being loaded by a request or after a click. Numbering that restarts (volumes)
+// or has gaps does not trigger this, only a list that is less than half of what its own numbers say.
+const CHAPTER_NUMBER = /(?:chương|chuong|chapter|chap|ch\.?)\s*(\d+)/i;
+export function partialList(toc: TocResult): string | null {
+  const numbers = toc.chapters.map((c) => Number(CHAPTER_NUMBER.exec(c.title)?.[1])).filter((n) => Number.isFinite(n));
+  const highest = Math.max(0, ...numbers);
+  if (numbers.length < 2 || highest < 20 || numbers.length >= highest / 2) return null;
+  return (
+    `toc() returned ${toc.chapters.length} chapters, but their titles go up to chapter ${highest}: the list is partial (the page may show only the first and the latest chapters). ` +
+    `The rest is probably loaded by a request the page's script makes, or only after the list is opened. Find that request in the scripts and make it with ctx.post / ctx.fetchJson / ctx.fetchText; ` +
+    `if the page offers no way to read the whole list, say so by throwing an Error instead of returning a part of it`
+  );
+}
+
 async function missedMessage(html: string, storyUrl: string, toc: TocResult): Promise<string | null> {
+  const partial = partialList(toc);
+  if (partial) return partial;
   const { shape, missed, unreadPages } = await analyse("missedChapters", html, storyUrl, toc);
   if (unreadPages > 0) {
     return (
@@ -426,9 +479,63 @@ async function missedMessage(html: string, storyUrl: string, toc: TocResult): Pr
   return `toc() returned ${toc.chapters.length} chapters, but this page has ${missed.length} more links addressed like ${shape} that it left out, for example ${sample}`;
 }
 
-async function writeTocCrawler(agent: AgentModel, storyUrl: string, html: string): Promise<string> {
+// The agent sees the names of the page's script files but not what is in them, and a list that the page's script
+// loads is read by guessing the request (its address, its parameters, whether pages count from 0, the names in the
+// answer). So the places in the site's own script files that name a chapter address are shown too, with what
+// surrounds them: the request and what the page does with the answer.
+const CALL_LITERAL = /[`"']([^`"'\s]*\/[^`"'\s]*(?:chuong|chapter)[^`"'\s]*)[`"']/gi;
+const SCRIPT_FILES = 25;
+const SCRIPT_FILE_CHARS = 600_000;
+const CALLS_CHARS = 5_000;
+
+export async function scriptCalls(html: string, pageUrl: string): Promise<string> {
+  const page = new URL(pageUrl);
+  const sources = new Set<string>();
+  const dom = new JSDOM(html, { url: pageUrl });
+  try {
+    for (const script of Array.from(dom.window.document.querySelectorAll("script[src]"))) {
+      try {
+        const src = new URL(script.getAttribute("src") ?? "", pageUrl);
+        if (/^https?:$/.test(src.protocol) && src.hostname === page.hostname) sources.add(src.href);
+      } catch {
+        /* not an address */
+      }
+    }
+  } finally {
+    dom.window.close();
+  }
+  const seen = new Set<string>();
+  const found: string[] = [];
+  let chars = 0;
+  for (const src of Array.from(sources).slice(0, SCRIPT_FILES)) {
+    if (chars >= CALLS_CHARS) break;
+    let code: string;
+    try {
+      const res = await fetchWithRetry(src, {}, { maxAttempts: 1, timeoutMs: 15_000 });
+      if (!res.ok) continue;
+      code = (await res.text()).slice(0, SCRIPT_FILE_CHARS);
+    } catch {
+      continue;
+    }
+    for (const match of code.matchAll(CALL_LITERAL)) {
+      const literal = match[1];
+      if (seen.has(literal) || /\.(js|css|png|jpe?g|webp|svg|ico)\b|^\/_next|^\/\//i.test(literal)) continue;
+      seen.add(literal);
+      const at = match.index ?? 0;
+      const snippet = collapse(code.slice(Math.max(0, at - 220), at + literal.length + 260));
+      if (chars + snippet.length > CALLS_CHARS) break;
+      found.push(snippet);
+      chars += snippet.length;
+    }
+  }
+  return found.length ? `\nPlaces in the site's script files that name a chapter address (the request, its parameters and what is done with the answer):\n${found.map((f) => `… ${f} …`).join("\n")}` : "";
+}
+
+async function writeTocCrawler(agent: AgentModel, storyUrl: string, html: string, note?: string): Promise<string> {
   // Parsing the page is slow, so the outline and scripts are made once, not once per attempt.
-  const [outline, scripts] = await Promise.all([analyse("skeleton", html, storyUrl), analyse("pageScripts", html, storyUrl)]);
+  const [outline, pageScript, calls] = await Promise.all([analyse("skeleton", html, storyUrl), analyse("pageScripts", html, storyUrl), scriptCalls(html, storyUrl)]);
+  const scripts = pageScript + calls;
+  const seed = await rewriteSeed(hostOf(storyUrl), "toc", note);
   return writeCrawler(agent, hostOf(storyUrl), "toc", (problem) => TOC_PROMPT(storyUrl, outline, scripts, problem), async (code) => {
     requireFunction(code, "toc");
     rejectHardcoded(code, storyUrl);
@@ -441,7 +548,7 @@ async function writeTocCrawler(agent: AgentModel, storyUrl: string, html: string
       );
     }
     return toc.chapters.length;
-  });
+  }, seed);
 }
 
 export async function tocViaAgent(agent: AgentModel, storyUrl: string): Promise<TocResult> {
@@ -479,9 +586,11 @@ async function picturesMissing(html: string, url: string, chapter: ExtractedChap
   return `chapter() returned ${returned} pictures, but the same list on this page has ${missed.length} more addressed like ${shape} that it left out, for example ${missed.slice(0, 3).join(", ")}`;
 }
 
-async function writeChapterCrawler(agent: AgentModel, url: string, html: string): Promise<string> {
+async function writeChapterCrawler(agent: AgentModel, url: string, html: string, note?: string): Promise<string> {
   // Parsing the page is slow, so the outline and scripts are made once, not once per attempt.
-  const [outline, scripts] = await Promise.all([analyse("skeleton", html, url), analyse("pageScripts", html, url)]);
+  const [outline, pageScript, calls] = await Promise.all([analyse("skeleton", html, url), analyse("pageScripts", html, url), scriptCalls(html, url)]);
+  const scripts = pageScript + calls;
+  const seed = await rewriteSeed(hostOf(url), "chapter", note);
   return writeCrawler(agent, hostOf(url), "chapter", (problem) => CHAPTER_PROMPT(url, outline, scripts, problem), async (code) => {
     requireFunction(code, "chapter");
     rejectHardcoded(code, url);
@@ -494,7 +603,7 @@ async function writeChapterCrawler(agent: AgentModel, url: string, html: string)
       );
     }
     return chapter.blocks.length;
-  });
+  }, seed);
 }
 
 export async function chapterViaAgent(agent: AgentModel, url: string): Promise<ExtractedChapter> {
@@ -527,9 +636,11 @@ export async function chapterViaAgent(agent: AgentModel, url: string): Promise<E
 const runArticle = async (code: string, url: string, html: string) =>
   toArticle(await runSiteCode({ code, fn: "article", url, html }), url, html);
 
-async function writeArticleCrawler(agent: AgentModel, url: string, html: string): Promise<string> {
+async function writeArticleCrawler(agent: AgentModel, url: string, html: string, note?: string): Promise<string> {
   // Parsing the page is slow, so the outline and scripts are made once, not once per attempt.
-  const [outline, scripts] = await Promise.all([analyse("skeleton", html, url), analyse("pageScripts", html, url)]);
+  const [outline, pageScript, calls] = await Promise.all([analyse("skeleton", html, url), analyse("pageScripts", html, url), scriptCalls(html, url)]);
+  const scripts = pageScript + calls;
+  const seed = await rewriteSeed(hostOf(url), "article", note);
   return writeCrawler(agent, hostOf(url), "article", (problem) => ARTICLE_PROMPT(url, outline, scripts, problem), async (code) => {
     requireFunction(code, "article");
     rejectHardcoded(code, url);
@@ -542,7 +653,7 @@ async function writeArticleCrawler(agent: AgentModel, url: string, html: string)
       );
     }
     return article.chapters.length;
-  });
+  }, seed);
 }
 
 // Reads the page at `url` as a book: the saved code for its site when there is one, else the agent writes it.
@@ -580,16 +691,16 @@ export const webStoryUrl = (url: string): string => WEB_PAGE_PREFIX + url.replac
 
 // Writes both parts again — from the story page and from one of its chapters — replacing the saved code
 // only when the new code passes the same checks. Nothing runs this by itself.
-export async function rewriteCrawler(agent: AgentModel, options: { storyUrl: string; chapterUrl?: string }): Promise<void> {
+export async function rewriteCrawler(agent: AgentModel, options: { storyUrl: string; chapterUrl?: string; note?: string }): Promise<void> {
   if (options.storyUrl.startsWith(WEB_PAGE_PREFIX)) {
     const url = options.storyUrl.slice(WEB_PAGE_PREFIX.length);
-    await once(`rewrite:${hostOf(url)}`, async () => void (await writeArticleCrawler(agent, url, await loadPage(url))));
+    await once(`rewrite:${hostOf(url)}`, async () => void (await writeArticleCrawler(agent, url, await loadPage(url), options.note)));
     return;
   }
   const host = hostOf(options.storyUrl);
   await once(`rewrite:${host}`, async () => {
-    await writeTocCrawler(agent, options.storyUrl, await loadPage(options.storyUrl));
-    if (options.chapterUrl) await writeChapterCrawler(agent, options.chapterUrl, await loadPage(options.chapterUrl));
+    await writeTocCrawler(agent, options.storyUrl, await loadPage(options.storyUrl), options.note);
+    if (options.chapterUrl) await writeChapterCrawler(agent, options.chapterUrl, await loadPage(options.chapterUrl), options.note);
   });
 }
 

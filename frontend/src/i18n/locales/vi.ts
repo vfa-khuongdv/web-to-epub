@@ -604,6 +604,8 @@ export const vi: Record<string, string> = {
   "Agent working…": "Agent đang làm việc…",
   "Clear log": "Xoá nhật ký",
   "Could not clear the agent log": "Không xoá được nhật ký agent",
+  "What is wrong? (optional)": "Sai ở đâu? (không bắt buộc)",
+  "What is wrong? (optional) e.g. only 50 of about 1900 chapters": "Sai ở đâu? (không bắt buộc) vd: chỉ có 50 trên khoảng 1900 chương",
   "Agent log": "Nhật ký agent",
   "the agent": "agent",
   "The agent": "Agent",

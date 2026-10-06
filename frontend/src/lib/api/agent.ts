@@ -62,10 +62,12 @@ export async function fetchStoryAgentCrawler(storyId: string): Promise<StoryAgen
 }
 
 // Takes as long as the agent does (a minute or more); the Agent log shows the steps meanwhile.
-export async function rewriteStoryAgentCrawler(storyId: string): Promise<void> {
+// `note` is what the person says is wrong, handed to the agent next to the old code.
+export async function rewriteStoryAgentCrawler(storyId: string, note?: string): Promise<void> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/agent-crawler/rewrite`, {
     method: "POST",
-    headers: langHeaders(),
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ note: note ?? "" }),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("The agent could not rewrite the crawler")));
 }
