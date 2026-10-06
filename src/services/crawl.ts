@@ -7,11 +7,10 @@ import type { ChapterFetchContext } from "./chapters/types";
 import { extractChapter, LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
-// Some sites' anti-tool scripts blank the page at random (see renderer.ts),
-// and a cold browser session can take ~10 loads before it settles down, so
-// the budget is generous — each attempt is a fresh page load, and a warm
-// session succeeds on the first or second try.
-export const MAX_ATTEMPTS = 12;
+// Each attempt is a fresh page load; a warm session succeeds on the first or
+// second try. (Sites that blank the page at random — see renderer.ts — once
+// got 12 tries for a cold browser; a failed chapter can be retried by hand.)
+export const MAX_ATTEMPTS = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));

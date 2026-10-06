@@ -11,7 +11,8 @@
  * network API, no `require`, no `import()`, no string-to-code, no secrets in the environment.
  */
 const vm = require("node:vm");
-const { JSDOM } = require("jsdom");
+// Packaged, this file is unpacked from the asar but jsdom is not, so the parent says where it is.
+const { JSDOM } = require(process.env.JSDOM_DIR || "jsdom");
 
 const send = process.send.bind(process);
 const waiting = new Map();

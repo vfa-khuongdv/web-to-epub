@@ -72,12 +72,13 @@ async function answerFetch(target: ChildProcess, message: { id: number; run: num
 
 function start(): Promise<ChildProcess> {
   if (ready) return ready;
-  const jsdomModules = path.dirname(path.dirname(require.resolve("jsdom/package.json")));
+  const jsdomDir = path.dirname(require.resolve("jsdom/package.json"));
+  const jsdomModules = path.dirname(jsdomDir);
   const proc = fork(AGENT_RUNNER, [], {
     execPath: process.execPath,
-    execArgv: ["--permission", `--allow-fs-read=${path.dirname(AGENT_RUNNER)}`, `--allow-fs-read=${jsdomModules}`],
+    execArgv: ["--permission", `--allow-fs-read=${path.dirname(AGENT_RUNNER)}`, `--allow-fs-read=${jsdomModules}${path.sep}*`],
     // Nothing from the app's environment (keys, tokens) reaches the code.
-    env: { ELECTRON_RUN_AS_NODE: "1", PATH: process.env.PATH ?? "" },
+    env: { ELECTRON_RUN_AS_NODE: "1", PATH: process.env.PATH ?? "", JSDOM_DIR: jsdomDir },
     cwd: path.dirname(AGENT_RUNNER),
     stdio: ["ignore", "ignore", "pipe", "ipc"],
   });
