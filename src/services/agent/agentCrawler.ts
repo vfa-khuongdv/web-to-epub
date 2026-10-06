@@ -414,7 +414,13 @@ const runToc = async (code: string, storyUrl: string, html: string) =>
 
 // Links on the page, addressed like the chapters toc() returned, that it left out; null when none (or too few to matter).
 async function missedMessage(html: string, storyUrl: string, toc: TocResult): Promise<string | null> {
-  const { shape, missed } = await analyse("missedChapters", html, storyUrl, toc);
+  const { shape, missed, unreadPages } = await analyse("missedChapters", html, storyUrl, toc);
+  if (unreadPages > 0) {
+    return (
+      `toc() returned only the ${toc.chapters.length} chapters this page itself lists, but the page links to ${unreadPages} more pages of the list (?page=2 … ?page=${unreadPages + 1}). ` +
+      `Fetch those pages with ctx.fetchText and collect their chapters too. Their links may name another domain of the same site: keep the path and read it against ctx.url's origin`
+    );
+  }
   if (missed.length < MISSED_TOLERANCE) return null;
   const sample = missed.slice(0, 3).map((c) => `"${c.title}" (${c.url})`).join(", ");
   return `toc() returned ${toc.chapters.length} chapters, but this page has ${missed.length} more links addressed like ${shape} that it left out, for example ${sample}`;

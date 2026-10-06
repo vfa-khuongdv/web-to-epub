@@ -197,6 +197,25 @@ describe("agent crawler", () => {
       expect((await tocViaAgent(model, "https://paged.test/paged")).chapters).toHaveLength(2);
     });
 
+    it("rejects code that reads only the first of several pages of the list, and takes the code that reads them all", async () => {
+      const pager = [2, 3, 4].map((n) => `<a href="/long?page=${n}">${n}</a>`).join("");
+      const list = (from: number, host = "") => [from, from + 1].map((n) => `<a href="${host}/long/chapter-${n}">C${n}</a>`).join("");
+      pages["https://long.test/long"] = `<html><body>${pad}<h1>Long</h1><div id="l">${list(1)}</div>${pager}</body></html>`;
+      // The later pages name the site's mirror domain, as metruyenhotvn.com's do.
+      pages["https://long.test/long?page=2"] = `<html><body><div id="l">${list(3, "https://mirror.test")}</div></body></html>`;
+      pages["https://long.test/long?page=3"] = `<html><body><div id="l">${list(5, "https://mirror.test")}</div></body></html>`;
+      pages["https://long.test/long?page=4"] = `<html><body><div id="l">${list(7, "https://mirror.test")}</div></body></html>`;
+      const firstOnly = "async function toc(ctx) { return { title: 'L', chapters: [...ctx.document.querySelectorAll('#l a')].map(a => ({ url: a.href, title: a.textContent })) }; }";
+      const all =
+        "async function toc(ctx) { const out = []; const take = (d) => d.querySelectorAll('#l a').forEach(a => out.push({ url: new URL(new URL(a.href).pathname, ctx.url).href, title: a.textContent })); take(ctx.document);" +
+        " for (let p = 2; p <= 4; p++) take(ctx.parseHtml(await ctx.fetchText(ctx.url + '?page=' + p), ctx.url)); return { title: 'L', chapters: out }; }";
+      const log = recorded();
+      const toc = await tocViaAgent(agent(STORY_OK, firstOnly, all), "https://long.test/long");
+      expect(toc.chapters).toHaveLength(8);
+      expect(log.events.find((e) => e.kind === "retry")?.reason).toMatch(/only the 2 chapters this page itself lists.*3 more pages/);
+      log.stop();
+    });
+
     it("does not count a wiki's menu and file links, which share the chapters' address shape", async () => {
       const wiki = `<html><body>${pad}<div id="menu"><a href="/w/index.php?title=Main">Main</a><a href="/w/index.php?title=Special:Recent">Recent</a></div><h1>Wiki</h1><div id="content"><ul><li><a href="/w/index.php?title=Vol_1">Vol 1</a></li><li><a href="/w/index.php?title=Vol_2">Vol 2</a></li></ul><div class="thumb"><a href="/w/index.php?title=File:Cover.jpg">cover</a></div></div></body></html>`;
       pages["https://wiki.test/w/index.php?title=Series"] = wiki;

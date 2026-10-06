@@ -8,7 +8,8 @@ import { Icon } from "../ui/Icon";
  * every story of the site and never rewritten by itself; when the site changes and crawls start to
  * fail, this is where the person asks the agent for new code (the Agent log shows its steps).
  */
-export default function AgentCrawlerPanel({ storyId }: { storyId: string }) {
+// `onRewritten` reloads the story's chapter list with the new code: rewriting alone leaves the list the old code made.
+export default function AgentCrawlerPanel({ storyId, onRewritten }: { storyId: string; onRewritten?: () => Promise<void> }) {
   const { t } = useLang();
   const [info, setInfo] = useState<StoryAgentCrawler | null>(null);
   const [busy, setBusy] = useState(false);
@@ -27,7 +28,8 @@ export default function AgentCrawlerPanel({ storyId }: { storyId: string }) {
     setOutcome(null);
     try {
       await rewriteStoryAgentCrawler(storyId);
-      setOutcome({ ok: true, text: t("The crawler was rewritten. Reload the chapters or retry the failed ones to use it.") });
+      await onRewritten?.();
+      setOutcome({ ok: true, text: t("The crawler was rewritten and the chapter list updated. Crawl the new chapters or retry the failed ones.") });
     } catch (err) {
       setOutcome({ ok: false, text: (err as Error).message });
     } finally {
@@ -40,7 +42,7 @@ export default function AgentCrawlerPanel({ storyId }: { storyId: string }) {
       <span className="label">{t("Agent crawler")}</span>
       <p className="text-[12px] leading-snug text-ink-3">
         {t(
-          "This site is crawled with code the agent wrote once and the app reuses. If it stops working, ask the agent to write it again."
+          "This site is crawled with code the agent wrote once and the app reuses. If chapters are missing, wrong or failing, ask the agent to write it again."
         )}
       </p>
       <div className="flex flex-wrap items-center gap-2">

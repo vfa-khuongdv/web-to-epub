@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { onAgentActivity, recentAgentActivity } from "../services/agent/agentActivity";
+import { clearAgentActivity, onAgentActivity, recentAgentActivity } from "../services/agent/agentActivity";
 import { hasAgentCrawler, rewriteCrawler } from "../services/agent/agentCrawler";
 import { activeAgent, AGENTS, installedAgents, loadAgentConfig, saveAgentConfig } from "../services/agent/agentConfig";
 import { listAgentModels } from "../services/agent/agentCli";
@@ -79,7 +79,10 @@ agentCrawlerRouter.get("/agent-crawler/live", (req, res) => {
   });
   res.write("retry: 2000\n\n");
   writeSse(res, { type: "snapshot", events: recentAgentActivity() });
-  const stop = onAgentActivity((event) => writeSse(res, { type: "event", event }));
+  const stop = onAgentActivity(
+    (event) => writeSse(res, { type: "event", event }),
+    () => writeSse(res, { type: "clear" })
+  );
   const beat = setInterval(() => {
     if (!res.destroyed && !res.writableEnded) res.write(": ping\n\n");
   }, 20_000);
@@ -87,6 +90,13 @@ agentCrawlerRouter.get("/agent-crawler/live", (req, res) => {
     clearInterval(beat);
     stop();
   });
+});
+
+// "Clear log": empties the history for every page (the live channel tells the open ones).
+agentCrawlerRouter.delete("/agent-crawler/activity", (req, res) => {
+  if (!libraryFor(req, res)) return;
+  clearAgentActivity();
+  res.json({ ok: true });
 });
 
 // Whether a story is crawled by code the agent wrote (so its details offer to rewrite it).

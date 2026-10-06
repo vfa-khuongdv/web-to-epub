@@ -267,7 +267,7 @@ export default function App() {
       <AppPlayerBar />
 
       {crawlLogOpen && <CrawlLogDialog job={job} onClose={() => setCrawlLogOpen(false)} />}
-      {agentLogOpen && <AgentActivityDialog events={agent.events} busy={agent.busy} onClose={() => setAgentLogOpen(false)} />}
+      {agentLogOpen && <AgentActivityDialog events={agent.events} busy={agent.busy} onClear={agent.clear} onClose={() => setAgentLogOpen(false)} />}
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
 
       {settingsOpen && (

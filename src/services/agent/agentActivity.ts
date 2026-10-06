@@ -38,6 +38,7 @@ export interface AgentActivityEvent extends AgentStep {
 const MAX_HISTORY = 200;
 const history: AgentActivityEvent[] = [];
 const listeners = new Set<(event: AgentActivityEvent) => void>();
+const clearListeners = new Set<() => void>();
 let nextId = 0;
 
 export function reportAgent(step: AgentStep): void {
@@ -47,9 +48,19 @@ export function reportAgent(step: AgentStep): void {
   for (const listener of listeners) listener(event);
 }
 
+// The person's "clear log": forget the history, and tell every open page to do the same.
+export function clearAgentActivity(): void {
+  history.length = 0;
+  for (const listener of clearListeners) listener();
+}
+
 export const recentAgentActivity = (): AgentActivityEvent[] => [...history];
 
-export function onAgentActivity(listener: (event: AgentActivityEvent) => void): () => void {
+export function onAgentActivity(listener: (event: AgentActivityEvent) => void, onClear?: () => void): () => void {
   listeners.add(listener);
-  return () => listeners.delete(listener);
+  if (onClear) clearListeners.add(onClear);
+  return () => {
+    listeners.delete(listener);
+    if (onClear) clearListeners.delete(onClear);
+  };
 }

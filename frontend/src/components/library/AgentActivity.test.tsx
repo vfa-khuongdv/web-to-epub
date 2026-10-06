@@ -34,6 +34,7 @@ describe("AgentActivityDialog", () => {
       <AgentActivityDialog
         busy={false}
         onClose={onClose}
+        onClear={vi.fn()}
         events={[ev(1, {}), ev(2, { kind: "retry", reason: "no chapters" }), ev(3, { kind: "saved", count: 74 })]}
       />
     );
@@ -46,7 +47,15 @@ describe("AgentActivityDialog", () => {
   });
 
   it("says so when nothing is logged", () => {
-    renderEn(<AgentActivityDialog busy events={[]} onClose={vi.fn()} />);
+    renderEn(<AgentActivityDialog busy events={[]} onClose={vi.fn()} onClear={vi.fn()} />);
     expect(screen.getByText("Nothing logged yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Clear log" })).toBeDisabled();
+  });
+
+  it("clears the log on the button", async () => {
+    const onClear = vi.fn();
+    renderEn(<AgentActivityDialog busy={false} events={[ev(1, {})]} onClose={vi.fn()} onClear={onClear} />);
+    await userEvent.click(screen.getByRole("button", { name: "Clear log" }));
+    expect(onClear).toHaveBeenCalled();
   });
 });

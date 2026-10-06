@@ -116,7 +116,7 @@ const addressShape = (url: string) => new URL(url).pathname.replace(/\d+/g, "#")
 // misses the rest. Pages of a list that is split into several are fine — those links are not on this page.
 // Only links sitting where the returned chapters sit (same ancestors' tags and ids) count: a wiki gives every
 // link of the page — menu, files, other pages — the same address shape, and those are not chapters.
-export function missedChapters(html: string, storyUrl: string, toc: TocResult): { shape: string; missed: TocChapter[] } {
+export function missedChapters(html: string, storyUrl: string, toc: TocResult): { shape: string; missed: TocChapter[]; unreadPages: number } {
   const shapes = new Map<string, number>();
   for (const c of toc.chapters) shapes.set(addressShape(c.url), (shapes.get(addressShape(c.url)) ?? 0) + 1);
   const shape = [...shapes.entries()].sort((a, b) => b[1] - a[1])[0]?.[0] ?? "";
@@ -137,7 +137,21 @@ export function missedChapters(html: string, storyUrl: string, toc: TocResult): 
       seen.add(url);
       missed.push({ url, title: collapse(a.textContent ?? "") || url });
     }
-    return { shape, missed };
+    // A long list is split into pages (`?page=N` links back to this very page). A result that holds no more
+    // chapters than this page itself shows never went to the other pages.
+    const herePath = new URL(storyUrl).pathname.replace(/\/+$/, "");
+    let lastPage = 1;
+    for (const a of links) {
+      try {
+        const link = new URL((a as HTMLAnchorElement).href);
+        if (link.pathname.replace(/\/+$/, "") === herePath) lastPage = Math.max(lastPage, Number(link.searchParams.get("page")) || 1);
+      } catch {
+        /* not an address */
+      }
+    }
+    const onPageUrls = new Set(links.map(addressOf));
+    const onPage = toc.chapters.filter((c) => onPageUrls.has(c.url)).length;
+    return { shape, missed, unreadPages: lastPage >= 3 && toc.chapters.length <= onPage ? lastPage - 1 : 0 };
   } finally {
     dom.window.close();
   }

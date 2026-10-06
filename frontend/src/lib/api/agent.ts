@@ -34,6 +34,11 @@ export async function fetchAgentModels(agent: string): Promise<string[]> {
   return ((await res.json()) as { models: string[] }).models;
 }
 
+export async function clearAgentActivity(): Promise<void> {
+  const res = await apiFetch("/api/agent-crawler/activity", { method: "DELETE", headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not clear the agent log")));
+}
+
 export async function saveAgentConfig(patch: AgentConfigPatch): Promise<void> {
   const res = await apiFetch("/api/agent-crawler/config", {
     method: "PUT",

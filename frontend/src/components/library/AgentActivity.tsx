@@ -33,7 +33,7 @@ export function AgentActivityButton({ events, busy, onOpen }: { events: AgentAct
   );
 }
 
-export function AgentActivityDialog({ events, busy, onClose }: { events: AgentActivityEvent[]; busy: boolean; onClose: () => void }) {
+export function AgentActivityDialog({ events, busy, onClose, onClear }: { events: AgentActivityEvent[]; busy: boolean; onClose: () => void; onClear: () => void }) {
   const { t } = useLang();
   const logRef = useRef<HTMLDivElement | null>(null);
   // Follow new lines only while the reader is at the bottom, like the crawl log.
@@ -64,7 +64,11 @@ export function AgentActivityDialog({ events, busy, onClose }: { events: AgentAc
         <div className="flex items-center gap-2 border-b border-rule px-4 py-3">
           {busy ? <Icon name="dot" size={12} className="animate-pulse text-select" /> : <Icon name="sparkles" size={13} className="text-ink-3" />}
           <h2 className="min-w-0 truncate text-sm font-semibold">{busy ? t("Agent working…") : t("Agent log")}</h2>
-          <button type="button" className="btn btn-quiet btn-tiny ml-auto" onClick={onClose}>
+          <button type="button" className="btn btn-quiet btn-tiny ml-auto" disabled={events.length === 0} onClick={onClear}>
+            <Icon name="trash" size={12} />
+            {t("Clear log")}
+          </button>
+          <button type="button" className="btn btn-quiet btn-tiny" onClick={onClose}>
             <Icon name="x" size={12} />
             {t("Close")}
           </button>

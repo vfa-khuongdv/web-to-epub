@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { clearAgentActivity } from "../lib/api";
 import { AgentActivityEvent, isAgentBusy } from "../lib/format/agentActivity";
 import { currentVaultToken } from "../vault/token";
 
 const MAX_EVENTS = 300;
 
-type LiveMessage = { type: "snapshot"; events: AgentActivityEvent[] } | { type: "event"; event: AgentActivityEvent };
+type LiveMessage = { type: "snapshot"; events: AgentActivityEvent[] } | { type: "clear" } | { type: "event"; event: AgentActivityEvent };
 
 // Follows what the agent crawler is doing (routes/agentCrawler.ts, /api/agent-crawler/live): the recent
 // history on connect, then each step. A dropped connection reconnects by itself and gets the history again.
@@ -24,11 +25,18 @@ export function useAgentActivity() {
       } catch {
         return;
       }
-      if (data.type === "snapshot") setEvents(data.events.slice(-MAX_EVENTS));
+      if (data.type === "clear") setEvents([]);
+      else if (data.type === "snapshot") setEvents(data.events.slice(-MAX_EVENTS));
       else setEvents((current) => (current.some((e) => e.id === data.event.id) ? current : [...current, data.event].slice(-MAX_EVENTS)));
     };
     return () => source.close();
   }, []);
 
-  return { events, busy: isAgentBusy(events) };
+  // Empties the server's history too, or a reload would bring the lines back.
+  const clear = () => {
+    setEvents([]);
+    void clearAgentActivity().catch(() => {});
+  };
+
+  return { events, busy: isAgentBusy(events), clear };
 }

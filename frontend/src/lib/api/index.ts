@@ -15,5 +15,5 @@ export { fetchNarration, startNarration, stopNarration, fetchNarrationTimeline, 
 export type { AudioExport, AudioMixJob } from "./narration";
 export { fetchSiteSession, importSiteSession, removeSiteSession } from "./siteSessions";
 export type { SiteSessionStatus } from "./siteSessions";
-export { fetchAgentConfig, fetchAgentModels, fetchStoryAgentCrawler, rewriteStoryAgentCrawler, saveAgentConfig } from "./agent";
+export { clearAgentActivity, fetchAgentConfig, fetchAgentModels, fetchStoryAgentCrawler, rewriteStoryAgentCrawler, saveAgentConfig } from "./agent";
 export type { AgentConfig, AgentConfigPatch, AgentInfo, StoryAgentCrawler } from "./agent";

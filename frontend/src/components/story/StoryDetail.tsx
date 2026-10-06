@@ -452,6 +452,15 @@ export default function StoryDetail({
             )}
         </div>
 
+          {/* Right under the chapter counts: it is the way out when chapters are missing, wrong or failing. */}
+          {!imported && <AgentCrawlerPanel
+              storyId={story.id}
+              onRewritten={async () => {
+                await refreshStoryToc(story.id);
+                await onStoryChanged();
+              }}
+            />}
+
           {story.newChapterCount > 0 && (
             <div className="banner banner-new">
               <Icon name="bell" size={14} />
@@ -574,7 +583,6 @@ export default function StoryDetail({
             coverInput={coverInput}
             onCoverFile={setCoverFile}
           />
-          {!imported && <AgentCrawlerPanel storyId={story.id} />}
         </div>
       </div>
 

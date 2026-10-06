@@ -93,6 +93,11 @@ describe("agent crawler config routes", () => {
     reportAgent({ kind: "saved", host: "a.test", fn: "toc", count: 5 });
     await until('"type":"event"');
     expect(text).toContain('"count":5');
+    // "Clear log" empties the history and tells the open pages.
+    expect((await fetch(`${base}/agent-crawler/activity`, { method: "DELETE" })).status).toBe(200);
+    await until('"type":"clear"');
+    const { recentAgentActivity } = await import("../services/agent/agentActivity");
+    expect(recentAgentActivity()).toEqual([]);
     await reader.cancel();
   });
 });

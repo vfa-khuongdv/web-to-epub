@@ -34,7 +34,19 @@ describe("AgentCrawlerPanel", () => {
     expect(rewriteMock).toHaveBeenCalledWith("s1");
     expect(screen.getByRole("button", { name: "Rewriting…" })).toBeDisabled();
     finish();
-    expect(await screen.findByRole("status")).toHaveTextContent("The crawler was rewritten");
+    expect(await screen.findByRole("status")).toHaveTextContent("The crawler was rewritten and the chapter list updated");
+  });
+
+  it("reloads the chapter list after a rewrite, and shows why when that fails", async () => {
+    rewriteMock.mockResolvedValue();
+    const reload = vi.fn().mockRejectedValueOnce(new Error("no list")).mockResolvedValue(undefined);
+    renderEn(<AgentCrawlerPanel storyId="s1" onRewritten={reload} />);
+    const button = await screen.findByRole("button", { name: "Rewrite the crawler with the agent" });
+    await userEvent.click(button);
+    expect(await screen.findByRole("status")).toHaveTextContent("no list");
+    await userEvent.click(button);
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("chapter list updated"));
+    expect(reload).toHaveBeenCalledTimes(2);
   });
 
   it("shows the agent's failure", async () => {
