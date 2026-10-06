@@ -5,7 +5,7 @@ import { SKIN_IDS } from "../lib/ui/skin";
 import { SKINS } from "./registry";
 
 // Product names that are trademarks: a lookalike may resemble the program, never claim it.
-const TRADEMARKS = /visual studio|vs ?code|excel|microsoft|office|google|word\b/i;
+const TRADEMARKS = /visual studio|vs ?code|excel|microsoft|office|google|word\b|github|gitlab|bitbucket|slack|teams|iterm|warp\b|hangouts/i;
 
 describe("skin registry", () => {
   it("defines every skin id, each with a decoy", () => {
@@ -19,8 +19,7 @@ describe("skin registry", () => {
 
   it("gives every skin but the default a shell", () => {
     expect(SKINS.default.Shell).toBeUndefined();
-    expect(SKINS.code.Shell).toBeDefined();
-    expect(SKINS.sheet.Shell).toBeDefined();
+    for (const id of SKIN_IDS) if (id !== "default") expect(SKINS[id].Shell).toBeDefined();
   });
 
   it("never names another product in a tab title", () => {

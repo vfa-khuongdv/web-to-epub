@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { StoredChapter, StorySummary } from "../../types";
-import { adjacentChapter, chapterRows, libraryRows, shownStatus, sortChapters, storyRows } from "./sheetRows";
+import { shownStatus } from "../../lib/skins/chapters";
+import { chapterRows, libraryRows, storyRows } from "./sheetRows";
 
 const summary = (id: string, title: string, extra: Partial<StorySummary> = {}): StorySummary => ({
   id,
@@ -108,20 +109,5 @@ describe("chapterRows", () => {
     expect(rows[1].cells[1].bold).toBe(true);
     expect(rows[2].label).toBe(3);
     expect(rows[3].cells[1]).toMatchObject({ italic: true, tone: "dim" });
-  });
-});
-
-describe("adjacentChapter", () => {
-  const sorted = sortChapters([chapter(5, "done"), chapter(1, "done"), chapter(3, "pending"), chapter(4, "error"), chapter(2, "done")]);
-
-  it("skips chapters without text", () => {
-    expect(adjacentChapter(sorted, 2, 1)).toBe(5);
-    expect(adjacentChapter(sorted, 5, -1)).toBe(2);
-    expect(adjacentChapter(sorted, 5, 1)).toBeNull();
-    expect(adjacentChapter(sorted, 1, -1)).toBeNull();
-  });
-
-  it("counts a chapter the running crawl just finished", () => {
-    expect(adjacentChapter(sorted, 2, 1, { [sorted[2].url]: "done" })).toBe(3);
   });
 });

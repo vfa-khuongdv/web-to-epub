@@ -36,6 +36,33 @@ const TONES = {
     heading: "px-3 pt-1.5 pb-0.5 text-[11px] font-semibold text-sheet-dim",
     separator: "my-1 h-px bg-sheet-rule",
   },
+  chat: {
+    frame:
+      "min-w-[248px] rounded-2xl border border-chat-rule bg-chat-surface py-2 font-chat text-chat-fg shadow-[0_6px_24px_rgba(0,0,0,0.16)]",
+    item: "px-4 py-2 text-[14px]",
+    active: "bg-chat-active text-chat-active-fg",
+    hint: "text-chat-faint",
+    heading: "px-4 pt-2 pb-1 text-[12px] font-medium text-chat-dim",
+    separator: "my-1.5 h-px bg-chat-rule",
+  },
+  term: {
+    frame:
+      "min-w-[240px] rounded-[7px] border border-term-rule bg-term-bar py-1 font-term text-term-fg shadow-[0_6px_20px_rgba(0,0,0,0.3)]",
+    item: "mx-1 rounded-[4px] px-2 py-[3px]",
+    active: "bg-term-select text-term-fg",
+    hint: "text-term-dim",
+    heading: "px-3 pt-1 pb-0.5 text-[11px] text-term-dim",
+    separator: "mx-2 my-1 h-px bg-term-rule",
+  },
+  repo: {
+    frame:
+      "min-w-[240px] rounded-[12px] border border-repo-border bg-repo-overlay py-2 font-repo text-repo-fg shadow-[0_8px_24px_rgba(31,35,40,0.16)]",
+    item: "mx-2 rounded-[6px] px-2 py-[6px] text-[14px]",
+    active: "bg-repo-hover",
+    hint: "text-repo-muted",
+    heading: "px-4 pt-1.5 pb-1 text-[12px] font-semibold text-repo-muted",
+    separator: "my-2 h-px bg-repo-border-muted",
+  },
   app: {
     frame: "min-w-[220px] rounded-tool border border-rule-2 bg-raised py-1 text-ink",
     item: "px-2.5 py-[4px]",
@@ -45,6 +72,8 @@ const TONES = {
     separator: "my-1 h-px bg-rule",
   },
 } as const;
+
+export type MenuTone = keyof typeof TONES;
 
 /**
  * A drop-down menu of real actions (open the normal view, switch look, settings, hide),
@@ -62,7 +91,7 @@ export function AppMenu({
   anchor: MenuAnchor | null;
   entries: MenuEntry[];
   onClose: () => void;
-  tone: keyof typeof TONES;
+  tone: MenuTone;
   label: string;
 }) {
   const styles = TONES[tone];

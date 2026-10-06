@@ -5,7 +5,6 @@ import {
   SheetRef,
   WorkbookState,
   activeRef,
-  endedCrawls,
   neighborKey,
   openTab,
   selectionOf,
@@ -125,13 +124,5 @@ describe("uniqueNames", () => {
       "Ch_0001 (2)",
       "Ch_0001 (3)",
     ]);
-  });
-});
-
-describe("endedCrawls", () => {
-  it("lists the stories that left the live channel", () => {
-    expect(endedCrawls("a,b,c", "b")).toEqual(["a", "c"]);
-    expect(endedCrawls("", "a")).toEqual([]);
-    expect(endedCrawls("a", "a,b")).toEqual([]);
   });
 });

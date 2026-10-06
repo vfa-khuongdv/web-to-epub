@@ -26,4 +26,12 @@ describe("filterCommands", () => {
   it("finds nothing when one word is missing", () => {
     expect(filterCommands(commands, "crawl xyz")).toEqual([]);
   });
+
+  it("keeps search-only commands off the open list, and finds them once typed", () => {
+    const withLooks = [...commands, { ...command("Switch look: Spreadsheet"), searchOnly: true }];
+    expect(filterCommands(withLooks, "").map((c) => c.label)).not.toContain("Switch look: Spreadsheet");
+    expect(filterCommands(withLooks, "")).toHaveLength(3);
+    expect(filterCommands(withLooks, "look").map((c) => c.label)).toEqual(["Switch look: Spreadsheet"]);
+    expect(filterCommands(withLooks, "spread").map((c) => c.label)).toEqual(["Switch look: Spreadsheet"]);
+  });
 });

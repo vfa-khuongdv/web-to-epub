@@ -145,9 +145,3 @@ export function uniqueNames(names: string[]): string[] {
     return count === 1 ? name : `${name} (${count})`;
   });
 }
-
-// Story ids whose crawl ended between two snapshots of the live channel (comma lists).
-export function endedCrawls(before: string, after: string): string[] {
-  const still = new Set(after.split(",").filter(Boolean));
-  return before.split(",").filter((id) => id && !still.has(id));
-}

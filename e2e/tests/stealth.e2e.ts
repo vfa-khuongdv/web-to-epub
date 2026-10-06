@@ -135,3 +135,42 @@ test("Settings → Disguise → Try it shows the decoy", async ({ page }) => {
   // The settings page is still there, untouched.
   await expect(settings).toBeVisible();
 });
+
+test("the code repository's decoy is a working review: keys reach it, and only the boss key leaves", async ({ page }) => {
+  await seedStory({ title: "Decoy story", chapters: [] });
+  await page.goto("/");
+  await appReady(page);
+  await page.getByRole("button", { name: "Settings" }).click();
+  const settings = page.getByRole("dialog", { name: "Settings" });
+  await settings.getByRole("button", { name: "Code repository", exact: true }).click();
+  await settings.getByRole("button", { name: "Close" }).click();
+  await expect(page.getByRole("list", { name: "Repositories" })).toBeVisible();
+
+  await page.keyboard.press("Backquote");
+  const shown = decoy(page);
+  await expect(shown).toBeVisible();
+  await expect(page).toHaveTitle(/Pull Request #482 · team\/budget-service$/);
+  await shown.getByRole("navigation", { name: "Pull request" }).getByRole("button", { name: /Files changed/ }).click();
+  const file = shown.getByRole("region", { name: "src/common/money.ts" });
+  await file.locator('tr[data-line="R5"]').hover();
+  await file.getByRole("button", { name: "Add a comment on line R5" }).click();
+  const field = file.getByRole("textbox", { name: "Comment on line R5" });
+  await expect(field).toBeFocused();
+
+  // Typing reaches the decoy — a backquote too, since it is typed into a field.
+  await page.keyboard.type("Đổi `factor` thành hằng số nhé");
+  await expect(field).toHaveValue("Đổi `factor` thành hằng số nhé");
+  await expect(shown).toBeVisible();
+  // The app's own shortcuts still never see a key (private mode here).
+  await page.keyboard.press("Control+Shift+K");
+  await expect(page.getByRole("dialog", { name: "Private mode" })).toHaveCount(0);
+  // Tab moves through the decoy's own controls.
+  await page.keyboard.press("Tab");
+  await expect(shown.locator(":focus")).toHaveCount(1);
+
+  await page.keyboard.press("Alt+Backquote");
+  await expect(shown).toHaveCount(0);
+  await expect(page.locator("#root")).not.toHaveAttribute("inert", "");
+  await expect(page.getByRole("list", { name: "Repositories" })).toBeVisible();
+  await expect(page).toHaveTitle("Repositories");
+});

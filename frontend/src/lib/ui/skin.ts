@@ -1,9 +1,10 @@
-// Disguise skins: the whole app drawn as another program (a code editor, a spreadsheet)
+// Disguise skins: the whole app drawn as another program (a code editor, a spreadsheet,
+// a team chat, a terminal, a code-hosting site)
 // so a story can be read at a desk without looking like one. "default" is the app as it
 // always was. Kept per browser in localStorage, like the theme.
-export type SkinId = "default" | "code" | "sheet";
+export type SkinId = "default" | "code" | "sheet" | "chat" | "term" | "repo";
 
-export const SKIN_IDS: SkinId[] = ["default", "code", "sheet"];
+export const SKIN_IDS: SkinId[] = ["default", "code", "sheet", "chat", "term", "repo"];
 
 const SKIN_KEY = "skin";
 // What the tab showed last time (title + favicon), so index.html can put it back before

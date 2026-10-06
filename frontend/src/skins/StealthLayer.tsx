@@ -6,7 +6,9 @@ import {
   STEALTH_HIDE_EVENT,
   STEALTH_TOGGLE_EVENT,
   blurIsOwnDialog,
+  hiddenKeyRoute,
   isBossKey,
+  isInDecoy,
   isTextEntry,
 } from "../lib/ui/stealth";
 import { useVault } from "../vault";
@@ -33,9 +35,12 @@ function pauseMedia(doc: Document) {
  *
  * Hiding swaps the whole screen for the skin's decoy — fake work with no story in it —
  * rendered outside #root, which is made inert so no dialog, toast or focused control
- * underneath can be reached or announced. Full screen is left, everything audible is
- * paused, and every key but the boss key is swallowed, so a stray Space cannot start the
- * narration again behind the decoy. Nothing resumes on its own when the decoy goes.
+ * underneath can be reached or announced. Full screen is left and everything audible is
+ * paused. Keys aimed inside the decoy are the decoy's (a decoy can be a working fake: a
+ * review comment typed, Tab, Escape), and its frame stops them there, so they never reach
+ * the app's own shortcuts; every other key but the boss key is swallowed, so a stray
+ * Space cannot start the narration again behind the decoy. Nothing resumes on its own
+ * when the decoy goes.
  *
  * The tab title and favicon follow the skin (and the decoy while it shows); the last
  * skin head is cached so index.html can show it before the app has even loaded.
@@ -90,7 +95,9 @@ export default function StealthLayer({ definition, head }: { definition: SkinDef
     if (hidden) {
       root.setAttribute("inert", "");
       root.setAttribute("aria-hidden", "true");
-      decoyRef.current?.focus({ preventScroll: true });
+      // A decoy may name the element that takes the keys first (its scrolling page).
+      const first = decoyRef.current?.querySelector<HTMLElement>("[data-decoy-focus]") ?? decoyRef.current;
+      first?.focus({ preventScroll: true });
     } else {
       root.removeAttribute("inert");
       root.removeAttribute("aria-hidden");
@@ -116,11 +123,13 @@ export default function StealthLayer({ definition, head }: { definition: SkinDef
     const onKey = (event: KeyboardEvent) => {
       if (event.type === "keydown" && (event.key === "Enter" || event.key === " ")) lastGesture.current = Date.now();
       if (hiddenRef.current) {
-        // A held key repeats: it must not reveal the screen right after hiding it.
-        if (event.type === "keydown" && !event.repeat && isBossKey(event, false)) {
+        const route = hiddenKeyRoute(event, { inDecoy: isInDecoy(event.target), typing: isTextEntry(event.target) });
+        // The decoy's own key: it goes on to the decoy, whose frame stops it (onKeyDown below).
+        if (route === "decoy") return;
+        if (route === "reveal") {
           event.preventDefault();
           reveal();
-        } else if (!event.ctrlKey && !event.metaKey) {
+        } else if (route === "swallow") {
           event.preventDefault();
         }
         // Browser shortcuts (Cmd/Ctrl+…) still work; the app's own never see the key.
@@ -237,8 +246,13 @@ export default function StealthLayer({ definition, head }: { definition: SkinDef
 
   if (!hidden) return null;
   const Decoy = definition.decoy.Component;
+  // Keys inside the decoy stop at its frame: React hands them to the decoy's handlers from
+  // the portal's container (<body>), and stopping there keeps them from the app's window
+  // and document listeners (the player's Space, the vault's shortcut) and from React
+  // handlers above this layer.
+  const stop = (event: { stopPropagation: () => void }) => event.stopPropagation();
   return createPortal(
-    <div ref={decoyRef} tabIndex={-1} className="fixed inset-0 z-[1000] outline-none" data-stealth-decoy="">
+    <div ref={decoyRef} tabIndex={-1} className="fixed inset-0 z-[1000] outline-none" data-stealth-decoy="" onKeyDown={stop} onKeyUp={stop}>
       <Decoy />
     </div>,
     document.body

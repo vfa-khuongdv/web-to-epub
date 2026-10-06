@@ -5,7 +5,9 @@ import {
   GESTURE_GRACE_MS,
   KeyLike,
   blurIsOwnDialog,
+  hiddenKeyRoute,
   isBossKey,
+  isInDecoy,
   isTextEntry,
   readStealth,
   saveStealth,
@@ -71,6 +73,47 @@ describe("isTextEntry", () => {
     expect(isTextEntry(make("<div></div>"))).toBe(false);
     expect(isTextEntry(null)).toBe(false);
     expect(isTextEntry(window)).toBe(false);
+  });
+});
+
+describe("hiddenKeyRoute", () => {
+  const press = (overrides: Partial<KeyLike> & { type?: string; repeat?: boolean } = {}) => ({
+    ...key({}),
+    type: "keydown",
+    repeat: false,
+    ...overrides,
+  });
+  const outside = { inDecoy: false, typing: false };
+  const decoyButton = { inDecoy: true, typing: false };
+  const decoyField = { inDecoy: true, typing: true };
+
+  const cases: { name: string; event: ReturnType<typeof press>; where: typeof outside; expected: string }[] = [
+    { name: "the boss key brings the app back", event: press(), where: outside, expected: "reveal" },
+    { name: "the boss key works on a decoy button too", event: press(), where: decoyButton, expected: "reveal" },
+    { name: "a held boss key does not flicker the app back", event: press({ repeat: true }), where: decoyButton, expected: "swallow" },
+    { name: "the boss key's release is swallowed", event: press({ type: "keyup" }), where: outside, expected: "swallow" },
+    { name: "a backquote types inside a decoy field", event: press(), where: decoyField, expected: "decoy" },
+    { name: "Alt+` brings the app back from a decoy field", event: press({ altKey: true }), where: decoyField, expected: "reveal" },
+    { name: "letters reach a decoy field", event: press({ code: "KeyA", key: "a" }), where: decoyField, expected: "decoy" },
+    { name: "Tab, Enter, Escape and arrows reach the decoy", event: press({ code: "Tab", key: "Tab" }), where: decoyButton, expected: "decoy" },
+    { name: "Ctrl/Cmd keys inside the decoy are the decoy's", event: press({ code: "Enter", key: "Enter", metaKey: true }), where: decoyField, expected: "decoy" },
+    { name: "keys outside the decoy are swallowed", event: press({ code: "Space", key: " " }), where: outside, expected: "swallow" },
+    { name: "browser shortcuts outside the decoy stay the browser's", event: press({ code: "KeyR", key: "r", ctrlKey: true }), where: outside, expected: "browser" },
+  ];
+  for (const { name, event, where, expected } of cases) {
+    it(name, () => expect(hiddenKeyRoute(event, where)).toBe(expected));
+  }
+});
+
+describe("isInDecoy", () => {
+  it("is true only inside the decoy's portal", () => {
+    document.body.innerHTML = '<div data-stealth-decoy=""><textarea></textarea></div><div id="root"><input></div>';
+    expect(isInDecoy(document.querySelector("textarea"))).toBe(true);
+    expect(isInDecoy(document.querySelector("[data-stealth-decoy]"))).toBe(true);
+    expect(isInDecoy(document.querySelector("input"))).toBe(false);
+    expect(isInDecoy(document.body)).toBe(false);
+    expect(isInDecoy(window)).toBe(false);
+    expect(isInDecoy(null)).toBe(false);
   });
 });
 

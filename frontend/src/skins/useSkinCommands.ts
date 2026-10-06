@@ -11,8 +11,8 @@ import { SkinAppContext } from "./types";
 
 /**
  * The commands every skin's palette offers, with the story (and chapter) the skin has
- * open: back to the default view there, settings, switching skin, crawling the story,
- * the narration, and the boss key. A shell adds its own (next chapter, a panel) in front.
+ * open: back to the default view there, settings, switching skin (search-only), crawling
+ * the story, the narration, and the boss key. A shell adds its own (next chapter, a panel) in front.
  * Crawl errors come back as `crawlError`, for the shell to show in its own way.
  */
 export function useSkinCommands(app: SkinAppContext, current: { storyId: string | null; order: number | null }) {
@@ -58,11 +58,14 @@ export function useSkinCommands(app: SkinAppContext, current: { storyId: string 
       });
     }
     list.push({ id: "hide", label: t("Hide now"), hint: "`", run: requestStealthToggle });
+    // Found by typing ("look", "spreadsheet"), never listed on the open palette: a list of
+    // other programs to turn into would give the disguise away at a glance.
     for (const id of SKIN_IDS) {
       if (id === skin) continue;
       list.push({
         id: `skin-${id}`,
         label: t("Switch look: {skin}", { skin: t(SKINS[id].label) }),
+        searchOnly: true,
         run: () => setSkin(id),
       });
     }

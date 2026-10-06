@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { LiveCrawl } from "../../hooks/useCrawlJob";
-import { endedCrawls } from "./workbook";
+import { LiveCrawl } from "./useCrawlJob";
 
 // A number per story that goes up each time a crawl of it ends, for useChapterLines'
 // `version`: a re-crawl may have rewritten a chapter that is cached or on screen.
@@ -22,4 +21,10 @@ export function useCrawlVersions(live: Record<string, LiveCrawl | undefined>): R
     });
   }, [crawling]);
   return versions;
+}
+
+// Story ids whose crawl ended between two snapshots of the live channel (comma lists).
+export function endedCrawls(before: string, after: string): string[] {
+  const still = new Set(after.split(",").filter(Boolean));
+  return before.split(",").filter((id) => id && !still.has(id));
 }

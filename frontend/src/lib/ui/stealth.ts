@@ -79,6 +79,34 @@ export function isBossKey(event: KeyLike, typing: boolean): boolean {
   return typing ? event.altKey : true;
 }
 
+// The decoy is drawn in a portal on <body> marked with this attribute; keys aimed inside it
+// belong to the decoy (a comment being typed in the fake review, Tab, Escape, the arrows).
+export const DECOY_ATTRIBUTE = "data-stealth-decoy";
+
+export function isInDecoy(target: EventTarget | null): boolean {
+  const closest = (target as { closest?: unknown } | null)?.closest;
+  return typeof closest === "function" && (target as Element).closest(`[${DECOY_ATTRIBUTE}]`) !== null;
+}
+
+export type HiddenKeyRoute = "reveal" | "decoy" | "browser" | "swallow";
+
+/**
+ * Where a key goes while the decoy shows. The boss key brings the app back — a plain
+ * backquote outside a text field (or in one marked `data-boss-key`), Alt+` inside one —
+ * and a held key's repeats do nothing. Any other key aimed inside the decoy is the
+ * decoy's, so its fields and buttons work like the real program's (the decoy's own frame
+ * keeps it from reaching the app behind). Outside it, Ctrl/Cmd shortcuts stay the
+ * browser's and everything else is swallowed.
+ */
+export function hiddenKeyRoute(
+  event: KeyLike & { type: string; repeat: boolean },
+  where: { inDecoy: boolean; typing: boolean }
+): HiddenKeyRoute {
+  if (isBossKey(event, where.typing)) return event.type === "keydown" && !event.repeat ? "reveal" : "swallow";
+  if (where.inDecoy) return "decoy";
+  return event.ctrlKey || event.metaKey ? "browser" : "swallow";
+}
+
 // Whether a blur is the user leaving the app, or the app itself opening something (a
 // file picker, the export folder dialog, a link in the system browser) right after a
 // click or key press. Those happen within moments of the gesture; alt-tab does not

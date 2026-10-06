@@ -25,7 +25,7 @@ import { StatusBar } from "./StatusBar";
 import { StoryChaptersSource } from "./StoryChaptersSource";
 import { tabKey } from "./tabs";
 import { ShellCommand, ShellOutput } from "./TerminalView";
-import { stripUrls } from "./terminal";
+import { stripUrls } from "../../lib/skins/crawlLog";
 import { TitleBar, TitleMenu } from "./TitleBar";
 import { buildTree, chapterFile, fileKey, fileState, searchTree } from "./tree";
 import { useWorkspace } from "./useWorkspace";

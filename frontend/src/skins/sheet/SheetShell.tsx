@@ -39,9 +39,9 @@ import {
   selectionSummary,
 } from "./sheetModel";
 import { sheetCommands } from "./sheetCommands";
-import { adjacentChapter, sortChapters } from "./sheetRows";
+import { adjacentChapter, sortChapters } from "../../lib/skins/chapters";
 import { buildSheet } from "./sheetView";
-import { useCrawlVersions } from "./useCrawlVersions";
+import { useCrawlVersions } from "../../hooks/useCrawlVersions";
 import { useProgramKeys } from "./useProgramKeys";
 import {
   INITIAL_WORKBOOK,

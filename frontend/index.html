@@ -28,7 +28,7 @@
   (function () {
     try {
       var skin = localStorage.getItem("skin");
-      if (skin !== "code" && skin !== "sheet") return;
+      if (["code", "sheet", "chat", "term", "repo"].indexOf(skin) < 0) return;
       document.documentElement.dataset.skin = skin;
       var head = JSON.parse(localStorage.getItem("skin-head") || "null");
       if (!head || typeof head.title !== "string" || typeof head.favicon !== "string") return;

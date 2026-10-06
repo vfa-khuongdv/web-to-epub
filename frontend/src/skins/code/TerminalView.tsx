@@ -1,7 +1,8 @@
 import { KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { CrawlLogLine } from "../../hooks/useCrawlJob";
 import { useLang } from "../../i18n";
-import { COMMAND_NAMES, TerminalEntry, historyStep, interleave, logText, parseCommand } from "./terminal";
+import { COMMAND_NAMES, TerminalEntry, historyStep, interleave, parseCommand } from "./terminal";
+import { logText } from "../../lib/skins/crawlLog";
 
 export type ShellCommand = "crawl" | "stop" | "open" | "hide";
 export type ShellOutput = { text: string; error?: boolean }[];
