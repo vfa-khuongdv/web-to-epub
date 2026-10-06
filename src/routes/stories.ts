@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import fs from "fs";
 import express, { Router } from "express";
 import multer from "multer";
 import os from "os";
@@ -19,6 +20,7 @@ import { DrmError, EpubTooLargeError, ImportedBook, NotEpubError, parseEpub } fr
 import { DtvEbookNoEpubError, DtvEbookNotFoundError, dtvEbookId, importDtvEbook } from "../services/dtvEbookImport";
 import { HeyzineNotFoundError, HeyzineUnavailableError, heyzineId, importHeyzine } from "../services/heyzineImport";
 import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
+import { MAX_COVER_BYTES, sniffImageExtension, UPLOADS_DIR } from "../services/coverStore";
 import { settingsStore } from "../services/settingsStore";
 import { loadSiteSession, SiteSessionUnreadableError } from "../services/siteSession";
 import { storyId } from "../services/storyStore";
@@ -516,12 +518,30 @@ storiesRouter.post("/stories/:id/meta", upload.single("cover"), async (req, res)
   res.json({ story: await library.stories.getOutline(id) });
 });
 
-storiesRouter.post("/cover-upload", upload.single("cover"), (req, res) => {
+// The picked image is checked and copied under covers/uploads, and the response names that
+// relative path: export only accepts covers from there, so a client cannot point it at any
+// other file on the machine.
+storiesRouter.post("/cover-upload", upload.single("cover"), async (req, res) => {
+  const library = libraryFor(req, res);
+  if (!library) {
+    if (req.file) await fs.promises.rm(req.file.path, { force: true });
+    return;
+  }
   if (!req.file) {
     res.status(400).json({ message: t("Cover file is required") });
     return;
   }
-  res.json({ path: req.file.path });
+  const bytes = await fs.promises.readFile(req.file.path);
+  await fs.promises.rm(req.file.path, { force: true });
+  const extension = sniffImageExtension(bytes);
+  if (!extension || bytes.length > MAX_COVER_BYTES) {
+    res.status(400).json({ message: t("Cover file is required") });
+    return;
+  }
+  const relative = path.join("covers", UPLOADS_DIR, `${crypto.randomUUID()}.${extension}`);
+  await fs.promises.mkdir(path.join(library.dataDir, "covers", UPLOADS_DIR), { recursive: true });
+  await fs.promises.writeFile(path.join(library.dataDir, relative), bytes);
+  res.json({ path: relative });
 });
 
 // Enable/disable watching for new chapters of a story.

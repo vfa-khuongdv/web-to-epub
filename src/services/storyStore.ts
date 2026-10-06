@@ -4,6 +4,7 @@ import path from "path";
 import { DatabaseSync } from "node:sqlite";
 import { ContentBlock, StoredChapter, StoredStory, StorySummary } from "../types";
 import { DATA_DIR } from "../config/paths";
+import { sanitizeBlocks } from "./sanitizeHtml";
 import { t } from "./lang";
 
 export function storyId(storyUrl: string): string {
@@ -282,7 +283,7 @@ export function createStoryStore(baseDir: string): StoryStore {
       chapter.error ?? null,
       chapter.errorKind ?? null,
       chapter.spellChecked ? 1 : 0,
-      chapter.blocks ? JSON.stringify(chapter.blocks) : null,
+      chapter.blocks ? JSON.stringify(sanitizeBlocks(chapter.blocks)) : null,
     ];
   }
 

@@ -3,13 +3,19 @@ import path from "path";
 import apiRouter from "./routes";
 import { backgroundMusic, seedBundledMusic } from "./services/backgroundMusic";
 import { closeBrowser } from "./services/renderer";
+import { HOST, hostGuard, originGuard, securityHeaders } from "./services/requestGuard";
 import { ttsEngines } from "./services/tts/runtime";
 
 const app = express();
 const PORT = process.env.PORT || 3100;
 
+const PUBLIC_DIR = path.join(__dirname, "..", "public");
+
+app.use(hostGuard());
+app.use(securityHeaders(PUBLIC_DIR));
+app.use("/api", originGuard);
 app.use(express.json({ limit: "50mb" }));
-app.use(express.static(path.join(__dirname, "..", "public")));
+app.use(express.static(PUBLIC_DIR));
 app.use("/api", apiRouter);
 
 let server: ReturnType<typeof app.listen> | undefined;
@@ -23,8 +29,8 @@ async function start() {
   } catch (err) {
     console.warn(`Bundled music not available: ${err instanceof Error ? err.message : err}`);
   }
-  server = app.listen(PORT, () => {
-    console.log(`Web-to-EPUB running at http://localhost:${PORT}`);
+  server = app.listen(Number(PORT), HOST, () => {
+    console.log(`Web-to-EPUB running at http://${HOST === "0.0.0.0" ? "localhost" : HOST}:${PORT}`);
   });
 }
 

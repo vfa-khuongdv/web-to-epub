@@ -8,6 +8,7 @@ import sharp from "sharp";
 import { fileURLToPath } from "url";
 import { BookMetadata, ExportChapter } from "../types";
 import { EXTENSION_BY_TYPE, sniffImageExtension } from "./coverStore";
+import { assertPublicUrl } from "./netPolicy";
 import { fetchWithRetry } from "./toc/http";
 import { t } from "./lang";
 
@@ -150,7 +151,7 @@ async function saveImage(src: string, dir: string, index: number, localRoots: st
         const res = await fetchWithRetry(
           src,
           { headers: { "User-Agent": IMAGE_USER_AGENT, Accept: "image/*" } },
-          { maxAttempts: 2 }
+          { maxAttempts: 2, validateUrl: assertPublicUrl }
         );
         if (!res.ok) return undefined;
         const declaredLength = Number(res.headers.get("content-length"));
@@ -350,7 +351,7 @@ async function saveMedia(src: string, dir: string, index: number, localRoots: st
       const res = await fetchWithRetry(
         src,
         { headers: { "User-Agent": IMAGE_USER_AGENT, Accept: "audio/*,video/*,*/*" } },
-        { maxAttempts: 2, timeoutMs: MEDIA_TIMEOUT_MS }
+        { maxAttempts: 2, timeoutMs: MEDIA_TIMEOUT_MS, validateUrl: assertPublicUrl }
       );
       if (!res.ok) return undefined;
       const declaredLength = Number(res.headers.get("content-length"));

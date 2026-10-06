@@ -52,7 +52,7 @@ async function answerFetch(target: ChildProcess, message: { id: number; run: num
     const pageTarget = run ? new URL(message.url, run.pageUrl).href : message.url;
     const url = new URL(pageTarget);
     if (!run || !/^https?:$/.test(url.protocol) || hostOf(pageTarget) !== run.host) throw new Error(`The code may only load pages of ${run?.host ?? "the site"}`);
-    if (message.kind === "render") return reply({ ok: true, body: await renderPageHtml(pageTarget) });
+    if (message.kind === "render") return reply({ ok: true, body: await renderPageHtml(pageTarget, { onlyHost: run.host }) });
     // A page's own scripts often load the data (a chapter list) with a form POST to the same site: the code may too.
     const init: RequestInit =
       message.kind === "post"
@@ -62,7 +62,12 @@ async function answerFetch(target: ChildProcess, message: { id: number; run: num
             body: String(message.body ?? "").slice(0, MAX_POST_BYTES),
           }
         : {};
-    const res = await fetchWithRetry(pageTarget, init, { maxAttempts: 2 });
+    const res = await fetchWithRetry(pageTarget, init, {
+      maxAttempts: 2,
+      validateUrl: (next) => {
+        if (!/^https?:$/.test(next.protocol) || hostOf(next.href) !== run.host) throw new Error(`The code may only load pages of ${run.host}`);
+      },
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status} for ${pageTarget}`);
     reply({ ok: true, body: await res.text() });
   } catch (err) {
