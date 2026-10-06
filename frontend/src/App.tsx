@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { CSSProperties, useEffect, useRef, useState } from "react";
 import LibraryView from "./components/library/LibraryView";
 import PlayerBar from "./components/narration/PlayerBar";
 import { NarrationPlayerProvider, useNarrationPlayer } from "./hooks/narrationPlayer";
@@ -8,6 +8,8 @@ import { CrawlLogButton, CrawlLogDialog } from "./components/library/CrawlLog";
 import { NoticeStack } from "./components/ui/NoticeStack";
 import { UpdateDialog } from "./components/settings/UpdateDialog";
 import { Icon } from "./components/ui/Icon";
+import { SplitHandle } from "./components/ui/SplitHandle";
+import { readSplit, saveSplit } from "./lib/ui/splitPane";
 import { fetchAppUpdate, fetchSettings, fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
 import { applyTheme, readTheme, saveTheme, Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "./lib/ui/theme";
@@ -24,6 +26,8 @@ export default function App() {
   const [crawlLogOpen, setCrawlLogOpen] = useState(false);
   const [agentLogOpen, setAgentLogOpen] = useState(false);
   const agent = useAgentActivity();
+  const workbench = useRef<HTMLDivElement>(null);
+  const [split, setSplit] = useState(readSplit);
   // Only autoScanOnOpen is needed out here (the library reads it); the settings page
   // loads the rest itself. Undefined until the answer arrives, so the library does not
   // run the launch check against a guess.
@@ -251,7 +255,11 @@ export default function App() {
         <UpdateDialog update={updateInfo} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
-      <div className="workbench">
+      <div
+        ref={workbench}
+        className="workbench relative"
+        style={{ "--left": `${split * 100}fr`, "--right": `${(1 - split) * 100}fr` } as CSSProperties}
+      >
         <LibraryView
           job={job}
           live={live}
@@ -262,6 +270,7 @@ export default function App() {
           autoScan={autoScan}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+        <SplitHandle container={workbench} split={split} onSplit={setSplit} onCommit={saveSplit} />
       </div>
 
       <AppPlayerBar />

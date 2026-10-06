@@ -194,7 +194,7 @@
 
   .workbench {
     display: grid;
-    grid-template-columns: minmax(0, 29fr) minmax(0, 21fr);
+    grid-template-columns: minmax(0, var(--left, 29fr)) minmax(0, var(--right, 21fr));
     min-height: 0;
   }
 
