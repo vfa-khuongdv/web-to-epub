@@ -1,6 +1,6 @@
 import { ContentBlock } from "../../types";
 
-// A chapter as the disguise skins draw it: one line per block — an editor line in the
+// A chapter as the disguise skins draw it: one line per paragraph — an editor line in the
 // code skin, a row in the spreadsheet. Long lines wrap on screen; they are never split,
 // so a line number always points at a whole paragraph.
 export interface ChapterLine {
@@ -25,13 +25,21 @@ function collapse(text: string): string {
 // Pictures, audio and video become a placeholder line with no address: loading them
 // here would show a comic page in the middle of a "source file", and a request to a
 // story site's CDN is exactly the trace a disguise should not leave.
+const LINE_BREAKS = /(?:<br\s*\/?>\s*)+/i;
+
 export function chapterLines(blocks: ContentBlock[]): ChapterLine[] {
   const lines: ChapterLine[] = [];
   for (const block of blocks) {
-    if (block.type === "heading" || block.type === "paragraph") {
+    if (block.type === "heading") {
       const text = plainText(block.text ?? "");
-      if (!text) continue;
-      lines.push({ kind: block.type === "heading" ? "heading" : "text", text });
+      if (text) lines.push({ kind: "heading", text });
+    } else if (block.type === "paragraph") {
+      // Some sites send a whole chapter as one block whose paragraphs are <br> runs; the
+      // reader shows them as breaks, so each becomes its own line here.
+      for (const part of (block.text ?? "").split(LINE_BREAKS)) {
+        const text = plainText(part);
+        if (text) lines.push({ kind: "text", text });
+      }
     } else {
       const alt = block.alt ? plainText(block.alt) : "";
       lines.push({ kind: "media", text: alt ? `[${block.type}: ${alt}]` : `[${block.type}]` });

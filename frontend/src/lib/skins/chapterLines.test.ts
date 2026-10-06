@@ -36,6 +36,21 @@ describe("chapterLines", () => {
     ]);
   });
 
+  // Some sites send a whole chapter as one block whose paragraphs are <br><br> runs; the
+  // reader shows those as breaks, so a skin must too — not one 7000-character line.
+  it("splits a block at its line breaks", () => {
+    const lines = chapterLines([
+      { type: "paragraph", text: "Đoạn một.<br><br>\nĐoạn <i>hai</i>.<br/>Dòng ba.<br><br>" },
+      { type: "heading", text: "Phần<br>hai" },
+    ]);
+    expect(lines).toEqual([
+      { kind: "text", text: "Đoạn một." },
+      { kind: "text", text: "Đoạn hai." },
+      { kind: "text", text: "Dòng ba." },
+      { kind: "heading", text: "Phần hai" },
+    ]);
+  });
+
   it("never carries a media address", () => {
     const lines = chapterLines([{ type: "image", src: "https://cdn.example/secret.jpg" }]);
     expect(JSON.stringify(lines)).not.toContain("cdn.example");
