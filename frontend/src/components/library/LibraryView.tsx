@@ -4,7 +4,7 @@ import {
   ApiError,
   checkStoryUpdates,
   createStory,
-  fetchAiConfig,
+  fetchAgentConfig,
   deleteStory,
   fetchSiteSession,
   fetchStories,
@@ -21,7 +21,7 @@ import { SessionSite, sessionSiteForUrl } from "../../lib/sources/siteSessions";
 import { timeAgo } from "../../lib/format/timeAgo";
 import { StoredStory, StorySummary, SupportedSite } from "../../types";
 import { CrawlJobState, LiveCrawl, NoticeInput, liveCounts } from "../../hooks/useCrawlJob";
-import { AI_CONFIG_CHANGED } from "../settings/AiSettings";
+import { AGENT_CONFIG_CHANGED } from "../settings/AgentSettings";
 import AddStoryBox, { PendingImport } from "./AddStoryBox";
 import { Icon } from "../ui/Icon";
 import SortTh from "./SortTh";
@@ -71,19 +71,19 @@ export default function LibraryView({
   const [picked, setPicked] = useState<Set<string>>(new Set());
   const [confirmBulk, setConfirmBulk] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
-  // Whether the AI crawler is on with a key; follows the settings page.
+  // Whether the agent crawler is on and its agent installed; follows the settings page.
   const [aiReady, setAiReady] = useState(false);
   const [page, setPage] = useState(1);
   const [checking, setChecking] = useState(false);
   useEffect(() => {
     const load = () =>
-      void fetchAiConfig().then(
-        (c) => setAiReady(c.enabled && !!c.providers.find((p) => p.id === c.active && (p.hasKey || !p.keyRequired))),
+      void fetchAgentConfig().then(
+        (c) => setAiReady(c.ready),
         () => setAiReady(false)
       );
     load();
-    window.addEventListener(AI_CONFIG_CHANGED, load);
-    return () => window.removeEventListener(AI_CONFIG_CHANGED, load);
+    window.addEventListener(AGENT_CONFIG_CHANGED, load);
+    return () => window.removeEventListener(AGENT_CONFIG_CHANGED, load);
   }, []);
   const checkedOnOpen = useRef(false);
   // The URL waiting behind the site session dialog: sites that need a saved browser session (Asianfanfics, TruyenFull, Internet Archive).
@@ -199,7 +199,7 @@ export default function LibraryView({
     // Book-hosting sites (archive.org, DTV Ebook — see lib/bookUrlSources.ts) are imported
     // instead of crawled. Everything else must be a crawl site.
     const bookSource = bookUrlSourceFor(url);
-    // Outside the supported list the AI crawler reads the page instead, when it is on.
+    // Outside the supported list the agent crawler reads the page instead, when it is on.
     if (!bookSource && !isSupportedUrl(url, supportedSites, "crawl") && aiReady) {
       if (!/^https?:\/\//i.test(url)) {
         setError(t("Paste a story URL first."));
@@ -230,8 +230,8 @@ export default function LibraryView({
     else await createStoryFrom(url);
   }
 
-  // The AI button: any http(s) page, no allowlist or session step. The chapter list is read
-  // and saved here; the normal crawl button then has the AI read each chapter.
+  // The agent button: any http(s) page, no allowlist or session step. The chapter list is read
+  // and saved here; the normal crawl button then has the agent read each chapter.
   async function handleCreateWithAi() {
     if (busy || importBusy) return;
     const url = storyUrl.trim();

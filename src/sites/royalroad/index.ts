@@ -1,4 +1,4 @@
-import { createAiTocAdapter, fetchChapterWithAi } from "../../services/ai/aiLocate";
+import { createAgentTocAdapter, fetchChapterWithAgent } from "../../services/agent/agentCrawler";
 import type { SiteModule } from "../types";
 
 const DOMAINS = ["royalroad.com"];
@@ -8,6 +8,6 @@ const DOMAINS = ["royalroad.com"];
 export const royalroad: SiteModule = {
   id: "royalroad",
   supported: [{ domain: "royalroad.com", name: "Royal Road" }],
-  toc: { ...createAiTocAdapter(), domains: DOMAINS },
-  chapter: { domains: DOMAINS, fetchChapter: fetchChapterWithAi },
+  toc: { ...createAgentTocAdapter(), domains: DOMAINS },
+  chapter: { domains: DOMAINS, fetchChapter: fetchChapterWithAgent },
 };

@@ -3,6 +3,7 @@ import LibraryView from "./components/library/LibraryView";
 import PlayerBar from "./components/narration/PlayerBar";
 import { NarrationPlayerProvider, useNarrationPlayer } from "./hooks/narrationPlayer";
 import SettingsOverlay from "./components/settings/SettingsOverlay";
+import { AgentActivityButton, AgentActivityDialog } from "./components/library/AgentActivity";
 import { CrawlLogButton, CrawlLogDialog } from "./components/library/CrawlLog";
 import { NoticeStack } from "./components/ui/NoticeStack";
 import { UpdateDialog } from "./components/settings/UpdateDialog";
@@ -11,6 +12,7 @@ import { fetchAppUpdate, fetchSettings, fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
 import { applyTheme, readTheme, saveTheme, Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "./lib/ui/theme";
 import { AppSettings, AppUpdateInfo, SupportedSite } from "./types";
+import { useAgentActivity } from "./hooks/useAgentActivity";
 import { useCrawlJob } from "./hooks/useCrawlJob";
 import { useVault } from "./vault";
 
@@ -20,6 +22,8 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [crawlLogOpen, setCrawlLogOpen] = useState(false);
+  const [agentLogOpen, setAgentLogOpen] = useState(false);
+  const agent = useAgentActivity();
   // Only autoScanOnOpen is needed out here (the library reads it); the settings page
   // loads the rest itself. Undefined until the answer arrives, so the library does not
   // run the launch check against a guess.
@@ -155,6 +159,7 @@ export default function App() {
             <Icon name="settings" size={14} />
           </button>
 
+          <AgentActivityButton events={agent.events} busy={agent.busy} onOpen={() => setAgentLogOpen(true)} />
           <CrawlLogButton job={job} onOpen={() => setCrawlLogOpen(true)} />
 
           {job.running ? null : (
@@ -262,6 +267,7 @@ export default function App() {
       <AppPlayerBar />
 
       {crawlLogOpen && <CrawlLogDialog job={job} onClose={() => setCrawlLogOpen(false)} />}
+      {agentLogOpen && <AgentActivityDialog events={agent.events} busy={agent.busy} onClose={() => setAgentLogOpen(false)} />}
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
 
       {settingsOpen && (

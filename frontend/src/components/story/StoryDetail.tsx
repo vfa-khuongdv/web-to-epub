@@ -20,6 +20,7 @@ import ChapterPager from "./ChapterPager";
 import PendingChapterRow from "./PendingChapterRow";
 import { Icon } from "../ui/Icon";
 import ReaderOverlay from "../reader/ReaderOverlay";
+import AgentCrawlerPanel from "./AgentCrawlerPanel";
 import StoryMetaFields from "./StoryMetaFields";
 
 // Long stories with thousands of chapters: rendering all at once creates tens of
@@ -573,6 +574,7 @@ export default function StoryDetail({
             coverInput={coverInput}
             onCoverFile={setCoverFile}
           />
+          {!imported && <AgentCrawlerPanel storyId={story.id} />}
         </div>
       </div>
 

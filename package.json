@@ -61,10 +61,12 @@
       "public/**",
       "electron/**",
       "tts/**",
+      "agent/**",
       "package.json"
     ],
     "asarUnpack": [
-      "tts/**"
+      "tts/**",
+      "agent/**"
     ],
     "extraResources": [
       {

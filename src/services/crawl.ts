@@ -1,8 +1,8 @@
 import { ChapterErrorKind, ExtractedChapter } from "../types";
 import { findSupportedSite } from "../config/supportedSites";
 import { getChapterFetcher } from "../sites";
-import { activeAiProvider } from "./ai/aiConfig";
-import { fetchChapterWithAi } from "./ai/aiLocate";
+import { activeAgent } from "./agent/agentConfig";
+import { fetchChapterWithAgent } from "./agent/agentCrawler";
 import type { ChapterFetchContext } from "./chapters/types";
 import { extractChapter, LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
@@ -62,9 +62,9 @@ export async function extractWithRetry(
       // Sites that server-render content (e.g., Wattpad) have their own fetcher:
       // load HTML directly, much faster than opening a browser per chapter.
       if (siteFetcher) return await siteFetcher.fetchChapter(url, context);
-      // Outside the allowlist the only way a story got here is AI crawling, so the AI picks
-      // the chapter body instead of Readability's guess.
-      if (!findSupportedSite(url) && activeAiProvider()) return await fetchChapterWithAi(url, context);
+      // Outside the allowlist the only way a story got here is the agent crawler, so the code the
+      // agent wrote for the site reads the chapter instead of Readability's guess.
+      if (!findSupportedSite(url) && activeAgent()) return await fetchChapterWithAgent(url, context);
       const html = await renderPageHtml(url);
       return extractChapter(url, html);
     } catch (err) {

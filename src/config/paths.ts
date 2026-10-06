@@ -17,3 +17,9 @@ export const PRIVATE_DIR = path.join(DATA_DIR, "private");
 export const BUNDLED_MUSIC_DIR = path
   .join(__dirname, "..", "..", "tts", "music")
   .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
+
+// Child process that runs the crawler code a local agent wrote (agent/siteRunner.cjs). Packaged, it
+// sits next to the app and is unpacked from the asar, because a child process cannot read inside it.
+export const AGENT_RUNNER = path
+  .join(__dirname, "..", "..", "agent", "siteRunner.cjs")
+  .replace(`app.asar${path.sep}`, `app.asar.unpacked${path.sep}`);
