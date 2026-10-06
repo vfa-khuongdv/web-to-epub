@@ -124,5 +124,9 @@
       "maintainer": "vfa-khuongdv"
     },
     "afterPack": "scripts/adhoc-sign.js"
+  },
+  "overrides": {
+    "ejs": "^3.1.10",
+    "nth-check": "^2.1.1"
   }
 }

@@ -269,3 +269,18 @@ describe("fetchText", () => {
     ).rejects.toBe(err);
   });
 });
+
+describe("fetchWithRetry validateUrl", () => {
+  it("checks every redirect hop and refuses one that leaves the allowed host", async () => {
+    const fetchImpl = vi.fn(async (url: string | URL | Request) =>
+      String(url).startsWith("https://site.test/")
+        ? new Response(null, { status: 302, headers: { location: "http://127.0.0.1:3100/api/stories" } })
+        : new Response("secret")
+    ) as unknown as typeof fetch;
+    const validateUrl = (u: URL) => {
+      if (u.hostname !== "site.test") throw new Error("off host");
+    };
+    await expect(fetchWithRetry("https://site.test/a", {}, { fetchImpl, validateUrl })).rejects.toThrow("off host");
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+  });
+});

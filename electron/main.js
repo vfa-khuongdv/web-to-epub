@@ -10,6 +10,7 @@ const fsp = require("fs/promises");
 const { spawn } = require("child_process");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
+const { UPDATE_REPO } = require(path.join(__dirname, "..", "dist", "config", "update.js"));
 const {
   cleanupUpdateLeftovers,
   installAppImage,
@@ -67,10 +68,20 @@ function waitForServer(port, timeoutMs = 30000) {
 // EPUB export folder picker (see preload.js for why this isn't the web
 // File System Access API): shown attached to whichever window asked, so it doesn't
 // appear detached from the app.
+// Only folders the person picked in the dialog above may be written to: page script (a
+// crawled chapter that got through) cannot name any other place on disk.
+const pickedFolders = new Set();
+function pickedFolder(folderPath) {
+  const resolved = typeof folderPath === "string" ? path.resolve(folderPath) : "";
+  if (!pickedFolders.has(resolved)) throw new Error("Folder was not chosen in the dialog");
+  return resolved;
+}
+
 ipcMain.handle("export:pick-folder", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender);
   const result = await dialog.showOpenDialog(win, { properties: ["openDirectory", "createDirectory"] });
   if (result.canceled || result.filePaths.length === 0) return null;
+  pickedFolders.add(path.resolve(result.filePaths[0]));
   return result.filePaths[0];
 });
 
@@ -78,7 +89,7 @@ ipcMain.handle("export:write-file", async (_event, folderPath, fileName, data) =
   // path.basename strips any directory components a caller might sneak into fileName —
   // it should already be a plain name (epubFileName() sanitizes it server-side), this is
   // just the last line of defense before writing to disk.
-  const filePath = path.join(folderPath, path.basename(fileName));
+  const filePath = path.join(pickedFolder(folderPath), path.basename(fileName));
   await fsp.writeFile(filePath, Buffer.from(data));
 });
 
@@ -91,14 +102,13 @@ ipcMain.handle("export:save-url", async (_event, folderPath, fileName, url) => {
   if (typeof url !== "string" || !url.startsWith(allowed)) throw new Error("URL not allowed");
   const res = await fetch(url);
   if (!res.ok || !res.body) throw new Error(`Download failed (${res.status})`);
-  const filePath = path.join(folderPath, path.basename(fileName));
+  const filePath = path.join(pickedFolder(folderPath), path.basename(fileName));
   await pipeline(Readable.fromWeb(res.body), fs.createWriteStream(filePath));
 });
 
 // ---- App update (see src/services/appInstaller.ts) ---------------------------
 
 // Only assets from our own releases may be downloaded and installed.
-const UPDATE_HOSTS = new Set(["github.com", "objects.githubusercontent.com"]);
 let updateInstalling = false;
 
 async function downloadUpdate(url, extension, onProgress) {
@@ -136,8 +146,15 @@ ipcMain.handle("update:install", async (event, assetUrl) => {
   const kind = currentUpdateKind();
   if (!kind) throw new Error("This install cannot update itself — download the new version from the release page");
   if (updateInstalling) throw new Error("An update is already being installed");
-  const host = new URL(assetUrl).hostname;
-  if (!UPDATE_HOSTS.has(host)) throw new Error(`Refusing to download from ${host}`);
+  // Only a release asset of this very repository (GitHub then redirects to its CDN).
+  const parsed = new URL(assetUrl);
+  if (
+    parsed.protocol !== "https:" ||
+    parsed.hostname !== "github.com" ||
+    !parsed.pathname.startsWith(`/${UPDATE_REPO}/releases/download/`)
+  ) {
+    throw new Error(`Refusing to download from ${parsed.hostname}`);
+  }
 
   updateInstalling = true;
   let filePath = null;

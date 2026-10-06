@@ -66,6 +66,32 @@ interface FetchWithRetryOptions {
   maxAttempts?: number;
   // Large files (audio/video embedded in EPUB) don't fit in the 15-second default timeout.
   timeoutMs?: number;
+  // When set, redirects are followed by hand and every address (the first one included) must
+  // pass this check (it throws to refuse) — a page cannot bounce a fetch onto another host.
+  validateUrl?: (url: URL) => void | Promise<void>;
+}
+
+const MAX_REDIRECTS = 5;
+
+async function fetchChecked(
+  fetchImpl: typeof fetch,
+  url: string,
+  init: RequestInit,
+  validateUrl: (url: URL) => void | Promise<void>
+): Promise<Response> {
+  let current = url;
+  for (let hop = 0; ; hop++) {
+    await validateUrl(new URL(current));
+    const res = await fetchImpl(current, { ...init, redirect: "manual" });
+    const location = res.headers.get("location");
+    if (res.status < 300 || res.status >= 400 || !location) return res;
+    if (hop >= MAX_REDIRECTS) throw new Error("Too many redirects");
+    current = new URL(location, current).href;
+    // A redirect after a POST becomes a GET without the body, as a browser does.
+    if (res.status !== 307 && res.status !== 308 && init.method && init.method !== "GET") {
+      init = { ...init, method: "GET", body: undefined };
+    }
+  }
 }
 
 // Some sites hit Cloudflare rate limits (429) when bombarded with requests in succession —
@@ -84,7 +110,10 @@ export async function fetchWithRetry(
   for (let attempt = 1; ; attempt++) {
     let res: Response;
     try {
-      res = await fetchImpl(url, { ...init, signal: AbortSignal.timeout(timeoutMs) });
+      const withSignal = { ...init, signal: AbortSignal.timeout(timeoutMs) };
+      res = options.validateUrl
+        ? await fetchChecked(fetchImpl, url, withSignal, options.validateUrl)
+        : await fetchImpl(url, withSignal);
     } catch (err) {
       const code = networkErrorCode(err);
       if (code && RETRIABLE_NETWORK_CODES.has(code) && attempt < NETWORK_ATTEMPTS) {

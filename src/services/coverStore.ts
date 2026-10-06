@@ -1,5 +1,6 @@
 import fs from "fs";
 import path from "path";
+import { assertPublicUrl } from "./netPolicy";
 import { fetchWithRetry } from "./toc/http";
 import { DATA_DIR } from "../config/paths";
 
@@ -80,7 +81,7 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
       res = await fetchWithRetry(
         coverUrl,
         { headers: { "User-Agent": USER_AGENT, Accept: "image/*", ...(referer ? { Referer: referer } : {}) } },
-        { fetchImpl, maxAttempts: 2 }
+        { fetchImpl, maxAttempts: 2, validateUrl: options.fetchImpl ? undefined : assertPublicUrl }
       );
     } catch {
       return undefined;
