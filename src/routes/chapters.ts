@@ -3,6 +3,7 @@ import type { Request } from "express";
 import { htmlToBlocks } from "../services/chapterHtml";
 import { mapBlockMedia, resolveMediaHtml, restoreMediaHtml } from "../services/epubMedia";
 import { t } from "../services/lang";
+import { sanitizeBlocks } from "../services/sanitizeHtml";
 import { removeChapterAudio } from "../services/tts/audioCache";
 import { StoredChapter } from "../types";
 import { libraryFor } from "./library";
@@ -17,7 +18,7 @@ function requestVaultToken(req: Request): string | undefined {
 // The same mapping is reversed on PATCH, so edits never bake an origin or token into DB.
 function presentChapter(chapter: StoredChapter, storyId: string, token?: string): StoredChapter {
   if (!chapter.blocks) return chapter;
-  const blocks = mapBlockMedia(chapter.blocks, (html) => resolveMediaHtml(html, storyId, token));
+  const blocks = mapBlockMedia(sanitizeBlocks(chapter.blocks), (html) => resolveMediaHtml(html, storyId, token));
   return { ...chapter, blocks };
 }
 

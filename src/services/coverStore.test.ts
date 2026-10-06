@@ -1,5 +1,5 @@
 import { existsSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -412,14 +412,24 @@ describe("coverPathForExport", () => {
     expect(coverPathForExport(COVER_URL)).toBe(COVER_URL);
   });
 
-  it("resolves internal saved path by data directory", () => {
-    expect(coverPathForExport(`covers/${STORY_ID}.jpg`, "/app/data")).toBe(
-      path.join("/app/data", "covers", `${STORY_ID}.jpg`)
+  it("resolves a saved cover inside the covers directory", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "cover-export-"));
+    await mkdir(path.join(dir, "covers"));
+    await writeFile(path.join(dir, "covers", `${STORY_ID}.jpg`), "x");
+    expect(coverPathForExport(`covers/${STORY_ID}.jpg`, dir)).toBe(
+      path.join(await realpath(dir), "covers", `${STORY_ID}.jpg`)
     );
   });
 
-  it("keeps absolute path unchanged", () => {
-    expect(coverPathForExport("/tmp/upload-123.jpg")).toBe("/tmp/upload-123.jpg");
+  it("refuses absolute paths, traversal and non-image files", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "cover-export-"));
+    await mkdir(path.join(dir, "covers"));
+    await writeFile(path.join(dir, "secret.jpg"), "x");
+    await writeFile(path.join(dir, "covers", "notes.txt"), "x");
+    expect(coverPathForExport("/etc/passwd", dir)).toBeUndefined();
+    expect(coverPathForExport(path.join(dir, "secret.jpg"), dir)).toBeUndefined();
+    expect(coverPathForExport("covers/../secret.jpg", dir)).toBeUndefined();
+    expect(coverPathForExport("covers/notes.txt", dir)).toBeUndefined();
   });
 });
 

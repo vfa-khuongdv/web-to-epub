@@ -141,9 +141,22 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
   return { save, saveUpload, saveBytes, find, remove };
 }
 
-// epub-gen reads local files directly (path stored in DB) and fetches external URLs itself,
-// so only convert internal paths to absolute paths.
-export function coverPathForExport(coverUrl: string, dataDir = DATA_DIR): string {
-  if (/^https?:/i.test(coverUrl) || path.isAbsolute(coverUrl)) return coverUrl;
-  return path.resolve(dataDir, coverUrl);
+// epub-gen reads local files directly (path stored in DB) and fetches external URLs itself.
+// The cover comes from the request body, so a local path is honoured only when it is an
+// image inside <dataDir>/covers (saved covers and uploads) — never an arbitrary file.
+export function coverPathForExport(coverUrl: string, dataDir = DATA_DIR): string | undefined {
+  if (/^https?:/i.test(coverUrl)) return coverUrl;
+  const coversDir = path.resolve(dataDir, "covers");
+  const resolved = path.resolve(dataDir, coverUrl);
+  if (!(path.extname(resolved).slice(1).toLowerCase() in CONTENT_TYPES)) return undefined;
+  try {
+    const real = fs.realpathSync(resolved);
+    const root = fs.realpathSync(coversDir);
+    return real.startsWith(root + path.sep) ? real : undefined;
+  } catch {
+    return undefined;
+  }
 }
+
+// Folder (under covers/) holding images the user picked for a book that is not saved yet.
+export const UPLOADS_DIR = "uploads";
