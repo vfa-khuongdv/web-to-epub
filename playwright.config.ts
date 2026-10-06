@@ -27,7 +27,7 @@ export default defineConfig({
       // be re-evaluated per worker, so a wipe at config scope could run mid-suite.
       command: 'rm -rf "${E2E_DATA_DIR:-e2e/.data}" && node dist/server.js',
       url: `${APP_URL}/api/supported-sites`,
-      env: { ...(process.env as Record<string, string>), PORT: String(APP_PORT), DATA_DIR },
+      env: { ...(process.env as Record<string, string>), PORT: String(APP_PORT), DATA_DIR, ALLOW_PRIVATE_NETWORK: "1" },
       reuseExistingServer: false,
     },
   ],

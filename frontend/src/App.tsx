@@ -1,16 +1,20 @@
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { CSSProperties, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import LibraryView from "./components/library/LibraryView";
 import PlayerBar from "./components/narration/PlayerBar";
 import { NarrationPlayerProvider, useNarrationPlayer } from "./hooks/narrationPlayer";
 import SettingsOverlay from "./components/settings/SettingsOverlay";
+import { AgentActivityButton, AgentActivityDialog } from "./components/library/AgentActivity";
 import { CrawlLogButton, CrawlLogDialog } from "./components/library/CrawlLog";
 import { NoticeStack } from "./components/ui/NoticeStack";
 import { UpdateDialog } from "./components/settings/UpdateDialog";
 import { Icon } from "./components/ui/Icon";
+import { SplitHandle } from "./components/ui/SplitHandle";
+import { readSplit, saveSplit } from "./lib/ui/splitPane";
 import { fetchAppUpdate, fetchSettings, fetchSupportedSites } from "./lib/api";
 import { Lang, LANGUAGES, useLang } from "./i18n";
 import { applyTheme, readTheme, saveTheme, Theme, THEME_CYCLE, THEME_ICON, THEME_LABEL } from "./lib/ui/theme";
 import { AppSettings, AppUpdateInfo, SupportedSite } from "./types";
+import { useAgentActivity } from "./hooks/useAgentActivity";
 import { useCrawlJob } from "./hooks/useCrawlJob";
 import { useVault } from "./vault";
 import { DocumentHead } from "./lib/ui/skin";
@@ -27,6 +31,10 @@ export default function App() {
   const [theme, setTheme] = useState<Theme>(readTheme);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [crawlLogOpen, setCrawlLogOpen] = useState(false);
+  const [agentLogOpen, setAgentLogOpen] = useState(false);
+  const agent = useAgentActivity();
+  const workbench = useRef<HTMLDivElement>(null);
+  const [split, setSplit] = useState(readSplit);
   // Only autoScanOnOpen is needed out here (the library reads it); the settings page
   // loads the rest itself. Undefined until the answer arrives, so the library does not
   // run the launch check against a guess.
@@ -235,6 +243,7 @@ export default function App() {
             <Icon name="settings" size={14} />
           </button>
 
+          <AgentActivityButton events={agent.events} busy={agent.busy} onOpen={() => setAgentLogOpen(true)} />
           <CrawlLogButton job={job} onOpen={() => setCrawlLogOpen(true)} />
 
           {job.running ? null : (
@@ -326,7 +335,11 @@ export default function App() {
         <UpdateDialog update={updateInfo} onDismiss={() => setUpdateDismissed(true)} />
       )}
 
-      <div className="workbench">
+      <div
+        ref={workbench}
+        className="workbench relative"
+        style={{ "--left": `${split * 100}fr`, "--right": `${(1 - split) * 100}fr` } as CSSProperties}
+      >
         <LibraryView
           job={job}
           live={live}
@@ -339,11 +352,13 @@ export default function App() {
           initialStory={normalView !== null && normalView !== true ? normalView : undefined}
           onOpenSettings={() => setSettingsOpen(true)}
         />
+        <SplitHandle container={workbench} split={split} onSplit={setSplit} onCommit={saveSplit} />
       </div>
 
       <AppPlayerBar />
 
       {crawlLogOpen && <CrawlLogDialog job={job} onClose={() => setCrawlLogOpen(false)} />}
+      {agentLogOpen && <AgentActivityDialog events={agent.events} busy={agent.busy} onClear={agent.clear} onClose={() => setAgentLogOpen(false)} />}
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
 
     </div>

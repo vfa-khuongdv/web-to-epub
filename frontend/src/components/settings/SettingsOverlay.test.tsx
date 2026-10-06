@@ -17,7 +17,7 @@ vi.mock("../../lib/api", () => ({
 // The three feature sections have their own tests; here they only need to be present.
 vi.mock("../narration/NarrationSettings", () => ({ default: () => <div>narration-section</div> }));
 vi.mock("../narration/MusicPicker", () => ({ MusicSettings: () => <div>music-section</div> }));
-vi.mock("./AiSettings", () => ({
+vi.mock("./AgentSettings", () => ({
   default: ({ onSaved, onError }: { onSaved: () => void; onError: (m: string) => void }) => (
     <div>
       ai-section
@@ -71,7 +71,7 @@ describe("SettingsOverlay loading", () => {
     setup();
     expect(screen.getByText("Loading settings")).toBeInTheDocument();
     expect(await screen.findByText("Appearance")).toBeInTheDocument();
-    for (const title of ["Library", "New book defaults", "Narration", "Background music", "Private mode", "AI crawler", "Site sessions", "About"]) {
+    for (const title of ["Library", "New book defaults", "Narration", "Background music", "Private mode", "Agent crawler", "Site sessions", "About"]) {
       expect(screen.getByRole("heading", { name: title })).toBeInTheDocument();
     }
     expect(screen.getByText("1.7.0")).toBeInTheDocument();

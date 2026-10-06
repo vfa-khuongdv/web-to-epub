@@ -27,6 +27,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm audit --omit=dev --audit-level=critical
       - run: npm test
       # vite build does not typecheck the frontend, and Playwright transpiles the
       # e2e specs without checking them.

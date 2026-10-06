@@ -1,4 +1,4 @@
-import { createAiTocAdapter, fetchChapterWithAi } from "../../services/ai/aiLocate";
+import { createAgentTocAdapter, fetchChapterWithAgent } from "../../services/agent/agentCrawler";
 import type { SiteModule } from "../types";
 
 const DOMAINS = ["docln.net"];
@@ -8,6 +8,6 @@ const DOMAINS = ["docln.net"];
 export const docln: SiteModule = {
   id: "docln",
   supported: [{ domain: "docln.net", name: "Hako (docln)" }],
-  toc: { ...createAiTocAdapter(), domains: DOMAINS },
-  chapter: { domains: DOMAINS, fetchChapter: fetchChapterWithAi },
+  toc: { ...createAgentTocAdapter(), domains: DOMAINS },
+  chapter: { domains: DOMAINS, fetchChapter: fetchChapterWithAgent },
 };

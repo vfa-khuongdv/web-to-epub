@@ -1,17 +1,16 @@
 import { ChapterErrorKind, ExtractedChapter } from "../types";
 import { findSupportedSite } from "../config/supportedSites";
 import { getChapterFetcher } from "../sites";
-import { activeAiProvider } from "./ai/aiConfig";
-import { fetchChapterWithAi } from "./ai/aiLocate";
+import { activeAgent } from "./agent/agentConfig";
+import { fetchChapterWithAgent } from "./agent/agentCrawler";
 import type { ChapterFetchContext } from "./chapters/types";
 import { extractChapter, LockedContentError, MatureContentError, SubscribersOnlyError } from "./extractor";
 import { BlankedPageError, renderPageHtml } from "./renderer";
 
-// Some sites' anti-tool scripts blank the page at random (see renderer.ts),
-// and a cold browser session can take ~10 loads before it settles down, so
-// the budget is generous — each attempt is a fresh page load, and a warm
-// session succeeds on the first or second try.
-export const MAX_ATTEMPTS = 12;
+// Each attempt is a fresh page load; a warm session succeeds on the first or
+// second try. (Sites that blank the page at random — see renderer.ts — once
+// got 12 tries for a cold browser; a failed chapter can be retried by hand.)
+export const MAX_ATTEMPTS = 3;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,9 +61,9 @@ export async function extractWithRetry(
       // Sites that server-render content (e.g., Wattpad) have their own fetcher:
       // load HTML directly, much faster than opening a browser per chapter.
       if (siteFetcher) return await siteFetcher.fetchChapter(url, context);
-      // Outside the allowlist the only way a story got here is AI crawling, so the AI picks
-      // the chapter body instead of Readability's guess.
-      if (!findSupportedSite(url) && activeAiProvider()) return await fetchChapterWithAi(url, context);
+      // Outside the allowlist the only way a story got here is the agent crawler, so the code the
+      // agent wrote for the site reads the chapter instead of Readability's guess.
+      if (!findSupportedSite(url) && activeAgent()) return await fetchChapterWithAgent(url, context);
       const html = await renderPageHtml(url);
       return extractChapter(url, html);
     } catch (err) {

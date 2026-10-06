@@ -118,7 +118,7 @@ export interface RenderSession {
  */
 export async function openRenderSession(
   url: string,
-  options: { deviceScaleFactor?: number; viewport?: { width: number; height: number } } = {}
+  options: { deviceScaleFactor?: number; viewport?: { width: number; height: number }; onlyHost?: string } = {}
 ): Promise<RenderSession> {
   // Increment before await: while waiting for browser and opening page, another
   // thread shouldn't consider it idle and swap/close browser immediately.
@@ -145,6 +145,24 @@ export async function openRenderSession(
     });
     context = ctx;
     const page = await ctx.newPage();
+    // Code written by the agent may only read its own site: a redirect (or a script) that
+    // navigates the page to another host, an internal one included, is cancelled.
+    if (options.onlyHost) {
+      const onlyHost = options.onlyHost;
+      await page.route("**/*", (route) => {
+        const request = route.request();
+        if (request.isNavigationRequest() && request.frame() === page.mainFrame()) {
+          let host = "";
+          try {
+            host = new URL(request.url()).hostname.replace(/^www\./, "");
+          } catch {
+            // an unparsable address is refused below
+          }
+          if (host !== onlyHost.replace(/^www\./, "")) return route.abort();
+        }
+        return route.continue();
+      });
+    }
     // "networkidle" is unreliable in practice: sites with continuous background traffic
     // (ads, analytics beacons, chat widgets) never reach it and the navigation just times
     // out, even though the actual content rendered almost immediately.
@@ -188,9 +206,9 @@ export async function openRenderSession(
  */
 export async function renderPageHtml(
   url: string,
-  options: { afterOpen?: (page: Page) => Promise<void> } = {}
+  options: { afterOpen?: (page: Page) => Promise<void>; onlyHost?: string } = {}
 ): Promise<string> {
-  const session = await openRenderSession(url);
+  const session = await openRenderSession(url, { onlyHost: options.onlyHost });
   try {
     const page = session.page;
 

@@ -17,7 +17,7 @@ import { timeAgo } from "../../lib/format/timeAgo";
 import { AppInfo, AppSettings } from "../../types";
 import { Icon } from "../ui/Icon";
 import { MusicSettings } from "../narration/MusicPicker";
-import AiSettings from "./AiSettings";
+import AgentSettings from "./AgentSettings";
 import NarrationSettings from "../narration/NarrationSettings";
 import SiteSessionDialog from "./SiteSessionDialog";
 import { SkeletonBar } from "../ui/Skeleton";
@@ -323,8 +323,8 @@ function SettingsBody({
         )}
       </Section>
 
-      <Section title={t("AI crawler")}>
-        <AiSettings onSaved={onFlashSaved} onError={setError} />
+      <Section title={t("Agent crawler")}>
+        <AgentSettings onSaved={onFlashSaved} onError={setError} />
       </Section>
 
       <Section title={t("Site sessions")}>

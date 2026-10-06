@@ -49,6 +49,7 @@ vi.mock("../reader/ReaderOverlay", () => ({
   ),
 }));
 vi.mock("../../vault", () => ({ useVault: () => ({ active: false }) }));
+vi.mock("./AgentCrawlerPanel", () => ({ default: () => <div data-testid="agent-crawler-panel" /> }));
 
 function ch(order: number, over: Partial<StoredChapter> = {}): StoredChapter {
   return {

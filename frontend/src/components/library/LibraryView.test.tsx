@@ -17,7 +17,7 @@ const api = vi.hoisted(() => {
     ApiError,
     checkStoryUpdates: vi.fn(),
     createStory: vi.fn(),
-    fetchAiConfig: vi.fn(),
+    fetchAgentConfig: vi.fn(),
     deleteStory: vi.fn(),
     fetchSiteSession: vi.fn(),
     fetchStories: vi.fn(),
@@ -33,7 +33,7 @@ vi.mock("../../lib/api", () => api);
 
 const playerState = vi.hoisted(() => ({ openRequest: null as null | { storyId: string; order: number } }));
 vi.mock("../../hooks/narrationPlayer", () => ({ useNarrationPlayer: () => playerState }));
-vi.mock("../settings/AiSettings", () => ({ AI_CONFIG_CHANGED: "ai-config-changed" }));
+vi.mock("../settings/AgentSettings", () => ({ AGENT_CONFIG_CHANGED: "agent-config-changed" }));
 vi.mock("../story/StoryDetail", () => ({
   default: (p: { story: StoredStory; onClear: () => void; onStoryChanged: () => void }) => (
     <div data-testid="detail">
@@ -120,7 +120,7 @@ beforeEach(() => {
   localStorage.setItem("lang", "en");
   Object.entries(api).forEach(([k, f]) => k !== "ApiError" && (f as ReturnType<typeof vi.fn>).mockReset());
   api.fetchStories.mockResolvedValue([]);
-  api.fetchAiConfig.mockResolvedValue({ enabled: false, active: "", providers: [] });
+  api.fetchAgentConfig.mockResolvedValue({ enabled: false, agent: null, model: "", ready: false, agents: [] });
   api.fetchSiteSession.mockResolvedValue({ configured: true });
   playerState.openRequest = null;
 });
@@ -153,6 +153,14 @@ describe("LibraryView list states", () => {
     expect(screen.getByText("2 stories")).toBeInTheDocument();
     expect(within(rowOf("Story a")).getByText("Crawl complete")).toBeInTheDocument();
     expect(within(rowOf("Story b")).getByText("4 chapters pending")).toBeInTheDocument();
+  });
+
+  it("shows each story's cover beside its title, and an empty frame when there is none", async () => {
+    api.fetchStories.mockResolvedValue([summary("a", { coverUrl: "covers/a.jpg" }), summary("b")]);
+    setup();
+    const withCover = await screen.findByText("Story a").then((e) => e.closest("tr") as HTMLElement);
+    expect(withCover.querySelector("img")).toHaveAttribute("src", expect.stringContaining("/api/stories/a/cover"));
+    expect(rowOf("Story b").querySelector("img")).toBeNull();
   });
 
   it("shows crawl chip from the live channel, and blocks delete/pick for it", async () => {
@@ -324,28 +332,24 @@ describe("LibraryView adding stories", () => {
     expect(await screen.findByText("toc failed")).toBeInTheDocument();
   });
 
-  it("with the AI crawler ready, an unsupported http URL is crawled with ai; non-http is refused", async () => {
-    api.fetchAiConfig.mockResolvedValue({
-      enabled: true,
-      active: "p",
-      providers: [{ id: "p", hasKey: true, keyRequired: true }],
-    });
+  it("with the agent crawler ready, an unsupported http URL is crawled with ai; non-http is refused", async () => {
+    api.fetchAgentConfig.mockResolvedValue({ enabled: true, agent: "opencode", model: "", ready: true, agents: [] });
     api.createStory.mockResolvedValue(full("ai"));
     setup();
-    await screen.findByRole("button", { name: "Load with AI" });
+    await screen.findByRole("button", { name: "Load with agent" });
     await userEvent.type(urlInput(), "https://other.test/x{enter}");
     expect(api.createStory).toHaveBeenCalledWith("https://other.test/x", { ai: true });
     await screen.findByTestId("detail");
     await userEvent.type(urlInput(), "not a url");
-    await userEvent.click(screen.getByRole("button", { name: "Load with AI" }));
+    await userEvent.click(screen.getByRole("button", { name: "Load with agent" }));
     expect(await screen.findByText("Paste a story URL first.")).toBeInTheDocument();
   });
 
-  it("hides the AI button when the provider has no key", async () => {
-    api.fetchAiConfig.mockResolvedValue({ enabled: true, active: "p", providers: [{ id: "p", hasKey: false, keyRequired: true }] });
+  it("hides the agent button when the agent is not installed", async () => {
+    api.fetchAgentConfig.mockResolvedValue({ enabled: true, agent: "claude", model: "", ready: false, agents: [] });
     setup();
     await screen.findByRole("button", { name: "Load chapters" });
-    expect(screen.queryByRole("button", { name: "Load with AI" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Load with agent" })).toBeNull();
   });
 
   it("imports a book URL through its source and announces it", async () => {

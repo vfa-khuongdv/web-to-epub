@@ -233,12 +233,12 @@ describe("AddStoryBox", () => {
     expect(screen.getByRole("button", { name: "Importing…" })).toBeDisabled();
   });
 
-  it("offers Load with AI only when ready", async () => {
+  it("offers Load with agent only when ready", async () => {
     const first = setup();
-    expect(screen.queryByRole("button", { name: /Load with AI/ })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Load with agent/ })).toBeNull();
     first.unmount();
     const { props } = setup({ aiReady: true });
-    await userEvent.click(screen.getByRole("button", { name: /Load with AI/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Load with agent/ }));
     expect(props.onCreateAi).toHaveBeenCalled();
   });
 

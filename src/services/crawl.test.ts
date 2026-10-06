@@ -177,27 +177,6 @@ describe("extractWithRetry", () => {
     }
   });
 
-  it("caps backoff at 3s: 9s of waiting reaches the 5th attempt", async () => {
-    vi.useFakeTimers();
-    try {
-      vi.mocked(fetchWattpadChapter).mockRejectedValue(new Error("lỗi mạng"));
-
-      const promise = extractWithRetry(WATTPAD_URL);
-      // Delays 1s, 2s, 3s, 3s (4s capped) → attempt 5 starts at 9s.
-      // Without the cap attempt 5 would only start at 10s.
-      await vi.advanceTimersByTimeAsync(8999);
-      expect(fetchWattpadChapter).toHaveBeenCalledTimes(4);
-      await vi.advanceTimersByTimeAsync(1);
-      expect(fetchWattpadChapter).toHaveBeenCalledTimes(5);
-
-      await vi.advanceTimersByTimeAsync(60_000);
-      const chapter = await promise;
-      expect(chapter.error).toBe("lỗi mạng");
-    } finally {
-      vi.useRealTimers();
-    }
-  });
-
   it("non-Error rejection falls back to 'Unknown error'", async () => {
     vi.useFakeTimers();
     try {
@@ -226,8 +205,8 @@ describe("extractWithRetry", () => {
       });
 
       const promise = extractWithRetry(WATTPAD_URL);
-      // Attempt MAX_ATTEMPTS starts at 30s (1s + 2s + 3s×9); at 29 999ms it hasn't run yet.
-      await vi.advanceTimersByTimeAsync(29_999);
+      // Attempt MAX_ATTEMPTS starts at 3s (1s + 2s); at 2 999ms it hasn't run yet.
+      await vi.advanceTimersByTimeAsync(2_999);
       expect(fetchWattpadChapter).toHaveBeenCalledTimes(MAX_ATTEMPTS - 1);
       await vi.advanceTimersByTimeAsync(1);
       const chapter = await promise;
