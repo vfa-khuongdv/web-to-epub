@@ -604,12 +604,14 @@ async function writeTocCrawler(agent: AgentModel, storyUrl: string, html: string
   }, seed);
 }
 
-export async function tocViaAgent(agent: AgentModel, storyUrl: string): Promise<TocResult> {
+// `agent` may be undefined (agent crawler off): saved code still runs, only writing code needs it.
+export async function tocViaAgent(agent: AgentModel | undefined, storyUrl: string): Promise<TocResult> {
   const host = hostOf(storyUrl);
   const html = await loadPage(storyUrl);
   const { code, saved } = await savedOrWritten(host, "toc", async () => {
-    await classifyUrl(agent, storyUrl, html);
-    return writeTocCrawler(agent, storyUrl, html);
+    const writer = agent ?? requireAgent();
+    await classifyUrl(writer, storyUrl, html);
+    return writeTocCrawler(writer, storyUrl, html);
   });
   try {
     const toc = await runToc(code, storyUrl, html);
@@ -768,7 +770,7 @@ export function createAgentTocAdapter(): TocAdapter {
   return {
     domains: [],
     normalizeStoryUrl: (url) => url,
-    fetchToc: (storyUrl) => tocViaAgent(requireAgent(), storyUrl),
+    fetchToc: (storyUrl) => tocViaAgent(activeAgent(), storyUrl),
   };
 }
 

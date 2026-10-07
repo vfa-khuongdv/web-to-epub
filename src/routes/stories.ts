@@ -29,7 +29,7 @@ import { storyUsage } from "../services/storyUsage";
 import { countNewChapters, mergeStory } from "../services/storyService";
 import { getTocAdapter } from "../sites";
 import { activeAgent } from "../services/agent/agentConfig";
-import { AgentDocumentPageError, articleViaAgent, createAgentTocAdapter, hasArticleCrawler, webStoryUrl } from "../services/agent/agentCrawler";
+import { AgentDocumentPageError, articleViaAgent, createAgentTocAdapter, hasAgentCrawler, hasArticleCrawler, webStoryUrl } from "../services/agent/agentCrawler";
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";
@@ -582,7 +582,11 @@ storiesRouter.post("/stories/:id/check", async (req, res) => {
     return;
   }
   const resolved = resolveToc(story.storyUrl, true);
-  const adapter = "adapter" in resolved ? resolved.adapter : undefined;
+  let adapter = "adapter" in resolved ? resolved.adapter : undefined;
+  // Agent crawler turned off: a story it already wrote a crawler for can still be checked with that saved code.
+  if (!adapter && !findSupportedSite(story.storyUrl) && (await hasAgentCrawler(story.storyUrl))) {
+    adapter = createAgentTocAdapter();
+  }
   if (!adapter) {
     res.status(400).json({ message: t("This story has no TOC adapter for checking") });
     return;

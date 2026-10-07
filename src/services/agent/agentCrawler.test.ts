@@ -67,6 +67,13 @@ describe("agent crawler", () => {
     log.stop();
   });
 
+  it("runs saved toc code with the agent off, but cannot write code without one", async () => {
+    // Saved by the first test for novels.test: the agent crawler being off must not stop a check.
+    expect((await tocViaAgent(undefined, story)).chapters).toHaveLength(2);
+    pages["https://nocode.test/story"] = pages[story].replace(/novels\.test/g, "nocode.test");
+    await expect(tocViaAgent(undefined, "https://nocode.test/story")).rejects.toThrow(/agent crawler is off/);
+  });
+
   it("reads a URL the agent says is not a story page as a page of content, and writes nothing", async () => {
     const log = recorded();
     pages["https://chapters.test/c1"] = pages[story];
