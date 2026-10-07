@@ -13,7 +13,7 @@ vi.mock("../renderer", () => ({ renderPageHtml: vi.fn(async () => "") }));
 
 import { LockedContentError } from "../extractor";
 import { AgentActivityEvent, onAgentActivity } from "./agentActivity";
-import { AgentDocumentPageError, articleViaAgent, chapterViaAgent, hardcodedFrom, hasAgentCrawler, partialList, hasArticleCrawler, pageScripts, rewriteCrawler, skeleton, tocViaAgent } from "./agentCrawler";
+import { AgentDocumentPageError, articleViaAgent, chapterViaAgent, hardcodedFrom, hasAgentCrawler, toArticle, partialList, hasArticleCrawler, pageScripts, rewriteCrawler, skeleton, tocViaAgent } from "./agentCrawler";
 import { stopSiteRunner } from "./siteSandbox";
 
 const pad = "<!-- -->".repeat(300);
@@ -362,6 +362,19 @@ describe("a page that is one whole text", () => {
     const model = agent('{"kind":"document","reason":"a whole book on one page"}');
     await expect(tocViaAgent(model, book)).rejects.toBeInstanceOf(AgentDocumentPageError);
     expect(await hasAgentCrawler(book)).toBe(false);
+  });
+
+  it("turns a list in a paragraph into one bullet paragraph per item, nested ones indented", () => {
+    const html = "<ul><li><p>One <b>bold</b></p></li><li>Two<ol><li>Sub</li></ol></li></ul>";
+    const intro = "Intro text that is long enough to count as the page's content. ".repeat(5);
+    const read = toArticle({ chapters: [{ title: "A", blocks: [{ type: "paragraph", text: `${intro}${html}Tail` }] }] }, "https://a.test/p", "");
+    expect(read.chapters[0].blocks.map((b) => b.text)).toEqual([
+      intro.trim(),
+      "• One <b>bold</b>",
+      "• Two",
+      "\u00a0\u00a01. Sub",
+      "Tail",
+    ]);
   });
 
   it("writes article code, splits the text into chapters with the page's language, and reuses the code for another page", async () => {
