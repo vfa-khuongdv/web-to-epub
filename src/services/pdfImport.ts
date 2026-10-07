@@ -202,12 +202,30 @@ export function joinLine(text: string, next: string): string {
   return `${text} ${next}`;
 }
 
+// A drop cap whose baseline sits too far from the first line to share it (readLines only
+// joins items on one line) arrives as a lone large letter followed by the rest of its word:
+// put the two back together instead of leaving the letter as a heading of its own.
+function joinDropCaps(lines: Line[]): Line[] {
+  const joined: Line[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const [line, next] = [lines[i], lines[i + 1]];
+    if (next && /^\p{L}$/u.test(line.text) && line.page === next.page && line.size > next.size * 1.3 && /^[a-zà-ỹ]/.test(next.text)) {
+      joined.push({ ...next, text: line.text + next.text });
+      i++;
+    } else {
+      joined.push(line);
+    }
+  }
+  return joined;
+}
+
 // Turn the lines of one chapter into heading and paragraph blocks. A paragraph ends at a
 // larger vertical gap than the body's line spacing, a first-line indent, a change of font
 // size, or a line that finishes a sentence well short of the right margin (the only signal
 // left when every paragraph is one line); across a page break it continues unless the last
 // line finished a sentence.
-export function linesToBlocks(lines: Line[], bodySize: number, lineGap: number, margins: Margins): ContentBlock[] {
+export function linesToBlocks(rawLines: Line[], bodySize: number, lineGap: number, margins: Margins): ContentBlock[] {
+  const lines = joinDropCaps(rawLines);
   const blocks: ContentBlock[] = [];
   let paragraph: string | undefined;
   let previous: Line | undefined;

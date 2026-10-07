@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isPdf, NotPdfError, parsePdf, PdfLockedError } from "./pdfImport";
+import { isPdf, linesToBlocks, NotPdfError, parsePdf, PdfLockedError } from "./pdfImport";
 
 // The real pdf.js, except that a test can make the document report restricted permissions
 // (no fixture tool here can encrypt a PDF).
@@ -137,5 +137,15 @@ describe("parsePdf", () => {
 
     permissions.value = [4, 16]; // print + copy
     await expect(parsePdf(fixture("pdf-scan.pdf"))).resolves.toBeTruthy();
+  });
+});
+
+describe("linesToBlocks", () => {
+  it("joins a drop cap that sits on its own line to the rest of its word", () => {
+    const line = (text: string, size: number, y: number) => ({ page: 1, x: 10, y, size, right: 200, text });
+    const margins = new Map([[1, { left: 10, right: 200 }]]);
+    const blocks = linesToBlocks([line("C", 30, 700), line("opilot ngu ngục", 12, 712)], 12, 14, margins);
+
+    expect(blocks).toEqual([{ type: "paragraph", text: "Copilot ngu ngục" }]);
   });
 });
