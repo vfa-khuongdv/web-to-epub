@@ -85,6 +85,18 @@ describe("TTS worker client", () => {
     expect(worker!.closed).toBe(true);
     await expect(worker!.load("turbo")).rejects.toThrow("not running");
   });
+
+  it("rejects and stops the worker when it stops answering", async () => {
+    worker?.close();
+    worker = await startTtsWorker({ command: process.execPath, args: [FAKE] }, (line) => logs.push(line), {
+      requestTimeoutMs: 150,
+    });
+    await worker.load("turbo");
+    await expect(
+      worker.synth({ parts: ["HANG"], voice: "A", out: path.join(dir, "i.mp3") })
+    ).rejects.toThrow(/stopped answering/);
+    await vi.waitFor(() => expect(worker!.closed).toBe(true));
+  });
 });
 
 describe("startTtsWorker", () => {

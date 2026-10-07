@@ -125,6 +125,13 @@ function textOf(element: Element | undefined | null): string | undefined {
   return text || undefined;
 }
 
+// An EPUB's XML may bind any prefix to a namespace (or use no prefix at all), so elements are
+// found by local name: `<opf:item>` and `<item>` are the same element, and a real
+// `enc:EncryptedData` must be seen by the DRM check just like an unprefixed one.
+function byLocalName(root: Document | Element, name: string): Element[] {
+  return Array.from(root.getElementsByTagNameNS("*", name));
+}
+
 // Zip entry names are literal; XML hrefs are URIs and may be percent-encoded.
 function resolveEntryPath(base: string, href: string): string {
   let decoded = href.split("#")[0];
@@ -145,9 +152,9 @@ const FONT_OBFUSCATION_ALGORITHMS = [
 
 function assertNoDrm(encryptionXml: string): void {
   const doc = xmlDocument(encryptionXml);
-  const encrypted = Array.from(doc.getElementsByTagName("EncryptedData"));
+  const encrypted = byLocalName(doc, "EncryptedData");
   const contentLocked = encrypted.some((node) => {
-    const algorithm = node.getElementsByTagName("EncryptionMethod")[0]?.getAttribute("Algorithm") ?? "";
+    const algorithm = byLocalName(node, "EncryptionMethod")[0]?.getAttribute("Algorithm") ?? "";
     return !FONT_OBFUSCATION_ALGORITHMS.includes(algorithm);
   });
   if (contentLocked) throw new DrmError();
@@ -161,7 +168,7 @@ interface ManifestItem {
 
 function readManifest(opfDoc: Document): Map<string, ManifestItem> {
   const manifest = new Map<string, ManifestItem>();
-  for (const item of Array.from(opfDoc.getElementsByTagName("item"))) {
+  for (const item of byLocalName(opfDoc, "item")) {
     const id = item.getAttribute("id");
     const href = item.getAttribute("href");
     if (!id || !href) continue;
@@ -175,11 +182,11 @@ function readManifest(opfDoc: Document): Map<string, ManifestItem> {
 }
 
 function findCoverHref(opfDoc: Document, manifest: Map<string, ManifestItem>): string | undefined {
-  const metaCover = Array.from(opfDoc.getElementsByTagName("meta")).find((meta) => meta.getAttribute("name") === "cover");
+  const metaCover = byLocalName(opfDoc, "meta").find((meta) => meta.getAttribute("name") === "cover");
   const byMeta = metaCover?.getAttribute("content");
   if (byMeta && manifest.has(byMeta)) return manifest.get(byMeta)!.href;
   for (const item of manifest.values()) if (item.properties.includes("cover-image")) return item.href;
-  const reference = Array.from(opfDoc.getElementsByTagName("reference")).find(
+  const reference = byLocalName(opfDoc, "reference").find(
     (ref) => (ref.getAttribute("type") ?? "").trim() === "cover"
   );
   return reference?.getAttribute("href")?.split("#")[0];
@@ -215,7 +222,7 @@ function ncxTitles(
   opfPath: string
 ): Map<string, string> {
   const titles = new Map<string, string>();
-  const tocId = opfDoc.getElementsByTagName("spine")[0]?.getAttribute("toc");
+  const tocId = byLocalName(opfDoc, "spine")[0]?.getAttribute("toc");
   const ncxItem =
     (tocId ? manifest.get(tocId) : undefined) ??
     [...manifest.values()].find((item) => item.mediaType === "application/x-dtbncx+xml");
@@ -224,9 +231,9 @@ function ncxTitles(
   const bytes = entries.get(ncxPath);
   if (!bytes) return titles;
   const doc = xmlDocument(bytes.toString("utf8"));
-  for (const navPoint of Array.from(doc.getElementsByTagName("navPoint"))) {
-    const title = textOf(navPoint.getElementsByTagName("navLabel")[0]);
-    const src = navPoint.getElementsByTagName("content")[0]?.getAttribute("src");
+  for (const navPoint of byLocalName(doc, "navPoint")) {
+    const title = textOf(byLocalName(navPoint, "navLabel")[0]);
+    const src = byLocalName(navPoint, "content")[0]?.getAttribute("src");
     if (title && src) addTitle(titles, resolveEntryPath(ncxPath, src), title);
   }
   return titles;
@@ -305,7 +312,7 @@ export async function parseEpub(bytes: Buffer, options: ParseEpubOptions = {}): 
 
   const containerBytes = entries.get("META-INF/container.xml");
   const opfHref = containerBytes
-    ? xmlDocument(containerBytes.toString("utf8")).querySelector("rootfile")?.getAttribute("full-path")
+    ? byLocalName(xmlDocument(containerBytes.toString("utf8")), "rootfile")[0]?.getAttribute("full-path")
     : undefined;
   const opfPath = opfHref ? path.posix.normalize(opfHref) : undefined;
   const opfBytes = opfPath ? entries.get(opfPath) : undefined;
@@ -317,14 +324,14 @@ export async function parseEpub(bytes: Buffer, options: ParseEpubOptions = {}): 
   const opfDoc = xmlDocument(opfBytes.toString("utf8"));
   const manifest = readManifest(opfDoc);
 
-  const metaTitle = textOf(opfDoc.getElementsByTagName("dc:title")[0]);
+  const metaTitle = textOf(byLocalName(opfDoc, "title")[0]);
   const title = metaTitle ?? (options.fallbackTitle?.trim() || undefined) ?? "Untitled";
   const author =
-    Array.from(opfDoc.getElementsByTagName("dc:creator"))
+    byLocalName(opfDoc, "creator")
       .map((element) => textOf(element))
       .filter((value): value is string => !!value)
       .join(", ") || undefined;
-  const language = textOf(opfDoc.getElementsByTagName("dc:language")[0]);
+  const language = textOf(byLocalName(opfDoc, "language")[0]);
 
   const titles = navTitles(entries, manifest, opfPath);
   for (const [key, value] of ncxTitles(entries, manifest, opfDoc, opfPath)) addTitle(titles, key, value);
@@ -341,7 +348,7 @@ export async function parseEpub(bytes: Buffer, options: ParseEpubOptions = {}): 
 
   const storeImage = options.storeImage ?? (() => "");
   const chapters: ImportedChapter[] = [];
-  for (const itemref of Array.from(opfDoc.getElementsByTagName("itemref"))) {
+  for (const itemref of byLocalName(opfDoc, "itemref")) {
     const item = manifest.get(itemref.getAttribute("idref") ?? "");
     if (!item || item.mediaType !== "application/xhtml+xml" || item.properties.includes("nav")) continue;
     const chapterPath = resolveEntryPath(opfPath, item.href);

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { IMPORT_SOURCES, SUPPORTED_SITES } from "../config/supportedSites";
 import { setLang } from "../services/lang";
 import { agentCrawlerRouter } from "./agentCrawler";
@@ -17,7 +17,7 @@ import { storiesRouter } from "./stories";
 import { ttsRouter } from "./tts";
 import { vaultRouter } from "./vault";
 
-const router = Router();
+const router = createRouter();
 
 // The frontend states the reader's language on every request; the server phrases its
 // errors in it (see services/lang.ts for why this is module state, not per-request).

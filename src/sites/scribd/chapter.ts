@@ -3,6 +3,7 @@ import type { ElementHandle, Page } from "playwright";
 import sharp from "sharp";
 import { ContentBlock, ExtractedChapter } from "../../types";
 import { LockedContentError } from "../../services/extractor";
+import { assertPublicUrl } from "../../services/netPolicy";
 import { Line, Margins, lineGapOf, linesToBlocks, mostCommonSize } from "../../services/pdfImport";
 import { openRenderSession, RenderSession } from "../../services/renderer";
 import { fetchText, fetchWithRetry } from "../../services/toc/http";
@@ -282,52 +283,49 @@ interface CaptureSession {
   lastPage: number;
 }
 
-let captureSession: CaptureSession | null = null;
-let captureIdleTimer: NodeJS.Timeout | null = null;
+const captureSessions = new Map<string, { session: CaptureSession; idleTimer: NodeJS.Timeout | null }>();
 
-async function closeCaptureSession(): Promise<void> {
-  if (captureIdleTimer) {
-    clearTimeout(captureIdleTimer);
-    captureIdleTimer = null;
-  }
-  const session = captureSession;
-  captureSession = null;
-  if (session) await session.render.close();
+// One capture page per document: a concurrent crawl of another document must not close this
+// one's viewer page mid-capture, and the page is kept while the same document is crawled
+// (chapters come in order, so the viewer only ever scrolls forward) and closed when idle.
+async function closeCaptureSession(docId: string): Promise<void> {
+  const entry = captureSessions.get(docId);
+  if (!entry) return;
+  captureSessions.delete(docId);
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  await entry.session.render.close();
 }
 
-function armCaptureIdle(): void {
-  if (captureIdleTimer) clearTimeout(captureIdleTimer);
-  captureIdleTimer = setTimeout(() => {
-    captureIdleTimer = null;
-    void closeCaptureSession();
+function armCaptureIdle(docId: string): void {
+  const entry = captureSessions.get(docId);
+  if (!entry) return;
+  if (entry.idleTimer) clearTimeout(entry.idleTimer);
+  entry.idleTimer = setTimeout(() => {
+    entry.idleTimer = null;
+    void closeCaptureSession(docId);
   }, CAPTURE_IDLE_CLOSE_MS);
   // Must not keep the process alive.
-  captureIdleTimer.unref();
+  entry.idleTimer.unref();
 }
 
-// The capture page is reused while the same document is being crawled (chapters are
-// crawled in order, so the viewer only ever scrolls forward) and reopened when the
+// The capture page is reused while the same document is being crawled and reopened when the
 // requested pages go backwards, when the saved session changed, or for another document.
 async function captureSessionFor(docId: string, canonical: string, fromPage: number): Promise<RenderSession> {
-  if (captureIdleTimer) {
-    clearTimeout(captureIdleTimer);
-    captureIdleTimer = null;
+  const known = captureSessions.get(docId);
+  if (known?.idleTimer) {
+    clearTimeout(known.idleTimer);
+    known.idleTimer = null;
   }
   const savedAt = currentSessionSavedAt(canonical);
-  if (
-    captureSession &&
-    captureSession.docId === docId &&
-    captureSession.sessionSavedAt === savedAt &&
-    fromPage >= captureSession.lastPage
-  ) {
-    return captureSession.render;
+  if (known && known.session.sessionSavedAt === savedAt && fromPage >= known.session.lastPage) {
+    return known.session.render;
   }
-  await closeCaptureSession();
+  await closeCaptureSession(docId);
   const render = await openRenderSession(canonical, {
     deviceScaleFactor: SCREENSHOT_SCALE,
     viewport: CAPTURE_VIEWPORT,
   });
-  captureSession = { docId, sessionSavedAt: savedAt, render, lastPage: fromPage };
+  captureSessions.set(docId, { session: { docId, sessionSavedAt: savedAt, render, lastPage: fromPage }, idleTimer: null });
   return render;
 }
 
@@ -400,10 +398,11 @@ async function captureScrambledChapter(
     for (const page of pages) {
       const bytes = await captureScribdPage(render.page, page.pageNum, url);
       blocks.push({ type: "image", src: context.media.save(context.storyId, bytes, "jpg"), alt: "" });
-      if (captureSession?.docId === ref.docId) captureSession.lastPage = page.pageNum;
+      const entry = captureSessions.get(ref.docId);
+      if (entry) entry.session.lastPage = page.pageNum;
     }
   } finally {
-    armCaptureIdle();
+    armCaptureIdle(ref.docId);
   }
   return { sourceUrl: url, title: t("Pages {from}–{to}", { from: ref.from, to: ref.to }), blocks };
 }
@@ -421,10 +420,11 @@ async function captureGraphicPage(
   const render = await captureSessionFor(ref.docId, normalizeScribdStoryUrl(url), pageNum);
   try {
     const bytes = await captureScribdPage(render.page, pageNum, url);
-    if (captureSession?.docId === ref.docId) captureSession.lastPage = pageNum;
+    const entry = captureSessions.get(ref.docId);
+    if (entry) entry.session.lastPage = pageNum;
     return { kind: "image", page: pageNum, top: 0, src: context.media.save(context.storyId, bytes, "jpg") };
   } finally {
-    armCaptureIdle();
+    armCaptureIdle(ref.docId);
   }
 }
 
@@ -440,7 +440,11 @@ async function storedImage(
   if (!context || image.clip.width <= 0 || image.clip.height <= 0) return image.src;
   try {
     if (!sources.has(image.src)) {
-      const res = await fetchWithRetry(image.src, { headers: { Accept: "image/*" } }, { maxAttempts: 2 });
+      const res = await fetchWithRetry(
+        image.src,
+        { headers: { Accept: "image/*" } },
+        { maxAttempts: 2, validateUrl: assertPublicUrl }
+      );
       sources.set(image.src, res.ok ? Buffer.from(await res.arrayBuffer()) : undefined);
     }
     const bytes = sources.get(image.src);
@@ -489,7 +493,10 @@ export async function fetchScribdChapter(
   // One download per source file per chapter: a page's tiles all come from the same file.
   const sources = new Map<string, Buffer | undefined>();
   for (const page of pages) {
-    const parsed = parseScribdPagePayload(await fetchText(page.contentUrl), page.pageNum);
+    const parsed = parseScribdPagePayload(
+      await fetchText(page.contentUrl, {}, { validateUrl: assertPublicUrl }),
+      page.pageNum
+    );
     pageWidths.set(page.pageNum, parsed.width);
     // A designed page's text is painted over its graphics, so the page is captured whole
     // instead; a text page keeps its text and gets its figures as cropped tiles.

@@ -1,8 +1,9 @@
-import { Request as ExpressRequest, Response as ExpressResponse, Router } from "express";
+import { Request as ExpressRequest, Response as ExpressResponse } from "express";
+import { createRouter } from "./asyncRouter";
 import { ProgressEvent } from "../types";
 import { Library, libraryFor } from "./library";
 
-export const liveRouter = Router();
+export const liveRouter = createRouter();
 
 export function writeSse(res: ExpressResponse, payload: unknown) {
   if (res.destroyed || res.writableEnded) return false;

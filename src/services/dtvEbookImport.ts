@@ -113,9 +113,12 @@ export async function importDtvEbook(id: string, options: ImportDtvEbookOptions 
 
   const path = epubPathFromReader(html);
   if (!path) throw new DtvEbookNoEpubError(page);
-  // The path is relative to the site root in every page seen ("images/files/…").
-  const fileUrl = new URL(path.replace(/^\/+/, ""), `https://${DTV_EBOOK_DOMAIN}/`).toString();
-  const bytes = await fetchBytes(fetchImpl, fileUrl, cap);
+  // The path is relative to the site root in every page seen ("images/files/…"). Resolve it and
+  // keep the site's own host: a page (or a compromised response) must not send the server
+  // anywhere else — an absolute or protocol-relative path would otherwise win over the base.
+  const fileUrl = new URL(path, `https://${DTV_EBOOK_DOMAIN}/`);
+  if (fileUrl.hostname.toLowerCase().replace(/^www\./, "") !== DTV_EBOOK_DOMAIN) throw new DtvEbookNotFoundError(page);
+  const bytes = await fetchBytes(fetchImpl, fileUrl.toString(), cap);
   if (!bytes) throw new DtvEbookNotFoundError(page);
 
   return parseEpub(bytes, { storeImage: options.storeImage ?? (() => "") });

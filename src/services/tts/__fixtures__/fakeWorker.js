@@ -27,6 +27,7 @@ async function handle(message) {
         process.exit(3);
       }
       if (part === "FAIL") return send({ type: "error", id: message.id, message: "bad part" });
+      if (part === "HANG") await new Promise(() => {});
       await new Promise((r) => setTimeout(r, part === "SLOW" ? 80 : 5));
       send({ type: "progress", id: message.id, part: i + 1, parts: message.parts.length });
     }

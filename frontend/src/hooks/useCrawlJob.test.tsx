@@ -124,6 +124,19 @@ describe("useCrawlJob", () => {
     expect(hook.result.current.job).toMatchObject({ cursor: 4, pct: 100, etaMs: undefined });
   });
 
+  it("logs a fatal error that carries no chapter index", () => {
+    const { hook, source } = setup();
+    act(() => {
+      hook.result.current.attach("S", "s1");
+    });
+    act(() => source.emit({ type: "error", storyId: "s1", message: "chapter list failed" }));
+    expect(hook.result.current.job.errors).toBe(1);
+    expect(hook.result.current.job.log).toEqual([
+      { at: expect.any(String), text: "chapter list failed", isError: true },
+    ]);
+    expect(hook.result.current.live.s1?.errors).toBe(1);
+  });
+
   it("idle clears the live entry and stops the watched job", () => {
     const { hook, source } = setup();
     act(() => {

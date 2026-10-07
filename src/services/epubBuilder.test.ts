@@ -14,6 +14,7 @@ import {
   embedImages,
   embedMedia,
   epubFileName,
+  fileStem,
   packMedia,
   type BuildProgress,
 } from "./epubBuilder";
@@ -94,9 +95,10 @@ describe("epubFileName", () => {
     expect(epubFileName("a".repeat(121))).toBe(`${"a".repeat(120)}.epub`);
   });
 
-  it("can split a surrogate pair when an astral character straddles the limit", () => {
-    // slice() counts UTF-16 units, so the emoji (2 units) starting at index 119 is cut in half.
-    expect(epubFileName(`${"a".repeat(119)}😀`)).toBe(`${"a".repeat(119)}\uD83D.epub`);
+  it("keeps an astral character whole when it straddles the unit limit", () => {
+    // The cap counts code points, so the emoji ending at the 120th character is not cut into
+    // a lone surrogate (which contentDisposition's encodeURIComponent would refuse).
+    expect(epubFileName(`${"a".repeat(119)}😀`)).toBe(`${"a".repeat(119)}😀.epub`);
   });
 });
 
@@ -119,6 +121,18 @@ describe("contentDisposition", () => {
     expect(contentDisposition('a"b(c)*d.epub')).toBe(
       "attachment; filename=\"a_b(c)*d.epub\"; filename*=UTF-8''a%22b%28c%29%2Ad.epub"
     );
+  });
+
+  it("replaces a lone surrogate instead of throwing URIError", () => {
+    const header = contentDisposition("a\uD83Db.epub");
+    expect(header).toContain("%EF%BF%BD"); // U+FFFD
+    expect(header).not.toContain("\uD83D");
+  });
+
+  it("truncates long titles at code-point boundaries, so no lone surrogate is made", () => {
+    const stem = fileStem("a".repeat(119) + "😀" + "b", "book");
+    expect(stem).toBe("a".repeat(119) + "😀");
+    expect(contentDisposition(`${stem}.epub`)).not.toContain("%EF%BF%BD");
   });
 });
 

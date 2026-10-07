@@ -9,7 +9,7 @@ import { fileURLToPath } from "url";
 import { BookMetadata, ExportChapter } from "../types";
 import { EXTENSION_BY_TYPE, sniffImageExtension } from "./coverStore";
 import { assertPublicUrl } from "./netPolicy";
-import { fetchWithRetry } from "./toc/http";
+import { fetchWithRetry, readBodyCapped } from "./toc/http";
 import { t } from "./lang";
 
 // Simple, Kindle-friendly reading styles: system-safe fonts, no fixed sizes
@@ -39,21 +39,26 @@ export function fileStem(title: string, fallback: string): string {
   const base = title
     .replace(ILLEGAL_FILENAME_CHARS, " ")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, MAX_FILENAME_LENGTH)
     .trim();
-  return base || fallback;
+  // Count code points, not UTF-16 units: cutting between the halves of an emoji leaves a
+  // lone surrogate, which encodeURIComponent refuses with URIError (contentDisposition).
+  return Array.from(base).slice(0, MAX_FILENAME_LENGTH).join("").trim() || fallback;
 }
 
 export function epubFileName(title: string): string {
   return `${fileStem(title, "book")}.epub`;
 }
 
+// A lone surrogate — a title cut mid-pair somewhere else — makes encodeURIComponent throw
+// URIError; replace any with U+FFFD so building the header can never fail the download.
+const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 // RFC 6266: ASCII fallback for old clients, plus UTF-8 percent-encoded version
 // so the filename preserves Vietnamese diacritics when downloading directly from the API.
 export function contentDisposition(fileName: string): string {
-  const ascii = fileName.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "_");
-  const encoded = encodeURIComponent(fileName).replace(
+  const wellFormed = fileName.replace(LONE_SURROGATE_RE, "\uFFFD");
+  const ascii = wellFormed.replace(/[^\x20-\x7e]/g, "_").replace(/"/g, "_");
+  const encoded = encodeURIComponent(wellFormed).replace(
     /['()*]/g,
     (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`
   );
@@ -157,9 +162,9 @@ async function saveImage(src: string, dir: string, index: number, localRoots: st
           { maxAttempts: 2, validateUrl: assertPublicUrl }
         );
         if (!res.ok) return undefined;
-        const declaredLength = Number(res.headers.get("content-length"));
-        if (Number.isFinite(declaredLength) && declaredLength > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
-        bytes = Buffer.from(await res.arrayBuffer());
+        const downloaded = await readBodyCapped(res, MAX_IMAGE_DOWNLOAD_BYTES);
+        if (!downloaded) return undefined;
+        bytes = downloaded;
         contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
       } catch {
         return undefined;
