@@ -61,6 +61,11 @@ export function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
       continue;
     }
 
+    if (tag === "table" || tag === "pre") {
+      if (node.textContent?.trim()) blocks.push({ type: "html", text: node.outerHTML });
+      continue;
+    }
+
     if (tag === "img") {
       const img = node as HTMLImageElement;
       if (img.src) blocks.push({ type: "image", src: img.src, alt: img.alt || "" });

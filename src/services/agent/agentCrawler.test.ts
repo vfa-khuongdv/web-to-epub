@@ -377,6 +377,19 @@ describe("a page that is one whole text", () => {
     ]);
   });
 
+  it("keeps a table or code block of an article as one html block", () => {
+    const intro = "Intro text that is long enough to count as the page's content. ".repeat(5);
+    const read = toArticle({ chapters: [{ title: "A", blocks: [
+      { type: "paragraph", text: intro },
+      { type: "html", text: '<table id="t" class="w" onclick="x()"><tr><th scope="col">A</th><td colspan="2" data-x="1">1</td></tr></table>' },
+      { type: "html", text: "<pre>a &lt; b\n  c</pre>" },
+    ] }] }, "https://a.test/p", "");
+    expect(read.chapters[0].blocks.slice(1)).toEqual([
+      { type: "html", text: '<table><tbody><tr><th scope="col">A</th><td colspan="2">1</td></tr></tbody></table>' },
+      { type: "html", text: "<pre>a &lt; b\n  c</pre>" },
+    ]);
+  });
+
   it("writes article code, splits the text into chapters with the page's language, and reuses the code for another page", async () => {
     const log = recorded();
     const model = agent("async function article(ctx) { return { chapters: [] }; }", ARTICLE);

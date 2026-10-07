@@ -125,7 +125,7 @@ const CHAPTER_PROMPT = (url: string, outline: string, scripts: string, problem?:
 
 Write the function
   async function chapter(ctx) { … return { title, blocks: [ … ] }; }
-that returns the chapter's title and its text as blocks: { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML; a list is one paragraph block per item, its text starting with "• " or "1. ", "2. " … and never a <ul>/<ol>) and, for a comic whose pages are pictures, { type: "image", src, alt } for EVERY page. Pictures are often loaded lazily: some <img> have their real address in src while others keep a placeholder (a data: address) there and carry the real one in another attribute, whose name differs from site to site — the outline shows each <img>'s attributes; read them all and take the one that holds a real image address, never rely on src alone. Use an address the page itself already uses for that picture (its src, or the largest entry of its srcset): never build one by changing a size parameter such as width=, because an image server often refuses a size equal to the original's; when the full-size file is wanted, take it from the link around the picture or from that picture's own file page. Take only the chapter itself — no menus, comments, adverts, "next chapter" links or notices. A site that puts the text in one element with <br> lines needs those lines split into paragraphs.
+that returns the chapter's title and its text as blocks: { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML; a list is one paragraph block per item, its text starting with "• " or "1. ", "2. " … and never a <ul>/<ol>; a table is { type: "html", text: "<table>…</table>" } and a code block { type: "html", text: "<pre>…</pre>" } (the element's outerHTML, one block each, rows and cells kept)) and, for a comic whose pages are pictures, { type: "image", src, alt } for EVERY page. Pictures are often loaded lazily: some <img> have their real address in src while others keep a placeholder (a data: address) there and carry the real one in another attribute, whose name differs from site to site — the outline shows each <img>'s attributes; read them all and take the one that holds a real image address, never rely on src alone. Use an address the page itself already uses for that picture (its src, or the largest entry of its srcset): never build one by changing a size parameter such as width=, because an image server often refuses a size equal to the original's; when the full-size file is wanted, take it from the link around the picture or from that picture's own file page. Take only the chapter itself — no menus, comments, adverts, "next chapter" links or notices. A site that puts the text in one element with <br> lines needs those lines split into paragraphs.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
 ${problem ? `\n${problem}\n` : ""}
@@ -141,7 +141,7 @@ const ARTICLE_PROMPT = (url: string, outline: string, scripts: string, problem?:
 
 Write the function
   async function article(ctx) { … return { title, author, coverUrl, chapters: [{ title, blocks: [ … ] }, …] }; }
-that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML — keep bold, italics, links and code; a list is one paragraph block per item, its text starting with "• " or "1. ", "2. " … and never a <ul>/<ol>) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. When the page is not prose, the page's own items are the content: turn each listed item, product, post or picture into headings, paragraphs and image blocks (an item's name as a heading, its details as paragraphs). Leave out site menus, share buttons, comments on an article, "related" links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
+that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML — keep bold, italics, links and code; a list is one paragraph block per item, its text starting with "• " or "1. ", "2. " … and never a <ul>/<ol>; a table is { type: "html", text: "<table>…</table>" } and a code block { type: "html", text: "<pre>…</pre>" } (the element's outerHTML, one block each, rows and cells kept)) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. When the page is not prose, the page's own items are the content: turn each listed item, product, post or picture into headings, paragraphs and image blocks (an item's name as a heading, its details as paragraphs). Leave out site menus, share buttons, comments on an article, "related" links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
 ${problem ? `\n${problem}\n` : ""}
@@ -226,11 +226,23 @@ function cleaner() {
     flush();
     return out;
   };
-  return { clean, paragraphs, close: () => dom.window.close() };
+  // The first table or code block of the cleaned HTML, whole.
+  const element = (html: string): { html: string } | null => {
+    const box = doc.createElement("div");
+    box.innerHTML = clean(html).html;
+    const first = box.querySelector("table, pre");
+    if (!first || !collapse(first.textContent ?? "")) return null;
+    // Only what the table or code needs: ids repeat across a page's blocks and the rest is the site's styling.
+    for (const el of [first, ...Array.from(first.querySelectorAll("*"))]) {
+      for (const attr of Array.from(el.attributes)) if (!/^(colspan|rowspan|scope|headers|href|src|alt)$/i.test(attr.name)) el.removeAttribute(attr.name);
+    }
+    return { html: first.outerHTML };
+  };
+  return { clean, paragraphs, element, close: () => dom.window.close() };
 }
 
 function cleanBlocks(items: unknown, url: string): ContentBlock[] {
-  const { clean, paragraphs, close } = cleaner();
+  const { clean, paragraphs, element, close } = cleaner();
   const blocks: ContentBlock[] = [];
   try {
     for (const item of Array.isArray(items) ? items : []) {
@@ -242,6 +254,11 @@ function cleanBlocks(items: unknown, url: string): ContentBlock[] {
         for (const part of paragraphs(clean(b.text).html)) {
           if (collapse(part.replace(/<[^>]*>/g, ""))) blocks.push({ type: "paragraph", text: part });
         }
+      } else if (b.type === "html" && typeof b.text === "string") {
+        // A table or code block, kept as one element: only the first block-level element counts.
+        const kept = element(b.text);
+        if (kept) blocks.push({ type: "html", text: kept.html });
+        else if (collapse(clean(b.text).text)) blocks.push({ type: "paragraph", text: clean(b.text).html });
       } else if (b.type === "image") {
         const src = http(b.src, url);
         if (src) blocks.push({ type: "image", src, alt: typeof b.alt === "string" ? b.alt.slice(0, 200) : "" });

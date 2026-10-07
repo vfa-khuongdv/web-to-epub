@@ -350,10 +350,8 @@ links, host-blocked) become a text block with a link to the source, rather than 
 ## Known Limitations
 
 - **Agent crawler, pages that are not prose:** the result depends on what the agent writes for
-  that site. Tables and lists on such pages (e.g. Wikipedia's software tables) can come out as
-  run-together text, and some images (infoboxes) may be left out. Listing pages keep titles and
-  main details, not every link.
-
+  that site. Lists, tables and code blocks are kept; listing pages keep titles and main details,
+  not every link, and some images (infoboxes) may be left out.
 - **Only crawl whitelisted domains.** Of these, only `xtruyen.vn` and `truyenfull.live` have
   real-world testing; others were added on request so verify extraction quality before trusting.
 - **Extraction can fail inconsistently** on some sites (especially `xtruyen.vn`) due to delayed

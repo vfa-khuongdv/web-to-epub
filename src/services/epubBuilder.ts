@@ -24,6 +24,9 @@ body { font-family: serif; line-height: 1.5; }
 h1, h2, h3 { font-family: sans-serif; }
 img, audio, video { display: block; margin: 0.6em auto; max-width: 100%; }
 img, video { height: auto; }
+table { border-collapse: collapse; margin: 0.6em 0; }
+th, td { border: 1px solid #888; padding: 0.2em 0.5em; text-align: left; vertical-align: top; }
+pre { white-space: pre-wrap; font-family: monospace; font-size: 0.9em; margin: 0.6em 0; }
 `;
 
 // Downloaded EPUB filename: preserve Vietnamese diacritics (users must be able to read
