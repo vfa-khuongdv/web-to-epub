@@ -71,13 +71,18 @@ Dark theme (click the icon in the header to change, or set to "auto" to follow O
 - **Audio/video in chapters** — `<audio>`/`<video>` tags from source pages are downloaded and
   embedded in EPUB, playable immediately in compatible readers (Apple Books, Thorium, Calibre).
   Kindle can't play them so a link to the source is shown instead.
+- **Agent crawler for any site** — optional; an installed coding agent (opencode / Claude Code /
+  Codex) writes a small crawler for a site it has never seen. A story page becomes a chapter
+  list; any other page with content becomes a one-book EPUB. The code is saved per site and
+  runs in a sandbox; the agent is not asked again unless you press "rewrite".
 - **Three deployment modes** — Node.js server, Docker container, or native macOS app.
 
 ## Supported Sites
 
 Sites below were tried and work. The crawl allowlist is the site manifests in
 [`src/sites/`](src/sites/) (how to add one: [`src/sites/README.md`](src/sites/README.md)). Any
-other site can be tried with the optional AI crawler (Settings → AI crawler, off by default) with
+other site can be tried with the optional agent crawler (Settings → Agent crawler, off by default;
+uses your installed opencode, Claude Code or Codex, no API key) with
 no guarantee — if it fails, please open an issue with the story URL, the failing chapter URL and
 the error. The full, dated list (including notes per site) is in
 [`docs/supported-sites.md`](docs/supported-sites.md).
@@ -99,10 +104,18 @@ the error. The full, dated list (including notes per site) is in
 **Book import (not crawled chapter by chapter):** EPUB and PDF files, `dtv-ebook.com.vn`,
 `heyzine.com`, `archive.org`.
 
-**Tried with the AI crawler and working:** `truyenfull.fit`, `webnovel.vn`, `truyennhaong.vn`,
+**Tried with the agent crawler and working:** `truyenfull.fit`, `webnovel.vn`, `truyennhaong.vn`,
 `metruyenhotvn.com`, `truyenfullmoi.net`, `metruyenhd.net`, `royalroad.com`, `readwn.com`,
 `wuxiaworld.site`, `czbooks.net`, `ixdzs.tw`, `ncode.syosetu.com`, and the comic sites
 `mangatooncom.vn`, `truyenqq.com.vn`, `cotruyenday1.com`, `manhuaplus.com`.
+
+**Any other page, as one book:** with the agent crawler on (Settings → Agent crawler) and
+**Load with agent** in the add box, a page that is not a story's home page — an article, a single
+chapter, a listing, a product page, a forum thread, a gallery, documentation — is read as one
+book instead of being refused: its items, posts or pictures become the content and big
+divisions become chapters. Tried with opencode on Wikipedia, Hacker News, NPR text, books.toscrape.com,
+python.org, quotes.toscrape.com, MDN and paulgraham.com. Only a page with nothing to read (login
+wall, error, empty) is refused.
 
 ### Asianfanfics sessions
 
@@ -181,6 +194,11 @@ All these commands are in the `Makefile` — run `make` to see the full list.
 3. Open story detail to edit book name / author / cover image, edit chapter names and
    content if needed.
 4. Click "Export EPUB" — the book includes every chapter with content.
+
+For a site that is not on the list, turn on **Settings → Agent crawler**, pick an agent and use
+**Load with agent** in the add box. A story page loads as a chapter list; any other page
+(article, listing, thread, gallery…) is imported as a one-book EPUB. **Header → agent activity**
+shows what the agent is doing.
 
 Failed chapters show a red frame with a "Retry" button and an "Enter content manually"
 button to paste content directly.
@@ -330,6 +348,11 @@ added to the manifest, and `controls` restored. Files over 50MB or with download
 links, host-blocked) become a text block with a link to the source, rather than disappearing entirely.
 
 ## Known Limitations
+
+- **Agent crawler, pages that are not prose:** the result depends on what the agent writes for
+  that site. Tables and lists on such pages (e.g. Wikipedia's software tables) can come out as
+  run-together text, and some images (infoboxes) may be left out. Listing pages keep titles and
+  main details, not every link.
 
 - **Only crawl whitelisted domains.** Of these, only `xtruyen.vn` and `truyenfull.live` have
   real-world testing; others were added on request so verify extraction quality before trusting.

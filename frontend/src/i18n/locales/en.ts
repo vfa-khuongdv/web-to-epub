@@ -628,7 +628,6 @@ export const en: Record<string, string> = {
   "The saved page-text code for {host} stopped working ({reason}) — asking the agent to write it again": "The saved page-text code for {host} stopped working ({reason}) — asking the agent to write it again",
   "The agent could not write the page-text code for {host}: {reason}": "The agent could not write the page-text code for {host}: {reason}",
   "Web page": "Web page",
-  "It is not a story page: {reason}": "It is not a story page: {reason}",
   "The answer could not be read — writing the code anyway": "The answer could not be read — writing the code anyway",
   "The crawler was rewritten and the chapter list updated. Crawl the new chapters or retry the failed ones.": "The crawler was rewritten and the chapter list updated. Crawl the new chapters or retry the failed ones.",
   "This site is crawled with code the agent wrote once and the app reuses. If chapters are missing, wrong or failing, ask the agent to write it again.": "This site is crawled with code the agent wrote once and the app reuses. If chapters are missing, wrong or failing, ask the agent to write it again.",

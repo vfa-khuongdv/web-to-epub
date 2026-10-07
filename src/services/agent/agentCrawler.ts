@@ -137,11 +137,11 @@ ${outline}
 Scripts of the page:
 ${scripts}`;
 
-const ARTICLE_PROMPT = (url: string, outline: string, scripts: string, problem?: string) => `You write the crawler of a reader app. Below is a trimmed outline of a page (${url}) that is ONE readable text: an article, a research paper, an essay, or a whole book published as one page. Each line is an element: <tag#id.classes href="…"> then the start of its text, with "[N chars of text]" on big containers; "… +N similar" folds identical siblings.
+const ARTICLE_PROMPT = (url: string, outline: string, scripts: string, problem?: string) => `You write the crawler of a reader app. Below is a trimmed outline of a page (${url}) whose content is to become ONE book: an article, a research paper, an essay, a whole book published as one page — or any other content page, such as a single chapter, a listing of items, a product page, a forum thread (posts), a gallery (pictures) or documentation. Each line is an element: <tag#id.classes href="…"> then the start of its text, with "[N chars of text]" on big containers; "… +N similar" folds identical siblings.
 
 Write the function
   async function article(ctx) { … return { title, author, coverUrl, chapters: [{ title, blocks: [ … ] }, …] }; }
-that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. Leave out menus, share buttons, comments, related links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
+that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. When the page is not prose, the page's own items are the content: turn each listed item, product, post or picture into headings, paragraphs and image blocks (an item's name as a heading, its details as paragraphs). Leave out site menus, share buttons, comments on an article, "related" links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
 ${problem ? `\n${problem}\n` : ""}
@@ -244,7 +244,8 @@ export function toArticle(value: unknown, url: string, html: string): ImportedBo
     if (blocks.length > 0) chapters.push({ title: text(c.title) || `${chapters.length + 1}`, blocks });
   }
   const chars = chapters.reduce((n, c) => n + blockChars(c.blocks), 0);
-  if (chars < MIN_CHAPTER_CHARS) throw new Error("article() returned almost no text");
+  const hasImage = chapters.some((c) => c.blocks.some((b) => b.type === "image"));
+  if (chars < MIN_CHAPTER_CHARS && !hasImage) throw new Error("article() returned almost no text");
   return {
     title: text(v.title) || hostOf(url),
     author: text(v.author) || undefined,
@@ -411,11 +412,10 @@ const CLASSIFY_PROMPT = (url: string, outline: string) => `You help a reader app
 
 Is this page
 - "story": the HOME PAGE OF ONE STORY — the page that presents a single novel or comic and lists its chapters;
-- "document": ONE readable text with all of it on this page — a news article, blog post, research paper, essay, or a whole book / long text published as a single page;
-- "chapter": one chapter of a story that has a separate chapter list;
-- "other": a site home, genre or search listing, login, error, product page, anything else.
+- "document": any other page whose content can be read as a book — an article, paper, essay, a single chapter, a listing, product page, forum thread, gallery, documentation, anything with content on this one page;
+- "other": a page with no content to read (login wall, error, empty page).
 
-Answer with ONE JSON object and nothing else: {"kind": "story" | "document" | "chapter" | "other", "reason": "one short sentence"}
+Answer with ONE JSON object and nothing else: {"kind": "story" | "document" | "other", "reason": "one short sentence"}
 
 Outline:
 ${outline}`;
@@ -437,10 +437,9 @@ async function classifyUrl(agent: AgentModel, url: string, html: string): Promis
     return;
   }
   reportAgent({ kind: "verdict", host, fn: "url", agent: agent.name, ms: Date.now() - started, verdict: kind, reason });
-  if (kind === "document") throw new AgentDocumentPageError(reason || kind);
-  if (kind === "chapter" || kind === "other") {
-    throw new AgentCrawlerError(t("This does not look like the home page of a story: {reason}", { reason: reason || kind }));
-  }
+  // Anything that is not a story's home page is read as one page of content and becomes a book; a page with no
+  // content at all (login wall, error) fails later, when article() finds no text or reports it locked.
+  if (kind === "document" || kind === "chapter" || kind === "other") throw new AgentDocumentPageError(reason || kind);
 }
 
 // ---------- 2. the story: title, author, cover, chapter list ----------

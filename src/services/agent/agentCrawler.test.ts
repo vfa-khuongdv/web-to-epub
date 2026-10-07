@@ -67,11 +67,11 @@ describe("agent crawler", () => {
     log.stop();
   });
 
-  it("refuses a URL the agent says is not a story page, and writes nothing", async () => {
+  it("reads a URL the agent says is not a story page as a page of content, and writes nothing", async () => {
     const log = recorded();
     pages["https://chapters.test/c1"] = pages[story];
     const model = agent('{"kind":"chapter","reason":"it is the text of one chapter"}');
-    await expect(tocViaAgent(model, "https://chapters.test/c1")).rejects.toThrow(/home page of a story: it is the text of one chapter/);
+    await expect(tocViaAgent(model, "https://chapters.test/c1")).rejects.toBeInstanceOf(AgentDocumentPageError);
     expect(model.calls).toBe(1);
     expect(log.kinds()).toEqual(["url:classify", "url:verdict"]);
     expect(await hasAgentCrawler("https://chapters.test/c1")).toBe(false);

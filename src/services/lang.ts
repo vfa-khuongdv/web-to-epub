@@ -280,7 +280,6 @@ const vi: Record<string, string> = {
   "The agent crawler is off or its agent is not installed (Settings → Agent crawler)":
     "Trình thu thập bằng agent đang tắt hoặc agent chưa được cài (Cài đặt → Agent crawler)",
   "The agent could not write a crawler for {host}: {reason}": "Agent không viết được crawler cho {host}: {reason}",
-  "This does not look like the home page of a story: {reason}": "Đây không phải trang chủ của một truyện: {reason}",
   "The saved crawler for {host} stopped working ({reason}). Open the story's details and rewrite it with the agent.":
     "Crawler đã lưu cho {host} không còn chạy được ({reason}). Hãy mở chi tiết truyện và nhờ agent viết lại.",
   "The agent could not rewrite the crawler": "Agent không viết lại được crawler",

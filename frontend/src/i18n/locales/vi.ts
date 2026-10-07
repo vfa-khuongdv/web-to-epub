@@ -630,7 +630,6 @@ export const vi: Record<string, string> = {
   "The saved page-text code for {host} stopped working ({reason}) — asking the agent to write it again": "Code đã lưu đọc trang văn bản của {host} không còn chạy ({reason}) — đang nhờ agent viết lại",
   "The agent could not write the page-text code for {host}: {reason}": "Agent không viết được code đọc trang văn bản của {host}: {reason}",
   "Web page": "Trang web",
-  "It is not a story page: {reason}": "Đây không phải trang truyện: {reason}",
   "The answer could not be read — writing the code anyway": "Không đọc được câu trả lời — vẫn viết code",
   "The crawler was rewritten and the chapter list updated. Crawl the new chapters or retry the failed ones.": "Đã viết lại crawler và cập nhật danh sách chương. Hãy crawl các chương mới hoặc thử lại các chương lỗi.",
   "This site is crawled with code the agent wrote once and the app reuses. If chapters are missing, wrong or failing, ask the agent to write it again.": "Site này được crawl bằng code do agent viết một lần và ứng dụng dùng lại. Nếu thiếu chương, sai chương hoặc lỗi, hãy nhờ agent viết lại.",

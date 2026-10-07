@@ -6,7 +6,7 @@
  */
 export type AgentStepKind =
   | "classify" // the agent is asked whether the URL is the home page of a story
-  | "verdict" // its answer (`verdict`: story / chapter / other, `reason`)
+  | "verdict" // its answer (`verdict`: story / document / other, `reason`)
   | "ask" // the agent was asked to write code (attempt of `of`)
   | "answer" // it answered; the code is now tried on the page
   | "retry" // that code did not work
