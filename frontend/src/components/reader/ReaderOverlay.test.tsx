@@ -324,6 +324,20 @@ describe("ReaderOverlay highlights in the page", () => {
     expect(found.textContent).toBe("Hello");
   });
 
+  it("opens a link of the chapter in a new tab instead of navigating the frame", async () => {
+    const found = await markInFrame();
+    const doc = found.ownerDocument;
+    doc.body.insertAdjacentHTML("beforeend", '<a id="out" href="https://example.test/page">out</a><a id="in" href="#top">in</a>');
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    expect(fireEvent.click(doc.getElementById("out")!)).toBe(false);
+    expect(open).toHaveBeenCalledWith("https://example.test/page", "_blank", "noopener,noreferrer");
+    // The test frame loads twice (by hand and by jsdom), so the handler may run more than once per click.
+    const calls = open.mock.calls.length;
+    expect(fireEvent.click(doc.getElementById("in")!)).toBe(true);
+    expect(open).toHaveBeenCalledTimes(calls);
+    open.mockRestore();
+  });
+
   it("clicking a highlight opens the palette, which can recolour it", async () => {
     const found = await markInFrame();
     fireEvent.click(found);

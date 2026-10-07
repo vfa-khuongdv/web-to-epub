@@ -392,6 +392,15 @@ export default function ReaderOverlay({
       setPalette(paletteAt(picked.rect, { kind: "selection", ...picked }));
     },
     onClick: (e) => {
+      // A link would navigate the sandboxed frame itself and leave it blank, so it opens in a new tab;
+      // a link inside the chapter (#…) keeps scrolling the frame.
+      const link = (e.target as Element | null)?.closest?.("a[href]");
+      const href = link?.getAttribute("href") ?? "";
+      if (link && !href.startsWith("#")) {
+        e.preventDefault();
+        if (/^(https?:|mailto:)/i.test(href)) window.open(href, "_blank", "noopener,noreferrer");
+        return;
+      }
       const found = hl.markAt(e.target);
       // A click that lands on plain text closes the palette; a drag that ends there is
       // handled by mouseup, which runs first and opens it again.
