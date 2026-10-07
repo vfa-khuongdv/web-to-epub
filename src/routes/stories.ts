@@ -17,6 +17,7 @@ import {
   importArchiveItem,
 } from "../services/archiveImport";
 import { DrmError, EpubTooLargeError, ImportedBook, NotEpubError, parseEpub } from "../services/epubImport";
+import { CloudflareBlockedError } from "../services/cloudflare";
 import { DtvEbookNoEpubError, DtvEbookNotFoundError, dtvEbookId, importDtvEbook } from "../services/dtvEbookImport";
 import { HeyzineNotFoundError, HeyzineUnavailableError, heyzineId, importHeyzine } from "../services/heyzineImport";
 import { isPdf, NotPdfError, parsePdf, PdfLockedError, PdfTooLargeError } from "../services/pdfImport";
@@ -366,7 +367,7 @@ storiesRouter.post("/stories/import-dtvebook", async (req, res) => {
     res.status(existing ? 200 : 201).json({ story });
   } catch (err) {
     const message =
-      err instanceof DtvEbookNotFoundError || err instanceof DtvEbookNoEpubError
+      err instanceof DtvEbookNotFoundError || err instanceof DtvEbookNoEpubError || err instanceof CloudflareBlockedError
         ? err.message
         : t("Could not import from DTV Ebook");
     res.status(400).json({ message });
@@ -412,6 +413,7 @@ storiesRouter.post("/stories/import-heyzine", async (req, res) => {
   } catch (err) {
     // Only already-translated errors are echoed; anything else gets the generic wording.
     const message =
+      err instanceof CloudflareBlockedError ||
       err instanceof HeyzineNotFoundError ||
       err instanceof HeyzineUnavailableError ||
       err instanceof NotPdfError ||

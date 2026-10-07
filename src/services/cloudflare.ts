@@ -30,3 +30,20 @@ export function cloudflareBlockedMessage(url: string, sessionSaved: boolean): st
         { url }
       );
 }
+
+/** Cloudflare says so itself in a header, whatever the page body or status looks like. */
+export function isCloudflareResponse(res: Response): boolean {
+  return res.headers.get("cf-mitigated") === "challenge";
+}
+
+/** An import-only site (no saved-session slug) that Cloudflare stands in front of. */
+export class CloudflareBlockedError extends Error {
+  constructor(url: string) {
+    super(
+      t(
+        "This site is behind a Cloudflare check the app cannot pass — download the file in your browser and import it with Import EPUB / PDF instead: {url}",
+        { url }
+      )
+    );
+  }
+}

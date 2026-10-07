@@ -117,6 +117,13 @@ describe("importDtvEbook", () => {
     ).rejects.toBeInstanceOf(DtvEbookNotFoundError);
   });
 
+  it("says so when Cloudflare challenges the reader page", async () => {
+    const challenge = () =>
+      new Response("<title>Just a moment...</title>", { status: 403, headers: { "cf-mitigated": "challenge" } });
+
+    await expect(importDtvEbook("6506", { fetchImpl: dtvFetch({ reader: challenge }) })).rejects.toThrow(/Cloudflare/);
+  });
+
   it("reports a book whose EPUB cannot be downloaded", async () => {
     await expect(
       importDtvEbook("27570", { fetchImpl: dtvFetch({ epub: () => new Response("", { status: 404 }) }) })

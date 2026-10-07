@@ -1,4 +1,5 @@
 import { ImportedBook, parseEpub, StoreImage } from "./epubImport";
+import { CloudflareBlockedError, isCloudflareResponse } from "./cloudflare";
 import { t } from "./lang";
 
 export const DTV_EBOOK_DOMAIN = "dtv-ebook.com.vn";
@@ -102,10 +103,11 @@ export async function importDtvEbook(id: string, options: ImportDtvEbookOptions 
   let html: string;
   try {
     const res = await fetchImpl(readerUrl(id), { headers: { "User-Agent": epubUserAgent } });
+    if (isCloudflareResponse(res)) throw new CloudflareBlockedError(page);
     if (!res.ok) throw new DtvEbookNotFoundError(page);
     html = await res.text();
   } catch (err) {
-    if (err instanceof DtvEbookNotFoundError) throw err;
+    if (err instanceof DtvEbookNotFoundError || err instanceof CloudflareBlockedError) throw err;
     throw new DtvEbookNotFoundError(page);
   }
 

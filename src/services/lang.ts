@@ -264,6 +264,8 @@ const vi: Record<string, string> = {
   "DTV Ebook could not serve this book: {url}": "DTV Ebook không phục vụ được sách này: {url}",
   "This DTV Ebook book has no EPUB to import — the site only offers other formats: {url}":
     "Sách DTV Ebook này không có file EPUB để nhập — site chỉ có định dạng khác: {url}",
+  "This site is behind a Cloudflare check the app cannot pass — download the file in your browser and import it with Import EPUB / PDF instead: {url}":
+    "Trang này đang bị Cloudflare chặn, app không tự qua được — hãy tải file bằng trình duyệt rồi nhập bằng Nhập EPUB / PDF: {url}",
   "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
   "DTV Ebook books are imported, not crawled": "Sách DTV Ebook được nhập về, không crawl",
   "This is not a DTV Ebook book page: {url} — paste a URL like https://dtv-ebook.com.vn/<name>_<id>.html":
