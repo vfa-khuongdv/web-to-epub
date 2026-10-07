@@ -1,6 +1,7 @@
 import crypto from "crypto";
 import fs from "fs";
-import express, { Router } from "express";
+import express from "express";
+import { createRouter } from "./asyncRouter";
 import multer from "multer";
 import os from "os";
 import path from "path";
@@ -36,14 +37,40 @@ import { removeStoryAudio } from "../services/tts/audioCache";
 import { StoredStory } from "../types";
 import { Library, libraryFor } from "./library";
 
-export const storiesRouter = Router();
+export const storiesRouter = createRouter();
 
-const upload = multer({ dest: os.tmpdir() });
+const upload = multer({ dest: os.tmpdir(), limits: { fileSize: MAX_COVER_BYTES } });
+
+// An upload rejected by multer (over the cap) or by the route's own early checks must not
+// leave the temp file behind; the size cap is the same one the cover store accepts.
+async function discardUpload(file: Express.Multer.File | undefined): Promise<void> {
+  if (file) await fs.promises.rm(file.path, { force: true }).catch(() => {});
+}
+
+const uploadCover: express.RequestHandler = (req, res, next) => {
+  upload.single("cover")(req, res, (err: unknown) => {
+    if (!err) {
+      next();
+      return;
+    }
+    void discardUpload(req.file);
+    const tooLarge = err instanceof multer.MulterError && err.code === "LIMIT_FILE_SIZE";
+    res.status(400).json({
+      message: tooLarge
+        ? t("The cover file is too large (maximum {size} MB)", { size: Math.round(MAX_COVER_BYTES / (1024 * 1024)) })
+        : t("Invalid cover file — only JPG, PNG, WebP, or GIF accepted"),
+    });
+  });
+};
 
 // A book bigger than this is refused before parsing: the raw body parser's own limit
 // sits just above so an oversized file still gets our JSON message.
 export const MAX_IMPORT_BYTES = 100 * 1024 * 1024;
 const IMPORT_BODY_LIMIT = MAX_IMPORT_BYTES + 1024 * 1024;
+
+// A chapter list reload that lands while a crawl is running would replace chapters from
+// the snapshot taken before the TOC fetch, wiping what the crawl has been saving.
+class StoryCrawlingError extends Error {}
 
 // Load TOC and save story — used by both POST /stories (create/update from URL)
 // and POST /stories/:id/refresh (the "Load N new chapters" button).
@@ -66,11 +93,16 @@ async function refreshStoryToc(params: {
     story.author ??= defaults.defaultAuthor || undefined;
   }
   // Download cover to data/covers/ once we know the story URL; if download fails, keep
-  // the original URL so epub-gen can fetch it during export.
+  // the original URL and the export downloads it later through the public-address check.
   const savedCover = await library.covers.save(story.id, story.coverUrl, params.storyUrl);
   if (savedCover) story.coverUrl = savedCover;
+  // The route checked before fetching, but a crawl can start while the TOC and the cover
+  // are loading: saving now would overwrite that crawl's chapters with this stale list.
+  if (library.runningCrawls.has(story.id)) {
+    throw new StoryCrawlingError(t("Story is currently crawling, cannot update chapter list"));
+  }
   await library.stories.save(story);
-  return story;
+  return (await library.stories.getOutline(story.id)) as StoredStory;
 }
 
 // The adapter and site label for a story URL: a supported site's own, else — only when AI
@@ -149,6 +181,10 @@ storiesRouter.post("/stories", async (req, res) => {
       } catch (inner) {
         res.status(502).json({ message: inner instanceof Error ? inner.message : t("Could not read this page") });
       }
+      return;
+    }
+    if (err instanceof StoryCrawlingError) {
+      res.status(409).json({ message: err.message });
       return;
     }
     res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
@@ -486,17 +522,22 @@ storiesRouter.get("/stories/:id/media/:name", (req, res) => {
 
 // Save book metadata edited by user in the detail panel (multipart because a new
 // cover image may be included). Does not touch chapters, so can save mid-crawl.
-storiesRouter.post("/stories/:id/meta", upload.single("cover"), async (req, res) => {
+storiesRouter.post("/stories/:id/meta", uploadCover, async (req, res) => {
   const library = libraryFor(req, res);
-  if (!library) return;
+  if (!library) {
+    await discardUpload(req.file);
+    return;
+  }
   const { id } = req.params;
   const story = await library.stories.get(id);
   if (!story) {
+    await discardUpload(req.file);
     res.status(404).json({ message: t("Story not found") });
     return;
   }
   const { title, author, language } = req.body as { title?: string; author?: string; language?: string };
   if (!title?.trim()) {
+    await discardUpload(req.file);
     res.status(400).json({ message: t("Book title is required") });
     return;
   }
@@ -523,7 +564,7 @@ storiesRouter.post("/stories/:id/meta", upload.single("cover"), async (req, res)
 // The picked image is checked and copied under covers/uploads, and the response names that
 // relative path: export only accepts covers from there, so a client cannot point it at any
 // other file on the machine.
-storiesRouter.post("/cover-upload", upload.single("cover"), async (req, res) => {
+storiesRouter.post("/cover-upload", uploadCover, async (req, res) => {
   const library = libraryFor(req, res);
   if (!library) {
     if (req.file) await fs.promises.rm(req.file.path, { force: true });
@@ -643,6 +684,10 @@ storiesRouter.post("/stories/:id/refresh", async (req, res) => {
     await library.stories.setCheckResult(id, { newChapterCount: 0, checkedAt: new Date().toISOString(), error: null });
     res.json({ story });
   } catch (err) {
+    if (err instanceof StoryCrawlingError) {
+      res.status(409).json({ message: err.message });
+      return;
+    }
     res.status(502).json({ message: err instanceof Error ? err.message : "Failed to load chapter list" });
   }
 });

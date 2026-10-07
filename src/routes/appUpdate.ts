@@ -1,8 +1,8 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { APP_VERSION } from "../config/appInfo";
 import { appUpdateChecker } from "../services/appUpdate";
 
-export const appUpdateRouter = Router();
+export const appUpdateRouter = createRouter();
 
 // Whether a newer release exists. Silent on failure — the check runs unasked, so it
 // answers "no update" rather than an error (services/appUpdate.ts).

@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { t } from "../services/lang";
 import { SESSION_SITES } from "../sites";
 import {
@@ -9,7 +9,7 @@ import {
   siteSessionStatus,
 } from "../services/siteSession";
 
-export const siteSessionsRouter = Router();
+export const siteSessionsRouter = createRouter();
 
 // Which sites keep a session is declared by each site (src/sites/<id>/index.ts).
 

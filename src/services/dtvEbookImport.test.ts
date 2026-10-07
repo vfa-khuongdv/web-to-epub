@@ -130,6 +130,14 @@ describe("importDtvEbook", () => {
     ).rejects.toBeInstanceOf(DtvEbookNotFoundError);
   });
 
+  it("refuses a reader page that points the file at another host", async () => {
+    for (const path of ["https://evil.test/steal.epub", "//evil.test/steal.epub"]) {
+      const fetchImpl = dtvFetch({ reader: () => readerPage(path) });
+      await expect(importDtvEbook("27570", { fetchImpl })).rejects.toBeInstanceOf(DtvEbookNotFoundError);
+      expect(fetchImpl).toHaveBeenCalledTimes(1);
+    }
+  });
+
   it("refuses a file over the size cap instead of buffering it", async () => {
     await expect(
       importDtvEbook("27570", {

@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from "node:fs/promi
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { createCoverStore, coverPathForExport, MAX_COVER_BYTES, sniffImageExtension } from "./coverStore";
+import { createCoverStore, coverFileForExport, coverPathForExport, MAX_COVER_BYTES, sniffImageExtension } from "./coverStore";
 
 const STORY_ID = "0123456789abcdef";
 const COVER_URL = "https://cdn.example.com/bia.jpg";
@@ -408,8 +408,8 @@ describe("sniffImageExtension", () => {
 });
 
 describe("coverPathForExport", () => {
-  it("keeps external URL for epub-gen to load itself", () => {
-    expect(coverPathForExport(COVER_URL)).toBe(COVER_URL);
+  it("refuses a remote URL — the export downloads it itself, through the address check", () => {
+    expect(coverPathForExport(COVER_URL)).toBeUndefined();
   });
 
   it("resolves a saved cover inside the covers directory", async () => {
@@ -430,6 +430,49 @@ describe("coverPathForExport", () => {
     expect(coverPathForExport(path.join(dir, "secret.jpg"), dir)).toBeUndefined();
     expect(coverPathForExport("covers/../secret.jpg", dir)).toBeUndefined();
     expect(coverPathForExport("covers/notes.txt", dir)).toBeUndefined();
+  });
+});
+
+describe("coverFileForExport", () => {
+  let dir: string;
+
+  beforeEach(async () => {
+    dir = await mkdtemp(path.join(os.tmpdir(), "cover-file-export-"));
+  });
+
+  afterEach(async () => {
+    await rm(dir, { recursive: true, force: true });
+  });
+
+  it("takes a saved cover from disk with nothing to clean up", async () => {
+    await mkdir(path.join(dir, "covers"));
+    await writeFile(path.join(dir, "covers", `${STORY_ID}.jpg`), "x");
+    const cover = await coverFileForExport(`covers/${STORY_ID}.jpg`, dir);
+    expect(cover.path).toBe(path.join(await realpath(dir), "covers", `${STORY_ID}.jpg`));
+    await cover.cleanup();
+    expect(existsSync(cover.path!)).toBe(true);
+  });
+
+  it("refuses a private address without fetching it", async () => {
+    const cover = await coverFileForExport("http://[::ffff:127.0.0.1]/secret.png", dir);
+    expect(cover.path).toBeUndefined();
+    await cover.cleanup();
+  });
+
+  it("downloads a remote cover to a temp file the caller removes", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(imageResponse(bytesBody(new Uint8Array([0xff, 0xd8, 0xff]))));
+    const cover = await coverFileForExport(COVER_URL, dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(cover.path).toMatch(/epub-cover-.*\.jpg$/);
+    expect(existsSync(cover.path!)).toBe(true);
+    await cover.cleanup();
+    expect(existsSync(cover.path!)).toBe(false);
+  });
+
+  it("returns no cover when the remote answer is not an image", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(imageResponse("<html>not an image</html>", "text/html"));
+    const cover = await coverFileForExport(COVER_URL, dir, { fetchImpl: fetchImpl as unknown as typeof fetch });
+    expect(cover.path).toBeUndefined();
+    await cover.cleanup();
   });
 });
 

@@ -1,6 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
-import express, { Router } from "express";
+import express from "express";
+import { createRouter } from "./asyncRouter";
 import { t } from "../services/lang";
 import { settingsStore } from "../services/settingsStore";
 import { CUSTOM_VOICE_PREFIX, MAX_VOICE_BYTES, customVoices } from "../services/tts/customVoices";
@@ -8,7 +9,7 @@ import { TTS_ENGINES, TtsEngine, engineOf, runtimeFor, ttsEngines, ttsRuntimes }
 import { BUILTIN_VOICE_PREFIX, PREVIEW_TEXT, voiceCatalog } from "../services/tts/voiceCatalog";
 import { TTS_VARIANTS, TtsVariant, TtsVoice } from "../services/tts/workerClient";
 
-export const ttsRouter = Router();
+export const ttsRouter = createRouter();
 
 // `?engine=` picks the install the settings page is showing; without it, the engine that
 // reads with the current settings (what a story page asks about).

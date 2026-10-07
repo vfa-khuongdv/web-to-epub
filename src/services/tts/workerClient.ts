@@ -1,6 +1,7 @@
 import { ChildProcess, spawn } from "child_process";
 import { randomUUID } from "crypto";
 import readline from "readline";
+import { t } from "../lang";
 
 /**
  * Client for tts/vieneu_worker.py: one child process, JSON lines both ways (see the
@@ -64,6 +65,17 @@ export interface WorkerCommand {
   env?: NodeJS.ProcessEnv;
 }
 
+// A worker that stops answering (a deadlocked model, a hung native call) would keep the request —
+// and the runtime's pending count — stuck forever: uninstall and a new start would answer 409
+// until the app restarts. No output for this long means stuck; the request is rejected and the
+// child killed, so the runtime starts a fresh one on the next call.
+const REQUEST_TIMEOUT_MS = 5 * 60_000;
+
+export interface TtsWorkerOptions {
+  // Tests override this to exercise the stuck-worker path quickly.
+  requestTimeoutMs?: number;
+}
+
 export interface TtsWorker {
   load(variant: TtsVariant): Promise<LoadedModel>;
   // `timings`: [start, end] seconds of each part in the file.
@@ -72,7 +84,12 @@ export interface TtsWorker {
   readonly closed: boolean;
 }
 
-export function startTtsWorker(cmd: WorkerCommand, log: (line: string) => void = () => {}): Promise<TtsWorker> {
+export function startTtsWorker(
+  cmd: WorkerCommand,
+  log: (line: string) => void = () => {},
+  options: TtsWorkerOptions = {}
+): Promise<TtsWorker> {
+  const requestTimeoutMs = options.requestTimeoutMs ?? REQUEST_TIMEOUT_MS;
   const child: ChildProcess = spawn(cmd.command, cmd.args, {
     env: { ...process.env, ...cmd.env, PYTHONUNBUFFERED: "1", PYTHONIOENCODING: "utf-8" },
     stdio: ["pipe", "pipe", "pipe"],
@@ -125,7 +142,8 @@ export function startTtsWorker(cmd: WorkerCommand, log: (line: string) => void =
     child.stdin!.write(`${JSON.stringify(payload)}\n`);
   }
 
-  // Serve one request: write it, feed it lines until `handle` settles it.
+  // Serve one request: write it, feed it lines until `handle` settles it. Any line from the
+  // worker resets the no-output timer.
   function request<T>(
     payload: object,
     handle: (message: WorkerMessage, resolve: (value: T) => void, reject: (err: Error) => void) => void
@@ -136,11 +154,14 @@ export function startTtsWorker(cmd: WorkerCommand, log: (line: string) => void =
           reject(new Error("TTS worker is not running"));
           return;
         }
+        let timer: NodeJS.Timeout | undefined;
         const settle = () => {
           current = undefined;
           failCurrent = undefined;
+          if (timer) clearTimeout(timer);
         };
-        current = (message) =>
+        current = (message) => {
+          timer?.refresh();
           handle(
             message,
             (value) => {
@@ -152,10 +173,23 @@ export function startTtsWorker(cmd: WorkerCommand, log: (line: string) => void =
               reject(err);
             }
           );
+        };
         failCurrent = (err) => {
           settle();
           reject(err);
         };
+        if (requestTimeoutMs > 0) {
+          timer = setTimeout(() => {
+            failCurrent?.(new Error(t("The narration engine stopped answering — it was restarted, try again")));
+            // A worker stuck on one command will not read the next either: replace it.
+            try {
+              child.kill();
+            } catch {
+              /* already gone */
+            }
+          }, requestTimeoutMs);
+          timer.unref();
+        }
         send(payload);
       });
     const result = tail.then(run, run);

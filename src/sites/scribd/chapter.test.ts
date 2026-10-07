@@ -218,7 +218,11 @@ describe("fetchScribdChapter", () => {
       { type: "image", src: "https://html.scribd.com/2l1p15luww9r1sb0/images/10-f959f226f3.jpg", alt: "" },
     ]);
     expect(mockedFetch).toHaveBeenCalledTimes(3);
-    expect(mockedFetch).toHaveBeenCalledWith("https://html.scribdassets.com/key/pages/2-deadbeef.jsonp");
+    expect(mockedFetch).toHaveBeenCalledWith(
+      "https://html.scribdassets.com/key/pages/2-deadbeef.jsonp",
+      {},
+      { validateUrl: expect.any(Function) }
+    );
     // Trang scan không cần chụp lại bằng trình duyệt.
     expect(mockedOpenSession).not.toHaveBeenCalled();
   });

@@ -60,12 +60,38 @@ describe("site sandbox", () => {
     "eval": `return eval("1+1");`,
     "main module": `return process.mainModule.require("net");`,
     "caller chain": `return arguments.callee.caller;`,
+    "process.kill": `return process.kill(process.ppid, 0);`,
   };
   for (const [name, body] of Object.entries(escapes)) {
     it(`cannot reach the network or more code: ${name}`, async () => {
       await expect(run(`async function toc(ctx) { ${body} }`)).rejects.toThrow();
     });
   }
+
+  it("cannot spoof the caller of Function with a fake Error or a forged stack frame", async () => {
+    await expect(
+      run(`async function toc(ctx) {
+        const RealError = globalThis.Error;
+        globalThis.Error = class { constructor() { this.stack = "Error\\n    at Function (g)\\n    at x (/app/node_modules/nwsapi/src/nwsapi.js:1021:24)"; } };
+        try { return typeof Function("return process")(); } finally { globalThis.Error = RealError; }
+      }`)
+    ).rejects.toThrow(/Building code from text is not allowed/);
+    await expect(
+      run(`async function toc(ctx) {
+        const o = {};
+        o["node_modules/nwsapi/x"] = function () { return Function("return process")(); };
+        return typeof o["node_modules/nwsapi/x"]();
+      }`)
+    ).rejects.toThrow(/Building code from text is not allowed/);
+    await expect(
+      run(`async function toc(ctx) {
+        const name = "x\\n    at Object.<anonymous> (/app/node_modules/nwsapi/src/nwsapi.js:1021:24)";
+        const o = {};
+        Object.defineProperty(o, name, { value: function () { return Function("return process")(); } });
+        return typeof o[name]();
+      }`)
+    ).rejects.toThrow(/Building code from text is not allowed/);
+  });
 
   it("cannot rewrite how the stack is read, nor build code through a promise or a callback", async () => {
     await expect(run(`async function toc(ctx) { Error.prepareStackTrace = () => "at x (/node_modules/nwsapi/y)"; return 1; }`)).rejects.toThrow();

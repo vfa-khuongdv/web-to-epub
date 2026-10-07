@@ -1,7 +1,9 @@
+import { randomUUID } from "crypto";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { assertPublicUrl } from "./netPolicy";
-import { fetchWithRetry } from "./toc/http";
+import { fetchWithRetry, readBodyCapped } from "./toc/http";
 import { DATA_DIR } from "../config/paths";
 
 // Real story covers are usually under 500KB; cap at 8MB so a wrong URL (scan image,
@@ -89,10 +91,8 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
     if (!res.ok) return undefined;
 
     const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
-    const declaredLength = Number(res.headers.get("content-length"));
-    if (Number.isFinite(declaredLength) && declaredLength > MAX_COVER_BYTES) return undefined;
-    const bytes = Buffer.from(await res.arrayBuffer());
-    if (bytes.length === 0 || bytes.length > MAX_COVER_BYTES) return undefined;
+    const bytes = await readBodyCapped(res, MAX_COVER_BYTES);
+    if (!bytes || bytes.length === 0) return undefined;
 
     const extension = sniffImageExtension(bytes) ?? EXTENSION_BY_TYPE.get(contentType);
     if (!extension) return undefined;
@@ -142,11 +142,10 @@ export function createCoverStore(dataDir: string, options: { fetchImpl?: typeof 
   return { save, saveUpload, saveBytes, find, remove };
 }
 
-// epub-gen reads local files directly (path stored in DB) and fetches external URLs itself.
-// The cover comes from the request body, so a local path is honoured only when it is an
-// image inside <dataDir>/covers (saved covers and uploads) — never an arbitrary file.
+// A cover path epub-gen may read itself: a local file inside <dataDir>/covers (a saved cover or
+// an upload). Remote URLs are never handed back — epub-gen would fetch one with no address check.
+// The cover comes from the request body, so it is honoured only as an image inside that folder.
 export function coverPathForExport(coverUrl: string, dataDir = DATA_DIR): string | undefined {
-  if (/^https?:/i.test(coverUrl)) return coverUrl;
   const coversDir = path.resolve(dataDir, "covers");
   const resolved = path.resolve(dataDir, coverUrl);
   if (!(path.extname(resolved).slice(1).toLowerCase() in CONTENT_TYPES)) return undefined;
@@ -156,6 +155,39 @@ export function coverPathForExport(coverUrl: string, dataDir = DATA_DIR): string
     return real.startsWith(root + path.sep) ? real : undefined;
   } catch {
     return undefined;
+  }
+}
+
+// The cover for an export: the local file when the story has one, else a temporary copy of the
+// remote cover downloaded through the same public-address check a crawled cover gets (epub-gen
+// would fetch a request-body URL unprotected and follow its redirects). The caller removes the
+// temporary file; a cover that fails the check or is not an image simply means no cover.
+export async function coverFileForExport(
+  coverUrl: string | undefined,
+  dataDir = DATA_DIR,
+  options: { fetchImpl?: typeof fetch } = {}
+): Promise<{ path: string | undefined; cleanup: () => Promise<void> }> {
+  const noop = { path: undefined, cleanup: async () => {} };
+  if (!coverUrl) return noop;
+  const local = coverPathForExport(coverUrl, dataDir);
+  if (local || !/^https?:/i.test(coverUrl)) return { path: local, cleanup: async () => {} };
+  try {
+    const res = await fetchWithRetry(
+      coverUrl,
+      { headers: { "User-Agent": USER_AGENT, Accept: "image/*" } },
+      { fetchImpl: options.fetchImpl, maxAttempts: 2, validateUrl: options.fetchImpl ? undefined : assertPublicUrl }
+    );
+    if (!res.ok) return noop;
+    const bytes = await readBodyCapped(res, MAX_COVER_BYTES);
+    if (!bytes || bytes.length === 0) return noop;
+    const contentType = (res.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+    const extension = sniffImageExtension(bytes) ?? EXTENSION_BY_TYPE.get(contentType);
+    if (!extension) return noop;
+    const filePath = path.join(os.tmpdir(), `epub-cover-${randomUUID()}.${extension}`);
+    await fs.promises.writeFile(filePath, bytes);
+    return { path: filePath, cleanup: () => fs.promises.rm(filePath, { force: true }).catch(() => {}) };
+  } catch {
+    return noop;
   }
 }
 

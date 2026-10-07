@@ -129,6 +129,9 @@ export default function ReaderOverlay({
   const chapterRef = useRef(0);
   const scrollToOnLoad = useRef<string | null>(null);
   const scrollTimer = useRef<number | undefined>(undefined);
+  // The frame document the load handler prepared, and for which chapter: highlights that
+  // arrive after that load are painted onto it (and never onto a stale document).
+  const paintedDoc = useRef<{ doc: Document; order: number } | null>(null);
   // Progress is written straight into these two nodes instead of through state: it
   // changes on every scroll frame, and a re-render would redraw the whole chapter list
   // (up to 200 rows) with it.
@@ -233,13 +236,15 @@ export default function ReaderOverlay({
     };
   }, []);
 
-  // Closing mid-scroll must not lose the last few hundred milliseconds of reading.
+  // Closing mid-scroll must not lose the last few hundred milliseconds of reading. The
+  // chapter comes from chapterRef, not the mount-time `chapters`/`index` closure: those
+  // are stale after a chapter turn and would overwrite the position goTo just saved.
   useEffect(() => {
     return () => {
       window.clearTimeout(scrollTimer.current);
       const win = frame.current?.contentWindow;
-      const order = chapters[index]?.order;
-      if (win && order !== undefined) savePosition(storyId, isPrivate, { order, scroll: win.scrollY });
+      const order = chapterRef.current;
+      if (win && order > 0) savePosition(storyId, isPrivate, { order, scroll: win.scrollY });
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -335,6 +340,21 @@ export default function ReaderOverlay({
     markNarrating(doc, parts && part >= 0 ? parts[part].block : null, sameDoc);
   }, [clock, voiceHere, timeline, currentOrder, html, frameLoads]);
 
+  // The highlights request is not awaited by the frame load, so saved highlights often arrive
+  // after paintAll already ran. Paint only the ones missing from the document the load handler
+  // prepared: anything already painted (by the load handler or by applyColor) stays, and a
+  // preference reload replaces the document, which the load handler repaints afresh.
+  useEffect(() => {
+    const doc = frame.current?.contentDocument;
+    const painted = paintedDoc.current;
+    if (!doc || !painted || painted.doc !== doc) return;
+    for (const h of highlights) {
+      if (h.chapterOrder !== painted.order) continue;
+      if (doc.querySelector(`mark[data-highlight="${CSS.escape(h.id)}"]`)) continue;
+      hl.paint(doc, h);
+    }
+  }, [highlights, frameLoads]);
+
   function toggleFull() {
     // Either call rejects when the browser refuses full screen (an embedded frame, a
     // policy): the reader is unchanged and still readable, so there is nothing to report.
@@ -419,6 +439,7 @@ export default function ReaderOverlay({
     setFrameLoads((n) => n + 1);
     chapterChars.current = doc.getElementById(CONTENT_ID)?.textContent?.length ?? 0;
     hl.paintAll(doc, highlightsRef.current.filter((h) => h.chapterOrder === chapterRef.current));
+    paintedDoc.current = { doc, order: chapterRef.current };
     if (scrollToOnLoad.current) {
       hl.scrollToHighlight(doc, scrollToOnLoad.current);
       scrollToOnLoad.current = null;

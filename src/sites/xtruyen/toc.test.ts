@@ -213,6 +213,39 @@ describe("fetchToc (xtruyen)", () => {
     expect(new Set(toc.chapters.map((c) => c.url)).size).toBe(398);
   });
 
+  it("dừng khi một window đầy nhưng không thêm chương mới", async () => {
+    mockedFetchText
+      .mockResolvedValueOnce(readFixture("xtruyen-story.html"))
+      .mockResolvedValueOnce(chaptersJson(1, 200))
+      .mockResolvedValueOnce(chaptersJson(1, 200));
+
+    const toc = await fetchToc("https://xtruyen.vn/truyen/han-phu/");
+
+    // Story page + two windows; the second added nothing, so the loop stops there.
+    expect(mockedFetchText).toHaveBeenCalledTimes(3);
+    expect(toc.chapters).toHaveLength(200);
+  });
+
+  it("xếp nhiều quyển theo (quyển, chương) thay vì trộn số chương", async () => {
+    mockedFetchText.mockResolvedValueOnce(readFixture("xtruyen-story.html")).mockResolvedValueOnce(
+      JSON.stringify([
+        { s: "quyen-2-chuong-1", n: "Quyển 2 Chương 1" },
+        { s: "quyen-1-chuong-2", n: "Quyển 1 Chương 2" },
+        { s: "quyen-2-chuong-2", n: "Quyển 2 Chương 2" },
+        { s: "quyen-1-chuong-1", n: "Quyển 1 Chương 1" },
+      ])
+    );
+
+    const toc = await fetchToc("https://xtruyen.vn/truyen/han-phu/");
+
+    expect(toc.chapters.map((c) => c.url)).toEqual([
+      "https://xtruyen.vn/truyen/han-phu/quyen-1-chuong-1/",
+      "https://xtruyen.vn/truyen/han-phu/quyen-1-chuong-2/",
+      "https://xtruyen.vn/truyen/han-phu/quyen-2-chuong-1/",
+      "https://xtruyen.vn/truyen/han-phu/quyen-2-chuong-2/",
+    ]);
+  });
+
   it("sắp xếp theo số chương, URL không có số xếp cuối", async () => {
     mockedFetchText
       .mockResolvedValueOnce(readFixture("xtruyen-story.html"))
