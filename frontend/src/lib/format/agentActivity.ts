@@ -30,10 +30,7 @@ export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text:
       };
     case "verdict": {
       if (e.verdict === "story") return { text: t("It is a story page: {reason}", { reason }), isError: false };
-      if (e.verdict === "document") return { text: t("It is one page of text: {reason}", { reason }), isError: false };
-      if (e.verdict === "chapter" || e.verdict === "other") {
-        return { text: t("It is not a story page: {reason}", { reason: reason || e.verdict }), isError: true };
-      }
+      if (e.verdict) return { text: t("It is one page of text: {reason}", { reason: reason || e.verdict }), isError: false };
       return { text: t("The answer could not be read — writing the code anyway"), isError: false };
     }
     case "ask": {
@@ -101,6 +98,6 @@ export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text:
 // The agent is working while the last step is one that a next step follows.
 export const isAgentBusy = (events: AgentActivityEvent[]): boolean => {
   const last = events[events.length - 1];
-  if (last?.kind === "verdict") return last.verdict !== "chapter" && last.verdict !== "other";
+  if (last?.kind === "verdict") return true;
   return last?.kind === "classify" || last?.kind === "ask" || last?.kind === "answer" || last?.kind === "retry";
 };

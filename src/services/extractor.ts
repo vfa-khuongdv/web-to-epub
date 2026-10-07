@@ -45,8 +45,21 @@ function stripChrome(document: Document): void {
   });
 }
 
+function escapeText(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
 export function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
-  for (const node of Array.from(root.children)) {
+  for (const child of Array.from(root.childNodes)) {
+    // A bare text node beside an element is real content — Readability keeps a leading
+    // sentence outside the first <p>; walking only `children` silently dropped it.
+    if (child.nodeType === 3) {
+      const text = child.textContent?.trim();
+      if (text) blocks.push({ type: "paragraph", text: escapeText(text) });
+      continue;
+    }
+    if (child.nodeType !== 1) continue;
+    const node = child as Element;
     const tag = node.tagName.toLowerCase();
 
     if (/^h[1-6]$/.test(tag)) {
@@ -58,6 +71,11 @@ export function walkToBlocks(root: Element, blocks: ContentBlock[]): void {
     if (tag === "p" || tag === "blockquote") {
       const html = (node as HTMLElement).innerHTML.trim();
       if (node.textContent?.trim()) blocks.push({ type: "paragraph", text: html });
+      continue;
+    }
+
+    if (tag === "table" || tag === "pre") {
+      if (node.textContent?.trim()) blocks.push({ type: "html", text: node.outerHTML });
       continue;
     }
 

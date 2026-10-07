@@ -125,7 +125,7 @@ const CHAPTER_PROMPT = (url: string, outline: string, scripts: string, problem?:
 
 Write the function
   async function chapter(ctx) { … return { title, blocks: [ … ] }; }
-that returns the chapter's title and its text as blocks: { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML) and, for a comic whose pages are pictures, { type: "image", src, alt } for EVERY page. Pictures are often loaded lazily: some <img> have their real address in src while others keep a placeholder (a data: address) there and carry the real one in another attribute, whose name differs from site to site — the outline shows each <img>'s attributes; read them all and take the one that holds a real image address, never rely on src alone. Use an address the page itself already uses for that picture (its src, or the largest entry of its srcset): never build one by changing a size parameter such as width=, because an image server often refuses a size equal to the original's; when the full-size file is wanted, take it from the link around the picture or from that picture's own file page. Take only the chapter itself — no menus, comments, adverts, "next chapter" links or notices. A site that puts the text in one element with <br> lines needs those lines split into paragraphs.
+that returns the chapter's title and its text as blocks: { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML; a list is one paragraph block per item, its text starting with "• " or "1. ", "2. " … and never a <ul>/<ol>; a table is { type: "html", text: "<table>…</table>" } and a code block { type: "html", text: "<pre>…</pre>" } (the element's outerHTML, one block each, rows and cells kept)) and, for a comic whose pages are pictures, { type: "image", src, alt } for EVERY page. Pictures are often loaded lazily: some <img> have their real address in src while others keep a placeholder (a data: address) there and carry the real one in another attribute, whose name differs from site to site — the outline shows each <img>'s attributes; read them all and take the one that holds a real image address, never rely on src alone. Use an address the page itself already uses for that picture (its src, or the largest entry of its srcset): never build one by changing a size parameter such as width=, because an image server often refuses a size equal to the original's; when the full-size file is wanted, take it from the link around the picture or from that picture's own file page. Take only the chapter itself — no menus, comments, adverts, "next chapter" links or notices. A site that puts the text in one element with <br> lines needs those lines split into paragraphs.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
 ${problem ? `\n${problem}\n` : ""}
@@ -137,11 +137,11 @@ ${outline}
 Scripts of the page:
 ${scripts}`;
 
-const ARTICLE_PROMPT = (url: string, outline: string, scripts: string, problem?: string) => `You write the crawler of a reader app. Below is a trimmed outline of a page (${url}) that is ONE readable text: an article, a research paper, an essay, or a whole book published as one page. Each line is an element: <tag#id.classes href="…"> then the start of its text, with "[N chars of text]" on big containers; "… +N similar" folds identical siblings.
+const ARTICLE_PROMPT = (url: string, outline: string, scripts: string, problem?: string) => `You write the crawler of a reader app. Below is a trimmed outline of a page (${url}) whose content is to become ONE book: an article, a research paper, an essay, a whole book published as one page — or any other content page, such as a single chapter, a listing of items, a product page, a forum thread (posts), a gallery (pictures) or documentation. Each line is an element: <tag#id.classes href="…"> then the start of its text, with "[N chars of text]" on big containers; "… +N similar" folds identical siblings.
 
 Write the function
   async function article(ctx) { … return { title, author, coverUrl, chapters: [{ title, blocks: [ … ] }, …] }; }
-that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. Leave out menus, share buttons, comments, related links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
+that returns the text's title, its author and cover picture (both optional) and ALL of its text split into chapters. Blocks are { type: "heading", level: 2, text }, { type: "paragraph", text } (text is HTML: the paragraph's innerHTML — keep bold, italics, links and code; a list is one paragraph block per item, its text starting with "• " or "1. ", "2. " … and never a <ul>/<ol>; a table is { type: "html", text: "<table>…</table>" } and a code block { type: "html", text: "<pre>…</pre>" } (the element's outerHTML, one block each, rows and cells kept)) and { type: "image", src, alt } for figures that belong to the text (read every attribute of an <img>: lazy loading keeps a placeholder in src). Split into several chapters only when the text itself has big divisions (a book's chapters, a long paper's main sections), one chapter per division, titled as the text titles it; a short article is ONE chapter. Do not drop the text between divisions, and do not take only the first division: the chapters together must hold everything that is the text. When the page is not prose, the page's own items are the content: turn each listed item, product, post or picture into headings, paragraphs and image blocks (an item's name as a heading, its details as paragraphs). Leave out site menus, share buttons, comments on an article, "related" links, adverts and cookie notices; keep the reference list of a paper and the footnotes of a book.
 If the page shows a login / subscription wall instead of the text, return { locked: true } — never try to get around it.
 ${API}
 ${problem ? `\n${problem}\n` : ""}
@@ -190,11 +190,59 @@ function cleaner() {
     }
     return { html: box.innerHTML.trim(), text: box.textContent ?? "" };
   };
-  return { clean, close: () => dom.window.close() };
+  // A paragraph block is wrapped in <p>, where a list is not allowed (the reader and the EPUB drop its markup):
+  // each list item becomes a paragraph of its own that starts with its bullet or number.
+  const paragraphs = (html: string): string[] => {
+    const box = doc.createElement("div");
+    box.innerHTML = html;
+    if (!box.querySelector("ul,ol")) return [html];
+    const out: string[] = [];
+    const items = (list: Element, depth: number) => {
+      const ordered = list.tagName === "OL";
+      let n = 0;
+      for (const li of Array.from(list.children)) {
+        if (li.tagName !== "LI") continue;
+        n++;
+        const own = li.cloneNode(true) as Element;
+        own.querySelectorAll("ul,ol").forEach((x) => x.remove());
+        own.querySelectorAll("p").forEach((x) => x.replaceWith(...Array.from(x.childNodes)));
+        if (collapse(own.textContent ?? "")) out.push(`${"\u00a0\u00a0".repeat(depth)}${ordered ? `${n}.` : "•"} ${own.innerHTML.trim()}`);
+        for (const nested of Array.from(li.children)) if (/^(UL|OL)$/.test(nested.tagName)) items(nested, depth + 1);
+      }
+    };
+    let rest = "";
+    const flush = () => {
+      if (collapse(rest.replace(/<[^>]*>/g, ""))) out.push(rest.trim());
+      rest = "";
+    };
+    for (const node of Array.from(box.childNodes)) {
+      if (node.nodeType === 1 && /^(UL|OL)$/.test((node as Element).tagName)) {
+        flush();
+        items(node as Element, 0);
+      } else {
+        rest += node.nodeType === 1 ? (node as Element).outerHTML : (node.textContent ?? "");
+      }
+    }
+    flush();
+    return out;
+  };
+  // The first table or code block of the cleaned HTML, whole.
+  const element = (html: string): { html: string } | null => {
+    const box = doc.createElement("div");
+    box.innerHTML = clean(html).html;
+    const first = box.querySelector("table, pre");
+    if (!first || !collapse(first.textContent ?? "")) return null;
+    // Only what the table or code needs: ids repeat across a page's blocks and the rest is the site's styling.
+    for (const el of [first, ...Array.from(first.querySelectorAll("*"))]) {
+      for (const attr of Array.from(el.attributes)) if (!/^(colspan|rowspan|scope|headers|href|src|alt)$/i.test(attr.name)) el.removeAttribute(attr.name);
+    }
+    return { html: first.outerHTML };
+  };
+  return { clean, paragraphs, element, close: () => dom.window.close() };
 }
 
 function cleanBlocks(items: unknown, url: string): ContentBlock[] {
-  const { clean, close } = cleaner();
+  const { clean, paragraphs, element, close } = cleaner();
   const blocks: ContentBlock[] = [];
   try {
     for (const item of Array.isArray(items) ? items : []) {
@@ -203,8 +251,14 @@ function cleanBlocks(items: unknown, url: string): ContentBlock[] {
         const level = Number(b.level);
         blocks.push({ type: "heading", level: level >= 1 && level <= 6 ? level : 2, text: collapse(b.text) });
       } else if (b.type === "paragraph" && typeof b.text === "string") {
-        const cleaned = clean(b.text);
-        if (collapse(cleaned.text)) blocks.push({ type: "paragraph", text: cleaned.html });
+        for (const part of paragraphs(clean(b.text).html)) {
+          if (collapse(part.replace(/<[^>]*>/g, ""))) blocks.push({ type: "paragraph", text: part });
+        }
+      } else if (b.type === "html" && typeof b.text === "string") {
+        // A table or code block, kept as one element: only the first block-level element counts.
+        const kept = element(b.text);
+        if (kept) blocks.push({ type: "html", text: kept.html });
+        else if (collapse(clean(b.text).text)) blocks.push({ type: "paragraph", text: clean(b.text).html });
       } else if (b.type === "image") {
         const src = http(b.src, url);
         if (src) blocks.push({ type: "image", src, alt: typeof b.alt === "string" ? b.alt.slice(0, 200) : "" });
@@ -244,7 +298,8 @@ export function toArticle(value: unknown, url: string, html: string): ImportedBo
     if (blocks.length > 0) chapters.push({ title: text(c.title) || `${chapters.length + 1}`, blocks });
   }
   const chars = chapters.reduce((n, c) => n + blockChars(c.blocks), 0);
-  if (chars < MIN_CHAPTER_CHARS) throw new Error("article() returned almost no text");
+  const hasImage = chapters.some((c) => c.blocks.some((b) => b.type === "image"));
+  if (chars < MIN_CHAPTER_CHARS && !hasImage) throw new Error("article() returned almost no text");
   return {
     title: text(v.title) || hostOf(url),
     author: text(v.author) || undefined,
@@ -411,11 +466,10 @@ const CLASSIFY_PROMPT = (url: string, outline: string) => `You help a reader app
 
 Is this page
 - "story": the HOME PAGE OF ONE STORY — the page that presents a single novel or comic and lists its chapters;
-- "document": ONE readable text with all of it on this page — a news article, blog post, research paper, essay, or a whole book / long text published as a single page;
-- "chapter": one chapter of a story that has a separate chapter list;
-- "other": a site home, genre or search listing, login, error, product page, anything else.
+- "document": any other page whose content can be read as a book — an article, paper, essay, a single chapter, a listing, product page, forum thread, gallery, documentation, anything with content on this one page;
+- "other": a page with no content to read (login wall, error, empty page).
 
-Answer with ONE JSON object and nothing else: {"kind": "story" | "document" | "chapter" | "other", "reason": "one short sentence"}
+Answer with ONE JSON object and nothing else: {"kind": "story" | "document" | "other", "reason": "one short sentence"}
 
 Outline:
 ${outline}`;
@@ -437,10 +491,9 @@ async function classifyUrl(agent: AgentModel, url: string, html: string): Promis
     return;
   }
   reportAgent({ kind: "verdict", host, fn: "url", agent: agent.name, ms: Date.now() - started, verdict: kind, reason });
-  if (kind === "document") throw new AgentDocumentPageError(reason || kind);
-  if (kind === "chapter" || kind === "other") {
-    throw new AgentCrawlerError(t("This does not look like the home page of a story: {reason}", { reason: reason || kind }));
-  }
+  // Anything that is not a story's home page is read as one page of content and becomes a book; a page with no
+  // content at all (login wall, error) fails later, when article() finds no text or reports it locked.
+  if (kind === "document" || kind === "chapter" || kind === "other") throw new AgentDocumentPageError(reason || kind);
 }
 
 // ---------- 2. the story: title, author, cover, chapter list ----------
@@ -551,12 +604,14 @@ async function writeTocCrawler(agent: AgentModel, storyUrl: string, html: string
   }, seed);
 }
 
-export async function tocViaAgent(agent: AgentModel, storyUrl: string): Promise<TocResult> {
+// `agent` may be undefined (agent crawler off): saved code still runs, only writing code needs it.
+export async function tocViaAgent(agent: AgentModel | undefined, storyUrl: string): Promise<TocResult> {
   const host = hostOf(storyUrl);
   const html = await loadPage(storyUrl);
   const { code, saved } = await savedOrWritten(host, "toc", async () => {
-    await classifyUrl(agent, storyUrl, html);
-    return writeTocCrawler(agent, storyUrl, html);
+    const writer = agent ?? requireAgent();
+    await classifyUrl(writer, storyUrl, html);
+    return writeTocCrawler(writer, storyUrl, html);
   });
   try {
     const toc = await runToc(code, storyUrl, html);
@@ -715,7 +770,7 @@ export function createAgentTocAdapter(): TocAdapter {
   return {
     domains: [],
     normalizeStoryUrl: (url) => url,
-    fetchToc: (storyUrl) => tocViaAgent(requireAgent(), storyUrl),
+    fetchToc: (storyUrl) => tocViaAgent(activeAgent(), storyUrl),
   };
 }
 

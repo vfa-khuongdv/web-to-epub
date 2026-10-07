@@ -82,6 +82,12 @@ function walk(root: ParentNode, blocks: ContentBlock[]): void {
       continue;
     }
 
+    // A table or code block cannot be told apart from text once flattened: kept whole.
+    if (tag === "table" || tag === "pre") {
+      if (el.textContent?.trim()) blocks.push({ type: "html", text: el.outerHTML });
+      continue;
+    }
+
     if (tag === "img") {
       // Use getAttribute instead of .src: preserve the URL as the user sees it,
       // don't let jsdom append a base URL to the fragment.
@@ -140,6 +146,7 @@ export function blocksToHtml(blocks: ContentBlock[]): string {
       if (block.type === "heading") return `<h${block.level || 2}>${block.text}</h${block.level || 2}>`;
       if (block.type === "image") return `<img src="${block.src}" alt="${block.alt || ""}" />`;
       if (block.type === "audio" || block.type === "video") return mediaTag(block.type, block.src || "");
+      if (block.type === "html") return block.text || "";
       return `<p>${block.text}</p>`;
     })
     .join("\n");

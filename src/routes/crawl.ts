@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { MAX_ATTEMPTS, estimateRemainingMs, extractWithRetry } from "../services/crawl";
 import { chaptersToCrawl, pickChapterTitle } from "../services/storyService";
 import { t } from "../services/lang";
@@ -6,7 +6,7 @@ import { ProgressEvent, StoredStory } from "../types";
 import { libraryFor } from "./library";
 import { publish } from "./live";
 
-export const crawlRouter = Router();
+export const crawlRouter = createRouter();
 
 crawlRouter.post("/stories/:id/crawl", async (req, res) => {
   const library = libraryFor(req, res);
@@ -93,19 +93,25 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
 
       const stored = story.chapters.find((c) => c.order === chapter.order);
       if (stored) {
-        stored.status = extracted.error ? "error" : "done";
-        stored.error = extracted.error;
-        stored.errorKind = extracted.error ? extracted.errorKind : undefined;
-        stored.blocks = extracted.error ? undefined : extracted.blocks;
-        // New text from the site: the typos fixed in the old text are not fixed in it.
-        if (!extracted.error) stored.spellChecked = undefined;
-        if (!extracted.error) {
-          stored.title = extracted.titleFromAi ? extracted.title : pickChapterTitle(stored.title, extracted.title, stored.url);
+        // Re-crawling a chapter that already has its content: a transient extraction failure
+        // must not wipe it (status "done" means the stored chapter has blocks). The failure is
+        // still reported on the live channel; only a chapter with nothing to lose takes the error.
+        const keepStored = extracted.error && stored.status === "done";
+        if (!keepStored) {
+          stored.status = extracted.error ? "error" : "done";
+          stored.error = extracted.error;
+          stored.errorKind = extracted.error ? extracted.errorKind : undefined;
+          stored.blocks = extracted.error ? undefined : extracted.blocks;
+          // New text from the site: the typos fixed in the old text are not fixed in it.
+          if (!extracted.error) stored.spellChecked = undefined;
+          if (!extracted.error) {
+            stored.title = extracted.titleFromAi ? extracted.title : pickChapterTitle(stored.title, extracted.title, stored.url);
+          }
+          await library.stories.saveChapter(story.id, stored);
+          // Release content after saving: `stored` lives in story.chapters so holding it means
+          // keeping the entire story in memory until crawl completes.
+          stored.blocks = undefined;
         }
-        await library.stories.saveChapter(story.id, stored);
-        // Release content after saving: `stored` lives in story.chapters so holding it means
-        // keeping the entire story in memory until crawl completes.
-        stored.blocks = undefined;
       }
 
       const etaMs = estimateRemainingMs({ startedAt, completed: i + 1, total: plan.length });

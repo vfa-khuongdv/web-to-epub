@@ -1,5 +1,5 @@
 import sharp from "sharp";
-import { extractImages, getDocumentProxy } from "unpdf";
+import { getDocumentProxy, getResolvedPDFJS } from "unpdf";
 import { ContentBlock } from "../types";
 import { ImportedBook, ImportedChapter, StoredImage, StoreImage } from "./epubImport";
 import { t } from "./lang";
@@ -140,10 +140,60 @@ async function readLines(pdf: PdfDocument, pageNumber: number): Promise<{ width:
 }
 
 // The page's images as JPEGs, in the order the page paints them.
+interface ScannedImage {
+  key: string;
+  width: number;
+  height: number;
+  channels: number;
+  data: Uint8Array;
+}
+
+// An inline image has no object key: identify it by its size and a checksum of its first
+// bytes, so the same picture painted twice on a page is still kept once.
+function inlineKey(image: { width?: number; height?: number; data?: Uint8Array }): string {
+  const data = image.data;
+  let sum = 0;
+  for (let i = 0; data && i < Math.min(64, data.length); i++) sum = (sum * 31 + data[i]) >>> 0;
+  return `inline:${image.width}x${image.height}:${data?.length ?? 0}:${sum}`;
+}
+
+// unpdf's extractImages reads only `paintImageXObject`, so a scan drawn as an inline image
+// (`BI … ID … EI`, common in simple/older generators) was invisible and its page dropped.
+// Read the operator list here and keep both kinds; an inline image arrives as its pixel data.
+async function pageImages(pdf: PdfDocument, pageNumber: number): Promise<ScannedImage[]> {
+  const page = await pdf.getPage(pageNumber);
+  try {
+    const operatorList = await page.getOperatorList();
+    const { OPS } = await getResolvedPDFJS();
+    const images: ScannedImage[] = [];
+    for (let i = 0; i < operatorList.fnArray.length; i++) {
+      const fn = operatorList.fnArray[i];
+      let key: string;
+      let raw: { data?: Uint8Array; width?: number; height?: number } | undefined;
+      if (fn === OPS.paintImageXObject) {
+        key = String(operatorList.argsArray[i][0]);
+        raw = await new Promise((resolve) => (key.startsWith("g_") ? page.commonObjs : page.objs).get(key, resolve));
+      } else if (fn === OPS.paintInlineImageXObject || fn === OPS.paintInlineImageXObjectGroup) {
+        raw = operatorList.argsArray[i][0] as { data?: Uint8Array; width?: number; height?: number };
+        key = inlineKey(raw);
+      } else {
+        continue;
+      }
+      if (!raw?.data || !raw.width || !raw.height) continue;
+      const channels = raw.data.length / (raw.width * raw.height);
+      if (![1, 3, 4].includes(channels)) continue;
+      images.push({ key, width: raw.width, height: raw.height, channels, data: raw.data });
+    }
+    return images;
+  } finally {
+    page.cleanup();
+  }
+}
+
 async function readScan(pdf: PdfDocument, pageNumber: number): Promise<Buffer[]> {
   const encoded: Buffer[] = [];
   const seen = new Set<string>();
-  for (const image of await extractImages(pdf, pageNumber)) {
+  for (const image of await pageImages(pdf, pageNumber)) {
     // Tiny images on an otherwise empty page are decoration, not the scanned page; the
     // same image painted twice on a page is kept once.
     if (image.width < 200 || image.height < 200 || seen.has(image.key)) continue;
@@ -202,12 +252,30 @@ export function joinLine(text: string, next: string): string {
   return `${text} ${next}`;
 }
 
+// A drop cap whose baseline sits too far from the first line to share it (readLines only
+// joins items on one line) arrives as a lone large letter followed by the rest of its word:
+// put the two back together instead of leaving the letter as a heading of its own.
+function joinDropCaps(lines: Line[]): Line[] {
+  const joined: Line[] = [];
+  for (let i = 0; i < lines.length; i++) {
+    const [line, next] = [lines[i], lines[i + 1]];
+    if (next && /^\p{L}$/u.test(line.text) && line.page === next.page && line.size > next.size * 1.3 && /^[a-zà-ỹ]/.test(next.text)) {
+      joined.push({ ...next, text: line.text + next.text });
+      i++;
+    } else {
+      joined.push(line);
+    }
+  }
+  return joined;
+}
+
 // Turn the lines of one chapter into heading and paragraph blocks. A paragraph ends at a
 // larger vertical gap than the body's line spacing, a first-line indent, a change of font
 // size, or a line that finishes a sentence well short of the right margin (the only signal
 // left when every paragraph is one line); across a page break it continues unless the last
 // line finished a sentence.
-export function linesToBlocks(lines: Line[], bodySize: number, lineGap: number, margins: Margins): ContentBlock[] {
+export function linesToBlocks(rawLines: Line[], bodySize: number, lineGap: number, margins: Margins): ContentBlock[] {
+  const lines = joinDropCaps(rawLines);
   const blocks: ContentBlock[] = [];
   let paragraph: string | undefined;
   let previous: Line | undefined;

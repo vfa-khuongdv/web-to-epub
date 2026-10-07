@@ -249,3 +249,12 @@ describe("blocksToHtml", () => {
     expect(htmlToBlocks(blocksToHtml(blocks))).toEqual(blocks);
   });
 });
+
+describe("html blocks (table, code)", () => {
+  it("keeps a table and a pre whole through htmlToBlocks and blocksToHtml", () => {
+    const html = "<p>Before</p><table><tbody><tr><td>1</td><td>2</td></tr></tbody></table><pre>a\n b</pre>";
+    const blocks = htmlToBlocks(html);
+    expect(blocks.map((b) => b.type)).toEqual(["paragraph", "html", "html"]);
+    expect(blocksToHtml(blocks)).toBe("<p>Before</p>\n<table><tbody><tr><td>1</td><td>2</td></tr></tbody></table>\n<pre>a\n b</pre>");
+  });
+});

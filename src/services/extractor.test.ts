@@ -60,6 +60,26 @@ describe("walkToBlocks", () => {
   it("turns a childless text element into a paragraph and ignores empty ones", () => {
     expect(blocksOf("<span>hi</span><span> </span>")).toEqual([{ type: "paragraph", text: "hi" }]);
   });
+
+  it("keeps bare text nodes beside elements instead of dropping them", () => {
+    expect(blocksOf("Câu mở đầu ngoài đoạn.<p>Đoạn một.</p>Câu kết.")).toEqual([
+      { type: "paragraph", text: "Câu mở đầu ngoài đoạn." },
+      { type: "paragraph", text: "Đoạn một." },
+      { type: "paragraph", text: "Câu kết." },
+    ]);
+    expect(blocksOf("<div>trước <em>giữa</em> sau</div>")).toEqual([
+      { type: "paragraph", text: "trước" },
+      { type: "paragraph", text: "giữa" },
+      { type: "paragraph", text: "sau" },
+    ]);
+  });
+
+  it("escapes bare text so it cannot inject markup", () => {
+    expect(blocksOf("&lt;script&gt;alert(1)&lt;/script&gt;<p>x</p>")).toEqual([
+      { type: "paragraph", text: "&lt;script&gt;alert(1)&lt;/script&gt;" },
+      { type: "paragraph", text: "x" },
+    ]);
+  });
 });
 
 describe("extractChapter", () => {

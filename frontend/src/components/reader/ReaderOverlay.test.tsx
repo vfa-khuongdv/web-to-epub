@@ -149,6 +149,18 @@ describe("ReaderOverlay navigation", () => {
     expect(screen.getByRole("button", { name: "Next" })).toBeDisabled();
   });
 
+  it("keeps the chapter last shown when the reader closes", async () => {
+    const { unmount } = mount();
+    await waitFor(() => frame());
+    await userEvent.click(screen.getByRole("button", { name: "Next" }));
+    await waitFor(() => expect(savedPosition()).toEqual({ order: 2, scroll: 0 }));
+
+    unmount();
+
+    // The unmount save must use the chapter on screen, not the mount-time index (Dawn).
+    expect(savedPosition()).toEqual({ order: 2, scroll: 0 });
+  });
+
   it("arrow keys turn chapters and Escape closes", async () => {
     const { p } = mount();
     await waitFor(() => frame());
@@ -322,6 +334,44 @@ describe("ReaderOverlay highlights in the page", () => {
   it("paints stored highlights into the chapter", async () => {
     const found = await markInFrame();
     expect(found.textContent).toBe("Hello");
+  });
+
+  it("paints stored highlights that arrive after the chapter's frame has loaded", async () => {
+    let resolveHighlights: ((value: Highlight[]) => void) | undefined;
+    m.highlights.mockImplementation(
+      () =>
+        new Promise<Highlight[]>((resolve) => {
+          resolveHighlights = resolve;
+        })
+    );
+    mount();
+    const el = await waitFor(() => frame());
+    const doc = el.contentDocument!;
+    doc.open();
+    doc.write(el.getAttribute("srcdoc")!);
+    doc.close();
+    fireEvent.load(el);
+    expect(doc.querySelector('mark[data-highlight="h1"]')).toBeNull();
+
+    await act(async () => {
+      resolveHighlights!([mark]);
+    });
+
+    await waitFor(() => expect(doc.querySelector('mark[data-highlight="h1"]')).toBeTruthy());
+  });
+
+  it("opens a link of the chapter in a new tab instead of navigating the frame", async () => {
+    const found = await markInFrame();
+    const doc = found.ownerDocument;
+    doc.body.insertAdjacentHTML("beforeend", '<a id="out" href="https://example.test/page">out</a><a id="in" href="#top">in</a>');
+    const open = vi.spyOn(window, "open").mockReturnValue(null);
+    expect(fireEvent.click(doc.getElementById("out")!)).toBe(false);
+    expect(open).toHaveBeenCalledWith("https://example.test/page", "_blank", "noopener,noreferrer");
+    // The test frame loads twice (by hand and by jsdom), so the handler may run more than once per click.
+    const calls = open.mock.calls.length;
+    expect(fireEvent.click(doc.getElementById("in")!)).toBe(true);
+    expect(open).toHaveBeenCalledTimes(calls);
+    open.mockRestore();
   });
 
   it("clicking a highlight opens the palette, which can recolour it", async () => {

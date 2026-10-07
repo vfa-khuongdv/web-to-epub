@@ -1,5 +1,6 @@
 import { ImportedBook, StoreImage } from "./epubImport";
 import { parsePdf } from "./pdfImport";
+import { CloudflareBlockedError, isCloudflareResponse } from "./cloudflare";
 import { t } from "./lang";
 
 export const HEYZINE_DOMAIN = "heyzine.com";
@@ -109,10 +110,11 @@ export async function importHeyzine(id: string, options: ImportHeyzineOptions = 
   let html: string;
   try {
     const res = await fetchImpl(page);
+    if (isCloudflareResponse(res)) throw new CloudflareBlockedError(page);
     if (!res.ok) throw new HeyzineNotFoundError(page);
     html = await res.text();
   } catch (err) {
-    if (err instanceof HeyzineNotFoundError) throw err;
+    if (err instanceof HeyzineNotFoundError || err instanceof CloudflareBlockedError) throw err;
     throw new HeyzineNotFoundError(page);
   }
   // A removed or unknown id is answered with a 200 "Page not found", not a 404.

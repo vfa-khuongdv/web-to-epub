@@ -170,6 +170,15 @@ export function useCrawlJob() {
           isError: true,
         }),
       }));
+    } else if (event.type === "error") {
+      // TOC/session-level failures carry no chapter index; without this branch they were
+      // counted but never reached the log, so a crawl that died showed nothing.
+      setJob((j) => ({
+        ...j,
+        running: true,
+        errors: j.errors + 1,
+        log: appendLog(j.log, { at: stamp(), text: event.message ?? "", isError: true }),
+      }));
     } else if (event.type === "chapter-done") {
       const cursor = event.cursor ?? 0;
       const total = event.total ?? 0;

@@ -205,9 +205,9 @@ describe("AddStoryBox", () => {
 
   it("lists unique crawl sites and import sites", () => {
     setup();
-    expect(screen.getByText(/Auto-loading sites:/)).toHaveTextContent("Alpha, Beta");
+    expect(screen.getByText(/Built-in sites:/)).toHaveTextContent("Alpha, Beta");
     expect(screen.getByText(/Book sites/)).toHaveTextContent("Archive");
-    expect(screen.getByText("Or drop an .epub or .pdf file here to import it.")).toBeInTheDocument();
+    expect(screen.getByText("Or drop an .epub / .pdf here.")).toBeInTheDocument();
   });
 
   it("shows loading… with no sites and hides the import group", () => {
@@ -268,7 +268,7 @@ describe("AddStoryBox", () => {
   it("asks about overwriting a file and wires both answers", async () => {
     const { props } = setup({ pendingImport: { kind: "file", file: new File(["x"], "book.epub") } });
     expect(screen.getByText(/Overwrite it with “book.epub”\?/)).toBeInTheDocument();
-    expect(screen.queryByText(/Auto-loading sites/)).toBeNull();
+    expect(screen.queryByText(/Built-in sites/)).toBeNull();
     await userEvent.click(screen.getByRole("button", { name: "Overwrite" }));
     expect(props.onOverwrite).toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
