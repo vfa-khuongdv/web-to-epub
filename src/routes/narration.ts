@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { estimateRemainingMs } from "../services/crawl";
 import { t } from "../services/lang";
 import { settingsStore } from "../services/settingsStore";
@@ -16,7 +16,7 @@ import { runtimeFor, ttsEngines } from "../services/tts/runtime";
 import { Library, NarrationRun, libraryFor } from "./library";
 import { writeSse } from "./live";
 
-export const narrationRouter = Router();
+export const narrationRouter = createRouter();
 
 // What the narration channel carries: the job's own events plus its start and end.
 export type NarrationLiveEvent =
@@ -129,12 +129,21 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
 
   const body = (req.body ?? {}) as { orders?: unknown; regenerate?: unknown };
   const orders = Array.isArray(body.orders) ? body.orders.filter((o): o is number => Number.isInteger(o)) : undefined;
-  const plan = await chaptersToNarrate(library.stories, id, orders);
-
+  // Reserve the story before the first await: two quick starts must not both clear the check
+  // above and run two jobs writing the same chapter files (and deleting each other's state).
   const abort = new AbortController();
   const startedAt = Date.now();
-  const run: NarrationRun = { done: 0, total: plan.length, startedAt, abort };
+  const run: NarrationRun = { done: 0, total: 0, startedAt, abort };
   library.runningNarrations.set(id, run);
+  let plan: Awaited<ReturnType<typeof chaptersToNarrate>>;
+  try {
+    plan = await chaptersToNarrate(library.stories, id, orders);
+  } catch (err) {
+    library.runningNarrations.delete(id);
+    res.status(502).json({ message: err instanceof Error ? err.message : t("Could not work out which chapters to narrate") });
+    return;
+  }
+  run.total = plan.length;
   res.status(202).json({ started: true, total: plan.length });
   publishNarration(library, id, { type: "narrate-running", done: 0, total: plan.length });
 

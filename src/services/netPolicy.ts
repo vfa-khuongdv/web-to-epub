@@ -20,14 +20,54 @@ function privateV4(address: string): boolean {
   );
 }
 
+// An IPv6 address as its 16 bytes. The URL parser normalises a mapped IPv4 literal to hex
+// (`::ffff:127.0.0.1` becomes `::ffff:7f00:1`), so the dotted-quad check alone misses it.
+function ipv6Bytes(address: string): number[] | undefined {
+  const halves = address.toLowerCase().split("::");
+  if (halves.length > 2) return undefined;
+  const parseGroups = (part: string): number[] | undefined => {
+    if (part === "") return [];
+    const groups: number[] = [];
+    const pieces = part.split(":");
+    for (let i = 0; i < pieces.length; i++) {
+      const piece = pieces[i];
+      if (piece.includes(".")) {
+        const parts = piece.split(".").map(Number);
+        if (i !== pieces.length - 1 || parts.length !== 4 || parts.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return undefined;
+        groups.push((parts[0] << 8) | parts[1], (parts[2] << 8) | parts[3]);
+      } else {
+        if (!/^[0-9a-f]{1,4}$/.test(piece)) return undefined;
+        groups.push(parseInt(piece, 16));
+      }
+    }
+    return groups;
+  };
+  const left = parseGroups(halves[0]);
+  if (!left) return undefined;
+  let right: number[] = [];
+  if (halves.length === 2) {
+    const parsed = parseGroups(halves[1]);
+    if (!parsed || left.length + parsed.length >= 8) return undefined;
+    right = parsed;
+  }
+  const groups = halves.length === 2 ? [...left, ...new Array(8 - left.length - right.length).fill(0), ...right] : left;
+  if (groups.length !== 8) return undefined;
+  return groups.flatMap((group) => [(group >> 8) & 0xff, group & 0xff]);
+}
+
 export function isPrivateAddress(address: string): boolean {
   const family = net.isIP(address);
   if (family === 4) return privateV4(address);
   if (family === 6) {
-    const lower = address.toLowerCase();
-    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-    if (mapped) return privateV4(mapped[1]);
-    return lower === "::" || lower === "::1" || /^f[cd]/.test(lower) || /^fe[89ab]/.test(lower);
+    const bytes = ipv6Bytes(address);
+    if (!bytes) return false;
+    // IPv4-mapped (`::ffff:a.b.c.d`) and IPv4-compatible (`::a.b.c.d`, deprecated) addresses
+    // embed an IPv4 address: judge it by the IPv4 rules, so `::ffff:7f00:1` is loopback.
+    const embedded =
+      bytes.slice(0, 10).every((byte) => byte === 0) &&
+      ((bytes[10] === 0xff && bytes[11] === 0xff) || (bytes[10] === 0 && bytes[11] === 0));
+    if (embedded) return privateV4(bytes.slice(12).join("."));
+    return (bytes[0] & 0xfe) === 0xfc || (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80);
   }
   return false;
 }

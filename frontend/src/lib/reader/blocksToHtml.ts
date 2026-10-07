@@ -12,6 +12,7 @@ export function blocksToHtml(blocks: ContentBlock[]): string {
       if (b.type === "heading") return `<h${b.level || 2}>${b.text}</h${b.level || 2}>`;
       if (b.type === "image") return `<img src="${b.src}" alt="${b.alt || ""}" />`;
       if (b.type === "audio" || b.type === "video") return mediaTag(b.type, b.src || "");
+      if (b.type === "html") return b.text || "";
       return `<p>${b.text}</p>`;
     })
     .join("\n");

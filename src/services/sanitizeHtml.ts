@@ -52,7 +52,7 @@ export function sanitizeInlineHtml(html: string): string {
 export function sanitizeBlocks(blocks: ContentBlock[]): ContentBlock[] {
   return blocks.map((block) => {
     const next = { ...block };
-    if (next.type === "paragraph" || next.type === "heading") {
+    if (next.type === "paragraph" || next.type === "heading" || next.type === "html") {
       if (next.text) next.text = sanitizeInlineHtml(next.text);
     } else {
       // Both land inside a double-quoted attribute in the editor's HTML.

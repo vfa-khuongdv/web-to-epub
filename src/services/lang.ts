@@ -264,6 +264,8 @@ const vi: Record<string, string> = {
   "DTV Ebook could not serve this book: {url}": "DTV Ebook không phục vụ được sách này: {url}",
   "This DTV Ebook book has no EPUB to import — the site only offers other formats: {url}":
     "Sách DTV Ebook này không có file EPUB để nhập — site chỉ có định dạng khác: {url}",
+  "This site is behind a Cloudflare check the app cannot pass — download the file in your browser and import it with Import EPUB / PDF instead: {url}":
+    "Trang này đang bị Cloudflare chặn, app không tự qua được — hãy tải file bằng trình duyệt rồi nhập bằng Nhập EPUB / PDF: {url}",
   "Could not import from DTV Ebook": "Không nhập được sách từ DTV Ebook",
   "DTV Ebook books are imported, not crawled": "Sách DTV Ebook được nhập về, không crawl",
   "This is not a DTV Ebook book page: {url} — paste a URL like https://dtv-ebook.com.vn/<name>_<id>.html":
@@ -280,7 +282,6 @@ const vi: Record<string, string> = {
   "The agent crawler is off or its agent is not installed (Settings → Agent crawler)":
     "Trình thu thập bằng agent đang tắt hoặc agent chưa được cài (Cài đặt → Agent crawler)",
   "The agent could not write a crawler for {host}: {reason}": "Agent không viết được crawler cho {host}: {reason}",
-  "This does not look like the home page of a story: {reason}": "Đây không phải trang chủ của một truyện: {reason}",
   "The saved crawler for {host} stopped working ({reason}). Open the story's details and rewrite it with the agent.":
     "Crawler đã lưu cho {host} không còn chạy được ({reason}). Hãy mở chi tiết truyện và nhờ agent viết lại.",
   "The agent could not rewrite the crawler": "Agent không viết lại được crawler",

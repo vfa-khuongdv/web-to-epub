@@ -13,7 +13,7 @@ vi.mock("../renderer", () => ({ renderPageHtml: vi.fn(async () => "") }));
 
 import { LockedContentError } from "../extractor";
 import { AgentActivityEvent, onAgentActivity } from "./agentActivity";
-import { AgentDocumentPageError, articleViaAgent, chapterViaAgent, hardcodedFrom, hasAgentCrawler, partialList, hasArticleCrawler, pageScripts, rewriteCrawler, skeleton, tocViaAgent } from "./agentCrawler";
+import { AgentDocumentPageError, articleViaAgent, chapterViaAgent, hardcodedFrom, hasAgentCrawler, toArticle, partialList, hasArticleCrawler, pageScripts, rewriteCrawler, skeleton, tocViaAgent } from "./agentCrawler";
 import { stopSiteRunner } from "./siteSandbox";
 
 const pad = "<!-- -->".repeat(300);
@@ -67,11 +67,18 @@ describe("agent crawler", () => {
     log.stop();
   });
 
-  it("refuses a URL the agent says is not a story page, and writes nothing", async () => {
+  it("runs saved toc code with the agent off, but cannot write code without one", async () => {
+    // Saved by the first test for novels.test: the agent crawler being off must not stop a check.
+    expect((await tocViaAgent(undefined, story)).chapters).toHaveLength(2);
+    pages["https://nocode.test/story"] = pages[story].replace(/novels\.test/g, "nocode.test");
+    await expect(tocViaAgent(undefined, "https://nocode.test/story")).rejects.toThrow(/agent crawler is off/);
+  });
+
+  it("reads a URL the agent says is not a story page as a page of content, and writes nothing", async () => {
     const log = recorded();
     pages["https://chapters.test/c1"] = pages[story];
     const model = agent('{"kind":"chapter","reason":"it is the text of one chapter"}');
-    await expect(tocViaAgent(model, "https://chapters.test/c1")).rejects.toThrow(/home page of a story: it is the text of one chapter/);
+    await expect(tocViaAgent(model, "https://chapters.test/c1")).rejects.toBeInstanceOf(AgentDocumentPageError);
     expect(model.calls).toBe(1);
     expect(log.kinds()).toEqual(["url:classify", "url:verdict"]);
     expect(await hasAgentCrawler("https://chapters.test/c1")).toBe(false);
@@ -362,6 +369,32 @@ describe("a page that is one whole text", () => {
     const model = agent('{"kind":"document","reason":"a whole book on one page"}');
     await expect(tocViaAgent(model, book)).rejects.toBeInstanceOf(AgentDocumentPageError);
     expect(await hasAgentCrawler(book)).toBe(false);
+  });
+
+  it("turns a list in a paragraph into one bullet paragraph per item, nested ones indented", () => {
+    const html = "<ul><li><p>One <b>bold</b></p></li><li>Two<ol><li>Sub</li></ol></li></ul>";
+    const intro = "Intro text that is long enough to count as the page's content. ".repeat(5);
+    const read = toArticle({ chapters: [{ title: "A", blocks: [{ type: "paragraph", text: `${intro}${html}Tail` }] }] }, "https://a.test/p", "");
+    expect(read.chapters[0].blocks.map((b) => b.text)).toEqual([
+      intro.trim(),
+      "• One <b>bold</b>",
+      "• Two",
+      "\u00a0\u00a01. Sub",
+      "Tail",
+    ]);
+  });
+
+  it("keeps a table or code block of an article as one html block", () => {
+    const intro = "Intro text that is long enough to count as the page's content. ".repeat(5);
+    const read = toArticle({ chapters: [{ title: "A", blocks: [
+      { type: "paragraph", text: intro },
+      { type: "html", text: '<table id="t" class="w" onclick="x()"><tr><th scope="col">A</th><td colspan="2" data-x="1">1</td></tr></table>' },
+      { type: "html", text: "<pre>a &lt; b\n  c</pre>" },
+    ] }] }, "https://a.test/p", "");
+    expect(read.chapters[0].blocks.slice(1)).toEqual([
+      { type: "html", text: '<table><tbody><tr><th scope="col">A</th><td colspan="2">1</td></tr></tbody></table>' },
+      { type: "html", text: "<pre>a &lt; b\n  c</pre>" },
+    ]);
   });
 
   it("writes article code, splits the text into chapters with the page's language, and reuses the code for another page", async () => {

@@ -1,8 +1,9 @@
-import express, { Router } from "express";
+import express from "express";
+import { createRouter } from "./asyncRouter";
 import { MAX_MUSIC_BYTES, backgroundMusic, defaultMusicId, musicMime } from "../services/backgroundMusic";
 import { t } from "../services/lang";
 
-export const musicRouter = Router();
+export const musicRouter = createRouter();
 
 const wire = ({ id, name }: { id: string; name: string }) => ({ id, name });
 

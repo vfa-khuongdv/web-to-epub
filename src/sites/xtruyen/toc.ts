@@ -14,6 +14,10 @@ const CUSTOM_AUTH = "abC0000011111";
 // API returns max 200 chapters per request (verified with from=1&to=200 → 200 items);
 // a 100-item window doubled requests and hit 429 with long stories.
 const CHAPTER_WINDOW = 200;
+// A window that adds nothing new means the API is repeating itself or ignoring `from`; the
+// hard cap keeps a misbehaving answer from looping forever (100 × 200 = 20,000 chapters,
+// far past any real story).
+const MAX_CHAPTER_WINDOWS = 100;
 // Pause between windows to avoid exceeding the site's rate-limit threshold.
 const WINDOW_DELAY_MS = 400;
 
@@ -115,7 +119,8 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
   const chapters: TocChapter[] = [];
   const seen = new Set<string>();
 
-  for (let from = 1; ; from += CHAPTER_WINDOW) {
+  for (let from = 1, window = 0; ; from += CHAPTER_WINDOW, window++) {
+    if (window >= MAX_CHAPTER_WINDOWS) break;
     if (from > 1) await sleep(WINDOW_DELAY_MS);
     const items = parseChaptersResponse(
       await postForm(
@@ -129,24 +134,33 @@ export async function fetchToc(storyUrl: string): Promise<TocResult> {
         storyUrl
       )
     );
+    let added = 0;
     for (const { slug, title } of items) {
       const url = buildChapterUrl(storyUrl, slug);
       if (seen.has(url)) continue;
       seen.add(url);
       chapters.push({ url, title });
+      added++;
     }
-    if (items.length < CHAPTER_WINDOW) break;
+    if (items.length < CHAPTER_WINDOW || added === 0) break;
   }
 
   if (chapters.length === 0) {
     throw new Error(t("No chapter list found at {url} — check the story URL again", { url: storyUrl }));
   }
 
-  const chapterNumber = (url: string) => {
-    const m = url.match(/chuong-(\d+)/i);
-    return m ? Number(m[1]) : Number.MAX_SAFE_INTEGER;
+  // Multi-volume stories restart the chapter numbering in each volume, so the volume is the
+  // first key: sorting by chapter alone interleaves "Quyển 1 Chương 5" with "Quyển 2 Chương 5".
+  const chapterKey = (url: string): [number, number] => {
+    const volume = url.match(/quyen-(\d+)/i);
+    const chapter = url.match(/chuong-(\d+)/i);
+    return [volume ? Number(volume[1]) : 0, chapter ? Number(chapter[1]) : Number.MAX_SAFE_INTEGER];
   };
-  chapters.sort((a, b) => chapterNumber(a.url) - chapterNumber(b.url));
+  chapters.sort((a, b) => {
+    const [aVolume, aChapter] = chapterKey(a.url);
+    const [bVolume, bChapter] = chapterKey(b.url);
+    return aVolume - bVolume || aChapter - bChapter;
+  });
   return { ...meta, chapters };
 }
 

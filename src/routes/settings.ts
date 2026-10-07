@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { APP_VERSION } from "../config/appInfo";
 import { t } from "../services/lang";
 import {
@@ -12,7 +12,7 @@ import { TTS_VARIANTS, TtsVariant } from "../services/tts/workerClient";
 import { vault } from "../services/vault";
 import { libraryFor } from "./library";
 
-export const settingsRouter = Router();
+export const settingsRouter = createRouter();
 
 // The settings page asks for both halves in one go: the values it can change, and the
 // read-only facts about this installation it shows next to them. The counts and the

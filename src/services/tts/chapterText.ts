@@ -62,7 +62,7 @@ export function chapterPartsWithBlocks(title: string, blocks: ContentBlock[]): C
   const cleanTitle = title.replace(/\s+/g, " ").trim();
   if (cleanTitle) parts.push(...splitLongText(cleanTitle).map((text) => ({ text, block: -1 })));
   blocks.forEach((block, index) => {
-    if (block.type !== "heading" && block.type !== "paragraph") return;
+    if (block.type !== "heading" && block.type !== "paragraph" && block.type !== "html") return;
     const text = plainText(block.text ?? "");
     if (!text || (block.type === "heading" && text === cleanTitle)) return;
     parts.push(...splitLongText(text).map((piece) => ({ text: piece, block: index })));
