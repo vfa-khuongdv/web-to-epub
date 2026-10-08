@@ -177,6 +177,12 @@ export default function YouTubePanel({
   });
   const uploadedCount = (state?.chapters ?? []).filter((chapter) => chapter.record?.status === "uploaded").length;
   const playlistMissing = state ? !state.playlist.exists : false;
+  // The playlist is only for the chapters' uploads: with nothing prepared (or everything
+  // already on YouTube) warning about it reads as if an upload were still pending — the
+  // case of a story whose only upload is a compilation that skipped the playlist.
+  const pendingChapterUploads = (state?.chapters ?? []).some(
+    (chapter) => chapter.record && chapter.record.status !== "uploaded"
+  );
 
   function toggle(order: number) {
     setSelected((current) => {
@@ -494,24 +500,26 @@ export default function YouTubePanel({
                     {state.connected ? t("YouTube settings") : t("Connect YouTube")}
                   </button>
                 </div>
-                <p className="text-[12px] leading-snug text-ink-3">
-                  {state.playlist.exists ? (
-                    <>
-                      {t("Playlist:")}{" "}
-                      {state.playlist.url ? (
-                        <a className="underline" href={state.playlist.url} target="_blank" rel="noreferrer">
-                          {state.playlist.title}
-                        </a>
-                      ) : (
-                        state.playlist.title
-                      )}
-                    </>
-                  ) : (
-                    t("The playlist \"{name}\" does not exist yet — it will be created only after you confirm it at upload.", {
-                      name: state.playlist.title,
-                    })
-                  )}
-                </p>
+                {(state.playlist.exists || pendingChapterUploads) && (
+                  <p className="text-[12px] leading-snug text-ink-3">
+                    {state.playlist.exists ? (
+                      <>
+                        {t("Playlist:")}{" "}
+                        {state.playlist.url ? (
+                          <a className="underline" href={state.playlist.url} target="_blank" rel="noreferrer">
+                            {state.playlist.title}
+                          </a>
+                        ) : (
+                          state.playlist.title
+                        )}
+                      </>
+                    ) : (
+                      t("The playlist \"{name}\" does not exist yet — it will be created only after you confirm it at upload.", {
+                        name: state.playlist.title,
+                      })
+                    )}
+                  </p>
+                )}
                 {!state.cover && (
                   <p className="text-[12px] text-error">{t("This story has no cover image yet — add one before making videos")}</p>
                 )}

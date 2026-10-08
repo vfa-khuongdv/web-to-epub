@@ -107,6 +107,18 @@ describe("YouTubePanel", () => {
     expect(screen.getByText(/does not exist yet — it will be created only after you confirm it at upload/)).toBeInTheDocument();
   });
 
+  it("does not warn about the chapter playlist when no chapter upload is pending", () => {
+    hook.value = hookValue({
+      state: { ...state, chapters: [{ order: 1, title: "Chương 1", hasAudio: true, audioChanged: false }] },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // A story whose only upload is a compilation that skipped the playlist has nothing for
+    // this playlist to hold: the warning would read as a still-pending upload.
+    expect(
+      screen.queryByText(/does not exist yet — it will be created only after you confirm it at upload/)
+    ).toBeNull();
+  });
+
   it("asks for the playlist confirmation before uploading", async () => {
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
