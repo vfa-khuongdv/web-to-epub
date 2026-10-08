@@ -1143,21 +1143,8 @@ function ChapterRow({
   const [publishAt, setPublishAt] = useState(localInputValue(record?.publishAt));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
   const uploaded = record?.status === "uploaded";
   const chip = statusChip(record, t);
-
-  // The link is what the person shares; the icon turns into a check for a moment.
-  async function copyLink() {
-    if (!record?.videoUrl) return;
-    try {
-      await navigator.clipboard.writeText(record.videoUrl);
-      setCopied(true);
-      window.setTimeout(() => setCopied(false), 1500);
-    } catch {
-      setSaveError(t("Could not copy the link"));
-    }
-  }
 
   useEffect(() => {
     setTitle(record?.title ?? "");
@@ -1241,20 +1228,9 @@ function ChapterRow({
             </button>
           )}
           {uploaded && record?.videoUrl && (
-            <>
-              <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
-                <Icon name="open" size={13} />
-              </a>
-              <button
-                type="button"
-                className="btn btn-quiet btn-tiny px-1"
-                title={copied ? t("Video link copied.") : t("Copy the video link")}
-                aria-label={t("Copy the video link")}
-                onClick={() => void copyLink()}
-              >
-                <Icon name={copied ? "check" : "copy"} size={13} />
-              </button>
-            </>
+            <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
+              <Icon name="open" size={13} />
+            </a>
           )}
         </td>
       </tr>
