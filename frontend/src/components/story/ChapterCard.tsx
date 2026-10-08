@@ -5,6 +5,10 @@ import { useLang } from "../../i18n";
 import { Icon } from "../ui/Icon";
 import { ChipState, StatusChip } from "../ui/StatusChip";
 
+// One row-menu entry: a full-width quiet button (or link) with an icon and a label.
+const MENU_ITEM =
+  "flex w-full items-center gap-2 px-3 py-1.5 text-left text-[12.5px] hover:bg-row-hover disabled:cursor-default disabled:opacity-50";
+
 interface ChapterCardProps {
   chapter: ExtractedChapter;
   order: number;
@@ -40,6 +44,9 @@ interface ChapterCardProps {
   onCreateAudio?: () => void;
   regenerateDisabled?: boolean;
   regenerating?: boolean;
+  // Multi-select for the batch actions above the table; absent when selection is off.
+  selected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
   // The reader marked the chapter's typos as fixed; missing when it cannot be marked here.
   spellChecked?: boolean;
   onToggleSpellChecked?: () => Promise<void>;
@@ -49,8 +56,6 @@ interface ChapterCardProps {
   onRewrite?: () => void;
   rewriting?: boolean;
   rewriteDisabled?: boolean;
-  // Shown as the button's title when it is disabled for a reason worth explaining.
-  rewriteHint?: string;
   // Put the text the agent first saw back (only for a rewritten chapter).
   onRestoreRewrite?: () => void;
   restoreRewriteDisabled?: boolean;
@@ -101,11 +106,12 @@ export default function ChapterCard({
   regenerating,
   spellChecked,
   onToggleSpellChecked,
+  selected,
+  onSelectChange,
   rewritten,
   onRewrite,
   rewriting,
   rewriteDisabled,
-  rewriteHint,
   onRestoreRewrite,
   restoreRewriteDisabled,
 }: ChapterCardProps) {
@@ -136,6 +142,9 @@ export default function ChapterCard({
   const [urlSaving, setUrlSaving] = useState(false);
   const [urlError, setUrlError] = useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  // The row's secondary actions live in a small menu; the menu is positioned against the
+  // button because the chapter table scrolls and would clip an absolutely placed panel.
+  const [menu, setMenu] = useState<{ top: number; left: number } | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [markingSpell, setMarkingSpell] = useState(false);
   const [loadingBody, setLoadingBody] = useState(false);
@@ -294,6 +303,27 @@ export default function ChapterCard({
     }
   }
 
+  useEffect(() => {
+    if (!menu) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setMenu(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [menu]);
+
+  function openMenu(event: React.MouseEvent<HTMLButtonElement>) {
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 224;
+    const estimatedHeight = 250;
+    const left = Math.min(Math.max(8, rect.right - width), Math.max(8, window.innerWidth - width - 8));
+    const top =
+      rect.bottom + 4 + estimatedHeight > window.innerHeight
+        ? Math.max(8, rect.top - estimatedHeight - 4)
+        : rect.bottom + 4;
+    setMenu({ top, left });
+  }
+
   // Rewriting replaces the chapter's text (the server keeps the original), so confirm first.
   function handleRewrite() {
     if (window.confirm(t("Rewrite this chapter for narration with the agent? The original text is kept so you can restore it."))) {
@@ -324,9 +354,30 @@ export default function ChapterCard({
     }
   }
 
+  const hasMenuActions = Boolean(
+    audioUrl ||
+      (onCreateAudio && chip === "done") ||
+      (onRewrite && chip === "done") ||
+      (rewritten && onRestoreRewrite) ||
+      (onToggleSpellChecked && chip === "done") ||
+      (chip === "done" && !imported) ||
+      onDelete
+  );
+
   return (
     <>
       <tr className={open ? "row-open" : undefined}>
+        <td className="w-8">
+          {onSelectChange && (
+            <input
+              type="checkbox"
+              className="size-3.5 accent-select"
+              aria-label={t("Select chapter {order}", { order })}
+              checked={!!selected}
+              onChange={(event) => onSelectChange(event.target.checked)}
+            />
+          )}
+        </td>
         <td className="num w-11">
           <b>{order}</b>
         </td>
@@ -393,107 +444,22 @@ export default function ChapterCard({
                   <Icon name={audioPlaying ? "pause" : "play"} size={12} />
                 </button>
               )}
-              {audioUrl && (
-                <a
-                  className="btn btn-quiet btn-tiny px-1"
-                  href={audioUrl}
-                  download
-                  title={t("Download this chapter's narration (.mp3)")}
-                  aria-label={t("Download narration of chapter {order}", { order })}
-                >
-                  <Icon name="narration" size={13} />
-                </a>
-              )}
-              {audioUrl && onRegenerateAudio && (
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny px-1"
-                  title={regenerating ? t("Regenerating audio…") : t("Regenerate audio")}
-                  aria-label={t("Regenerate audio of chapter {order}", { order })}
-                  disabled={regenerateDisabled}
-                  onClick={handleRegenerateAudio}
-                >
-                  <Icon name="regenerate" size={13} className={regenerating ? "animate-pulse" : undefined} />
-                </button>
-              )}
-              {!audioUrl && onCreateAudio && chip === "done" && (
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny px-1"
-                  title={regenerating ? t("Creating audio…") : t("Create audio for this chapter")}
-                  aria-label={t("Create audio for chapter {order}", { order })}
-                  disabled={regenerateDisabled}
-                  onClick={onCreateAudio}
-                >
-                  <Icon name="regenerate" size={13} className={regenerating ? "animate-pulse" : undefined} />
-                </button>
-              )}
-              {onToggleSpellChecked && chip === "done" && (
-                <button
-                  type="button"
-                  className={`btn btn-quiet btn-tiny px-1${spellChecked ? " text-select-deep" : ""}`}
-                  title={spellChecked ? t("Spelling fixed — click to unmark") : t("Mark spelling as fixed")}
-                  aria-label={t("Spelling fixed in chapter {order}", { order })}
-                  aria-pressed={!!spellChecked}
-                  disabled={markingSpell}
-                  onClick={handleToggleSpellChecked}
-                >
-                  <Icon name="spellcheck" size={13} />
-                </button>
-              )}
-              {chip === "done" && onRewrite && (
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny"
-                  title={rewriting ? t("Rewriting…") : rewriteHint ?? t("Rewrite for narration")}
-                  aria-label={t("Rewrite chapter {order} for narration", { order })}
-                  disabled={rewriteDisabled}
-                  onClick={handleRewrite}
-                >
-                  <Icon name="sparkles" size={12} className={rewriting ? "animate-pulse" : undefined} />
-                  {rewriting ? t("Rewriting…") : t("Rewrite")}
-                </button>
-              )}
-              {rewritten && onRestoreRewrite && (
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny px-1"
-                  title={t("Restore original text")}
-                  aria-label={t("Restore original text of chapter {order}", { order })}
-                  disabled={restoreRewriteDisabled}
-                  onClick={handleRestoreRewrite}
-                >
-                  <Icon name="retry" size={12} />
-                </button>
-              )}
               {failed && !imported && (
                 <button type="button" className="btn btn-tiny" disabled={retrying} onClick={onRetry}>
                   <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
                   {retrying ? t("Retrying…") : t("Retry")}
                 </button>
               )}
-              {chip === "done" && !imported && (
+              {hasMenuActions && (
                 <button
                   type="button"
                   className="btn btn-quiet btn-tiny px-1"
-                  title={retrying ? t("Retrying…") : t("Re-crawl")}
-                  disabled={retrying}
-                  onClick={handleRecrawl}
+                  title={t("More actions")}
+                  aria-label={t("Actions for chapter {order}", { order })}
+                  aria-expanded={menu !== null}
+                  onClick={openMenu}
                 >
-                  <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
-                  <span className="visually-hidden">{retrying ? t("Retrying…") : t("Re-crawl")}</span>
-                </button>
-              )}
-              {onDelete && (
-                <button
-                  type="button"
-                  className="btn btn-quiet btn-tiny px-1"
-                  title={deleteDisabled ? t("Crawling, cannot delete") : t("Delete chapter")}
-                  aria-label={t("Delete chapter {order}", { order })}
-                  disabled={deleteDisabled}
-                  onClick={() => setConfirmDelete(true)}
-                >
-                  <Icon name="trash" size={13} />
+                  <Icon name="more" size={14} />
                 </button>
               )}
             </span>
@@ -501,9 +467,139 @@ export default function ChapterCard({
         </td>
       </tr>
 
+      {menu && (
+        <>
+          <div className="fixed inset-0 z-40" aria-hidden="true" onMouseDown={() => setMenu(null)} />
+          <div
+            className="fixed z-50 flex w-56 flex-col rounded-tool border border-rule bg-chrome py-1 shadow-lg"
+            style={{ top: menu.top, left: menu.left }}
+          >
+            {audioUrl && (
+              <a
+                className={MENU_ITEM}
+                href={audioUrl}
+                download
+                title={t("Download this chapter's narration (.mp3)")}
+                aria-label={t("Download narration of chapter {order}", { order })}
+                onClick={() => setMenu(null)}
+              >
+                <Icon name="download" size={13} />
+                {t("Download audio")}
+              </a>
+            )}
+            {audioUrl && onRegenerateAudio && (
+              <button
+                type="button"
+                className={MENU_ITEM}
+                aria-label={t("Regenerate audio of chapter {order}", { order })}
+                disabled={regenerateDisabled}
+                onClick={() => {
+                  setMenu(null);
+                  handleRegenerateAudio();
+                }}
+              >
+                <Icon name="regenerate" size={13} className={regenerating ? "animate-pulse" : undefined} />
+                {regenerating ? t("Regenerating audio…") : t("Regenerate audio")}
+              </button>
+            )}
+            {!audioUrl && onCreateAudio && chip === "done" && (
+              <button
+                type="button"
+                className={MENU_ITEM}
+                aria-label={t("Create audio for chapter {order}", { order })}
+                disabled={regenerateDisabled}
+                onClick={() => {
+                  setMenu(null);
+                  onCreateAudio();
+                }}
+              >
+                <Icon name="regenerate" size={13} className={regenerating ? "animate-pulse" : undefined} />
+                {regenerating ? t("Creating audio…") : t("Create audio for this chapter")}
+              </button>
+            )}
+            {chip === "done" && onRewrite && (
+              <button
+                type="button"
+                className={MENU_ITEM}
+                title={rewriting ? t("Rewriting…") : t("Rewrite for narration")}
+                aria-label={t("Rewrite chapter {order} for narration", { order })}
+                disabled={rewriteDisabled}
+                onClick={() => {
+                  setMenu(null);
+                  handleRewrite();
+                }}
+              >
+                <Icon name="sparkles" size={13} className={rewriting ? "animate-pulse" : undefined} />
+                {rewriting ? t("Rewriting…") : rewritten ? t("Rewrite again") : t("Rewrite for narration")}
+              </button>
+            )}
+            {rewritten && onRestoreRewrite && (
+              <button
+                type="button"
+                className={MENU_ITEM}
+                aria-label={t("Restore original text of chapter {order}", { order })}
+                disabled={restoreRewriteDisabled}
+                onClick={() => {
+                  setMenu(null);
+                  handleRestoreRewrite();
+                }}
+              >
+                <Icon name="retry" size={13} />
+                {t("Restore original text")}
+              </button>
+            )}
+            {onToggleSpellChecked && chip === "done" && (
+              <button
+                type="button"
+                className={MENU_ITEM}
+                aria-label={t("Spelling fixed in chapter {order}", { order })}
+                aria-pressed={!!spellChecked}
+                disabled={markingSpell}
+                onClick={() => {
+                  setMenu(null);
+                  void handleToggleSpellChecked();
+                }}
+              >
+                <Icon name="spellcheck" size={13} className={spellChecked ? "text-select-deep" : undefined} />
+                {spellChecked ? t("Unmark spelling fixed") : t("Mark spelling as fixed")}
+              </button>
+            )}
+            {chip === "done" && !imported && (
+              <button
+                type="button"
+                className={MENU_ITEM}
+                disabled={retrying}
+                onClick={() => {
+                  setMenu(null);
+                  handleRecrawl();
+                }}
+              >
+                <Icon name="retry" size={13} className={retrying ? "animate-spin" : undefined} />
+                {t("Re-crawl")}
+              </button>
+            )}
+            {onDelete && (
+              <button
+                type="button"
+                className={`${MENU_ITEM} text-error`}
+                aria-label={t("Delete chapter {order}", { order })}
+                disabled={deleteDisabled}
+                onClick={() => {
+                  setMenu(null);
+                  setConfirmDelete(true);
+                }}
+              >
+                <Icon name="trash" size={13} />
+                {t("Delete chapter")}
+              </button>
+            )}
+          </div>
+        </>
+      )}
+
       {open && (
         <tr className="chapter-open" id={panelId}>
-          <td colSpan={4}>
+          <td colSpan={5}>
             {!imported &&
               (urlEditing ? (
                 <form

@@ -71,6 +71,7 @@ export default function PendingChapterRow({
 
   return (
     <tr>
+      <td className="w-8" />
       <td className="num w-11">
         <b>{order}</b>
       </td>

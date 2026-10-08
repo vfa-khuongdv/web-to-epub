@@ -35,6 +35,7 @@ import {
   TriangleAlert,
   Trash2,
   MonitorPlay,
+  Ellipsis,
   Upload,
   Volume2,
   X,
@@ -78,7 +79,8 @@ export type IconName =
   | "spellcheck"
   | "regenerate"
   | "sparkles"
-  | "youtube";
+  | "youtube"
+  | "more";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
 // as intent ("retry", "open") and swapping a glyph is a one-line change here.
@@ -121,6 +123,7 @@ const icons: Record<IconName, LucideIcon> = {
   regenerate: AudioLines,
   sparkles: Sparkles,
   youtube: MonitorPlay,
+  more: Ellipsis,
 };
 
 // The dot is a state light (crawling, live), not an outline: it reads as a dot only
