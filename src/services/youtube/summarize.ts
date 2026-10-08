@@ -19,18 +19,22 @@ export function summaryPrompt(storyTitle: string, order: number, text: string): 
   ].join("\n");
 }
 
-export function parseSummary(reply: string): string | undefined {
+// `key` is the JSON field the prompt asked for: "summary" for a chapter's summary,
+// "intro" for the compilation's story intro (asking for one key and reading another
+// silently throws away a correct answer).
+export function parseSummary(reply: string, key: "summary" | "intro" = "summary"): string | undefined {
   const start = reply.indexOf("{");
   const end = reply.lastIndexOf("}");
   if (start !== -1 && end > start) {
     try {
-      const value = JSON.parse(reply.slice(start, end + 1)) as { summary?: unknown };
-      if (typeof value.summary === "string" && value.summary.trim()) return value.summary.trim().slice(0, 600);
+      const value = JSON.parse(reply.slice(start, end + 1)) as Record<string, unknown>;
+      const text = value[key];
+      if (typeof text === "string" && text.trim()) return text.trim().slice(0, 600);
     } catch {
       /* not JSON: fall through to the plain-reply case */
     }
   }
-  // A model that answered with the summary itself (no JSON, no code) is still usable.
+  // A model that answered with the text itself (no JSON, no code) is still usable.
   const text = reply.replace(/```[\s\S]*?```/g, " ").replace(/\s+/g, " ").trim();
   if (text && text.length <= 700 && !/[{}]/.test(text)) return text;
   return undefined;
@@ -59,7 +63,7 @@ export async function writeStoryIntro(
   for (let attempt = 1; attempt <= 2; attempt++) {
     if (input.signal?.aborted) throw new Error(t("Stopped"));
     const reply = await agent.complete(attempt === 1 ? prompt : `${prompt}\n\nChỉ trả về JSON, không giải thích.`);
-    const intro = parseSummary(reply);
+    const intro = parseSummary(reply, "intro");
     if (intro) return intro;
   }
   throw new Error(t("The agent could not write the intro"));
