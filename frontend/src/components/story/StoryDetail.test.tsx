@@ -134,6 +134,15 @@ beforeEach(() => {
   exporter.progress = null;
   exporter.exportStoryBook.mockReset();
   narr.value = makeNarration();
+  rewrite.value = {
+    state: null,
+    outcome: null,
+    error: null,
+    start: vi.fn(),
+    stop: vi.fn(),
+    refresh: vi.fn(),
+    dismissOutcome: vi.fn(),
+  };
 });
 afterEach(cleanup);
 
@@ -359,6 +368,41 @@ describe("StoryDetail export and reader", () => {
     setup();
     expect(await screen.findByTestId("reader")).toHaveTextContent("start=1");
     expect(clearOpenRequest).toHaveBeenCalled();
+  });
+});
+
+describe("StoryDetail rewrite", () => {
+  it("shows a Rewrite button on a done chapter and starts the rewrite for it", async () => {
+    const start = vi.fn();
+    rewrite.value = {
+      state: { narratable: true, ready: true, chapters: { 1: { rewritten: false } }, remaining: 1, running: null },
+      outcome: null,
+      error: null,
+      start,
+      stop: vi.fn(),
+      refresh: vi.fn(),
+      dismissOutcome: vi.fn(),
+    };
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Rewrite chapter 1 for narration" }));
+    expect(start).toHaveBeenCalledWith([1]);
+    vi.unstubAllGlobals();
+  });
+
+  it("shows the restore button on a rewritten chapter", () => {
+    rewrite.value = {
+      state: { narratable: true, ready: true, chapters: { 1: { rewritten: true } }, remaining: 0, running: null },
+      outcome: null,
+      error: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      refresh: vi.fn(),
+      dismissOutcome: vi.fn(),
+    };
+    setup();
+    expect(screen.getByRole("button", { name: "Restore original text of chapter 1" })).toBeInTheDocument();
+    expect(screen.getByText("Rewritten")).toBeInTheDocument();
   });
 });
 

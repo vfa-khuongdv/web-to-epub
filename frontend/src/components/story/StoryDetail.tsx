@@ -675,6 +675,15 @@ export default function StoryDetail({
                   regenerating={narration.state?.running?.order === c.order}
                   spellChecked={c.spellChecked}
                   onToggleSpellChecked={() => handleToggleSpellChecked(c.order, !c.spellChecked)}
+                  rewritten={rewrite.state?.chapters[c.order]?.rewritten}
+                  onRewrite={rewrite.state ? () => void rewrite.start([c.order]) : undefined}
+                  rewriting={rewrite.state?.running?.order === c.order}
+                  rewriteDisabled={!rewrite.state?.ready || !!rewrite.state?.running}
+                  rewriteHint={!rewrite.state?.ready ? t("Turn the agent on in Settings") : undefined}
+                  onRestoreRewrite={
+                    rewrite.state?.chapters[c.order]?.rewritten ? () => void handleRestoreRewrite(c.order) : undefined
+                  }
+                  restoreRewriteDisabled={!!rewrite.state?.running}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {
