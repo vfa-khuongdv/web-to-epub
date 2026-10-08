@@ -256,6 +256,8 @@ export interface YouTubeRun {
 export interface YouTubeState {
   connected: boolean;
   channel?: string;
+  // The agent setting is on: the panel offers the AI actions.
+  agentReady: boolean;
   cover: boolean;
   ffmpeg: boolean;
   config: {

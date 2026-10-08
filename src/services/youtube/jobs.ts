@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import path from "path";
 import { StoredStory } from "../../types";
 import { Library } from "../../routes/library";
-import { AgentModel } from "../agent/agentConfig";
+import { activeAgent, AgentModel } from "../agent/agentConfig";
 import { backgroundMusic } from "../backgroundMusic";
 import { estimateRemainingMs } from "../crawl";
 import { t } from "../lang";
@@ -612,6 +612,8 @@ export interface YouTubeStateChapter {
 export interface YouTubeState {
   connected: boolean;
   channel?: string;
+  // The agent setting is on and its CLI is installed: the panel offers the AI actions.
+  agentReady: boolean;
   cover: boolean;
   ffmpeg: boolean;
   config: {
@@ -652,6 +654,7 @@ export async function youTubeState(library: Library, story: StoredStory, config:
   return {
     connected: Boolean(account?.refreshToken || account?.accessToken),
     channel: account?.channelTitle,
+    agentReady: Boolean(activeAgent()),
     cover: Boolean(library.covers.find(story.id)),
     ffmpeg: Boolean(findFfmpeg(config.ffmpegPath)),
     config: {

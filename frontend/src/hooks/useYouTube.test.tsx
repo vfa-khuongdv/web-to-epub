@@ -26,6 +26,7 @@ class FakeEventSource {
 
 const base: YouTubeState = {
   connected: true,
+  agentReady: true,
   cover: true,
   ffmpeg: true,
   config: { channel: "Truyện FM", scheduleTime: "18:00", genreTags: "truyện ngôn tình", musicVolume: 0.15 },

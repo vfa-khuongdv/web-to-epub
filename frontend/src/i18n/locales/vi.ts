@@ -806,4 +806,7 @@ export const vi: Record<string, string> = {
   "Could not remove this part": "Không xoá được phần này",
   "Remove {label}": "Xoá {label}",
   "Making the compilation": "Đang tạo video trọn bộ",
+  "Write intro with AI": "Nhờ AI viết giới thiệu",
+  "Writing…": "Đang viết…",
+  "Could not write the intro": "Không viết được đoạn giới thiệu",
 };

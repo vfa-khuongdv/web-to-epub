@@ -29,6 +29,7 @@ export {
   prepareYouTube,
   renderYouTube,
   planYouTubeCompilation,
+  writeYouTubeIntro,
   renderYouTubeCompilation,
   uploadYouTubeCompilation,
   deleteYouTubeCompilation,

@@ -37,6 +37,8 @@ import {
   YouTubePhase,
 } from "../services/youtube/jobs";
 import { playlistTitle, sanitizeYouTubeText } from "../services/youtube/meta";
+import { writeStoryIntro } from "../services/youtube/summarize";
+import { chapterParts } from "../services/tts/chapterText";
 import { findFfmpeg } from "../services/youtube/video";
 import { isPrivateLibrary, Library, libraryFor } from "./library";
 import { writeSse } from "./live";
@@ -567,6 +569,46 @@ youtubeRouter.post("/stories/:id/youtube/sync", async (req, res) => {
     res.json(result);
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : t("YouTube request failed") });
+  }
+});
+
+// Writes the compilation's story intro with the agent, from the first selected chapters
+// (the person can edit it before making the videos).
+youtubeRouter.post("/stories/:id/youtube/compilation/intro", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const agent = activeAgent();
+  if (!agent) {
+    res.status(409).json({ message: t("The agent crawler is off or its agent is not installed (Settings → Agent crawler)") });
+    return;
+  }
+  const body = (req.body ?? {}) as ChapterOrders;
+  const allowed = new Set(story.chapters.filter((chapter) => chapter.status === "done").map((chapter) => chapter.order));
+  const orders = ordersFrom(body, allowed);
+  if (orders.length === 0) {
+    res.status(400).json({ message: t("Choose at least one chapter") });
+    return;
+  }
+  try {
+    const text: string[] = [];
+    let words = 0;
+    // The start of the story is enough for a 2–3 sentence intro; cap it so the prompt stays small.
+    for (const order of orders.slice(0, 3)) {
+      const chapter = await library.stories.getChapter(story.id, order);
+      if (!chapter?.blocks) continue;
+      text.push(chapterParts(chapter.title, chapter.blocks).join(" "));
+      words += text[text.length - 1].split(/\s+/).length;
+      if (words >= 2500) break;
+    }
+    const intro = await writeStoryIntro(agent, { storyTitle: story.title, text: text.join("\n\n") });
+    res.json({ intro });
+  } catch (err) {
+    res.status(502).json({ message: err instanceof Error ? err.message : t("The agent could not write the intro") });
   }
 });
 

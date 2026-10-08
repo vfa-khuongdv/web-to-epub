@@ -26,6 +26,7 @@ const api = vi.hoisted(() => ({
   uploadYouTubeCompilation: vi.fn(async () => ({ total: 1 })),
   deleteYouTubeCompilation: vi.fn(async () => {}),
   youTubeCompilationVideoUrl: (storyId: string, id: string) => `/api/stories/${storyId}/youtube/compilation/${id}/video`,
+  writeYouTubeIntro: vi.fn(async () => ({ intro: "Giới thiệu do AI viết." })),
   deleteYouTubeChapter: vi.fn(async () => {}),
   youTubeVideoUrl: (storyId: string, order: number) => `/api/stories/${storyId}/youtube/${order}/video`,
 }));
@@ -53,6 +54,7 @@ const story = {
 const state: YouTubeState = {
   connected: true,
   channel: "Truyện FM",
+  agentReady: true,
   cover: true,
   ffmpeg: true,
   config: { channel: "Truyện FM", scheduleTime: "18:00", genreTags: "truyện ngôn tình", musicVolume: 0.15 },
@@ -213,6 +215,20 @@ describe("YouTubePanel", () => {
     await waitFor(() => expect(api.planYouTubeCompilation).toHaveBeenCalledWith("s1", [1]));
     expect(await screen.findByText("Plan: 1 chapters · 2.0 hours · 1 parts")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Make compilation (1 parts)" })).toBeEnabled();
+  });
+
+  it("writes the compilation intro with the agent when it is on", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write intro with AI" }));
+    await waitFor(() => expect(api.writeYouTubeIntro).toHaveBeenCalledWith("s1", [1]));
+    expect(await screen.findByDisplayValue("Giới thiệu do AI viết.")).toBeInTheDocument();
+  });
+
+  it("hides the AI intro button when the agent is off", () => {
+    hook.value = hookValue({ state: { ...state, agentReady: false } });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Write intro with AI" })).toBeNull();
   });
 
   it("points at Settings when not connected", () => {

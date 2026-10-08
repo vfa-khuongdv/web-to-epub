@@ -117,9 +117,9 @@ describe("narration job", () => {
     const result = await narrateChapters(job(runtime), [1, 3, 4, 5]);
 
     expect(result).toEqual({ done: 2, failed: 1 });
-    expect(runtime.calls.map((c) => c.request.parts)).toEqual([["Chương 1", "Một."], ["Chương 3", "FAIL"], ["Chương 5", "Năm."]]);
+    expect(runtime.calls.map((c) => c.request.parts)).toEqual([["Một."], ["FAIL"], ["Năm."]]);
     expect(runtime.calls.every((c) => c.variant === "turbo" && c.request.voice === "A")).toBe(true);
-    expect(await fs.readFile(chapterAudioPath(dir, STORY_ID, 1), "utf8")).toBe("Chương 1|Một.");
+    expect(await fs.readFile(chapterAudioPath(dir, STORY_ID, 1), "utf8")).toBe("Một.");
 
     expect(events.map((e) => [e.type, "order" in e ? e.order : undefined])).toEqual([
       ["narrate-progress", 1],
@@ -130,7 +130,7 @@ describe("narration job", () => {
       ["narrate-chapter-done", 5],
     ]);
     expect(events.find((e) => e.type === "narrate-error")).toMatchObject({ message: "model blew up" });
-    expect(events.at(-1)).toMatchObject({ seconds: 4, skipped: false, done: 2, total: 4 });
+    expect(events.at(-1)).toMatchObject({ seconds: 2, skipped: false, done: 2, total: 4 });
   });
 
   it("skips chapters that have audio, keeps it when the voice or the text changes, redoes it on regenerate", async () => {
@@ -166,21 +166,18 @@ describe("narration job", () => {
 
   it("records each part's timing and serves the chapter's timeline, estimating it for older audio", async () => {
     await narrateChapters(job(fakeRuntime()), [1]);
-    // The fake worker gives no timings, so this is the estimate: title first (block -1),
-    // then the paragraph (block 0), in order, within the audio's length.
+    // The fake worker gives no timings, so this is the estimate: the paragraph (block 0), within the audio's length.
     const estimated = await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings);
-    expect(estimated?.map((p) => p.block)).toEqual([-1, 0]);
+    expect(estimated?.map((p) => p.block)).toEqual([0]);
     expect(estimated![0].start).toBe(0);
-    expect(estimated![1].start).toBeGreaterThan(estimated![0].end);
-    expect(estimated![1].end).toBeLessThanOrEqual(4);
+    expect(estimated![0].end).toBeLessThanOrEqual(2);
 
     const timed = fakeRuntime();
-    timed.timings = [[0, 1.2], [1.6, 3.9]];
+    timed.timings = [[0, 1.2]];
     await fs.rm(path.join(dir, "audio"), { recursive: true });
     await narrateChapters(job(timed), [1]);
     expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings)).toEqual([
-      { block: -1, start: 0, end: 1.2 },
-      { block: 0, start: 1.6, end: 3.9 },
+      { block: 0, start: 0, end: 1.2 },
     ]);
     expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 3, settings)).toBeUndefined();
   });

@@ -36,6 +36,35 @@ export function parseSummary(reply: string): string | undefined {
   return undefined;
 }
 
+export function introPrompt(storyTitle: string, text: string): string {
+  return [
+    "Bạn viết đoạn giới thiệu cho video truyện audio trên YouTube.",
+    "Viết 2–3 câu tiếng Việt từ phần đầu của truyện: bối cảnh, nhân vật chính và tình huống mở đầu.",
+    "Không tiết lộ kết thúc hay tình tiết về sau; không bịa, không thêm bình luận, không mở đầu bằng \"Truyện kể về\".",
+    "Trả về DUY NHẤT một JSON đúng định dạng, không giải thích thêm:",
+    '{"intro": "..."}',
+    "",
+    `Truyện "${storyTitle}", phần đầu:`,
+    text,
+  ].join("\n");
+}
+
+// The story intro the compilation description opens with, written from the first chapters
+// (the same one-shot shape as summarizeChapter).
+export async function writeStoryIntro(
+  agent: AgentModel,
+  input: { storyTitle: string; text: string; signal?: AbortSignal }
+): Promise<string> {
+  const prompt = introPrompt(input.storyTitle, input.text);
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    if (input.signal?.aborted) throw new Error(t("Stopped"));
+    const reply = await agent.complete(attempt === 1 ? prompt : `${prompt}\n\nChỉ trả về JSON, không giải thích.`);
+    const intro = parseSummary(reply);
+    if (intro) return intro;
+  }
+  throw new Error(t("The agent could not write the intro"));
+}
+
 export async function summarizeChapter(
   agent: AgentModel,
   input: { storyTitle: string; order: number; text: string; signal?: AbortSignal }

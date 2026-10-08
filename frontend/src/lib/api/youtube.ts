@@ -140,6 +140,17 @@ export interface RenderCompilationInput {
   publishAt?: Record<number, string>;
 }
 
+// Writes the compilation's story intro with the agent (agent setting required).
+export async function writeYouTubeIntro(storyId: string, orders: number[]): Promise<{ intro: string }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/intro`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ orders }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not write the intro")));
+  return (await res.json()) as { intro: string };
+}
+
 // Plans the compilation: parts and hours, plus chapters still missing narration audio.
 export async function planYouTubeCompilation(storyId: string, orders: number[]): Promise<YouTubeCompilationPlan> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/plan`, {

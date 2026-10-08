@@ -804,4 +804,7 @@ export const en: Record<string, string> = {
   "Could not remove this part": "Could not remove this part",
   "Remove {label}": "Remove {label}",
   "Making the compilation": "Making the compilation",
+  "Write intro with AI": "Write intro with AI",
+  "Writing…": "Writing…",
+  "Could not write the intro": "Could not write the intro",
 };

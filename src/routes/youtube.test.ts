@@ -58,6 +58,7 @@ vi.mock("../services/youtube/compilation", () => ({
   resolveCompilationPath: () => undefined,
 }));
 vi.mock("../services/agent/agentConfig", () => ({ activeAgent: () => fake.agent }));
+vi.mock("../services/youtube/summarize", () => ({ writeStoryIntro: async () => "Giới thiệu từ AI" }));
 
 function makeStory(id: string): StoredStory {
   return {
@@ -100,6 +101,7 @@ describe("YouTube routes", () => {
   afterAll(() => new Promise<void>((resolve) => server.close(() => resolve())));
 
   beforeEach(async () => {
+    fake.agent = { name: "fake", complete: async () => "" };
     fake.account = { clientId: "id", clientSecret: "secret", refreshToken: "r", savedAt: "" };
     fake.playlist = undefined;
     fake.ffmpeg = "/usr/bin/ffmpeg";
@@ -206,6 +208,26 @@ describe("YouTube routes", () => {
     await vi.waitFor(() => expect(fake.render).toHaveBeenCalledTimes(1));
     const job = fake.render.mock.calls[0][0] as unknown as { music?: { id?: string; volume?: number } };
     expect(job.music).toEqual({ id: track.id, volume: 0.2 });
+  });
+
+  it("writes the compilation intro with the agent", async () => {
+    const res = await fetch(`${base}/stories/${id}/youtube/compilation/intro`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orders: [1] }),
+    });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ intro: "Giới thiệu từ AI" });
+  });
+
+  it("refuses to write the intro when the agent is off", async () => {
+    fake.agent = undefined;
+    const res = await fetch(`${base}/stories/${id}/youtube/compilation/intro`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orders: [1] }),
+    });
+    expect(res.status).toBe(409);
   });
 
   it("plans and starts a full-story compilation", async () => {

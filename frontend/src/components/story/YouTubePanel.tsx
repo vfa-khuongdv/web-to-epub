@@ -13,6 +13,7 @@ import {
   syncYouTube,
   uploadYouTube,
   uploadYouTubeCompilation,
+  writeYouTubeIntro,
   youTubeCompilationVideoUrl,
   youTubeVideoUrl,
 } from "../../lib/api";
@@ -77,6 +78,7 @@ export default function YouTubePanel({
   const [compilationCreatePlaylist, setCompilationCreatePlaylist] = useState(false);
   const [compilationNeedsPlaylist, setCompilationNeedsPlaylist] = useState(false);
   const [compilationDialogError, setCompilationDialogError] = useState<string | null>(null);
+  const [writingIntro, setWritingIntro] = useState(false);
 
   useEffect(() => {
     fetchMusicTracks()
@@ -255,6 +257,20 @@ export default function YouTubePanel({
   const readyCompilations = (state?.compilations ?? []).filter(
     (record) => record.status === "rendered" || record.status === "error" || record.status === "uploading"
   );
+
+  async function writeIntro() {
+    if (selectedOrders.length === 0 || writingIntro) return;
+    setWritingIntro(true);
+    setActionError(null);
+    try {
+      const { intro } = await writeYouTubeIntro(story.id, selectedOrders);
+      setCompilationIntro(intro);
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setWritingIntro(false);
+    }
+  }
 
   async function viewCompilationPlan() {
     if (selectedOrders.length === 0) return;
@@ -653,15 +669,28 @@ export default function YouTubePanel({
                     )}
                   </p>
                 </div>
-                <label className="field">
-                  <span className="label">{t("Story intro (2–3 sentences)")}</span>
+                <div className="field">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="label">{t("Story intro (2–3 sentences)")}</span>
+                    {state.agentReady && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-tiny"
+                        disabled={busy || writingIntro || selectedOrders.length === 0}
+                        onClick={() => void writeIntro()}
+                      >
+                        <Icon name="sparkles" size={12} className={writingIntro ? "animate-pulse" : undefined} />
+                        {writingIntro ? t("Writing…") : t("Write intro with AI")}
+                      </button>
+                    )}
+                  </div>
                   <textarea
                     className="input min-h-20"
                     value={compilationIntro}
                     maxLength={2000}
                     onChange={(event) => setCompilationIntro(event.target.value)}
                   />
-                </label>
+                </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <select
                     className="input w-40"

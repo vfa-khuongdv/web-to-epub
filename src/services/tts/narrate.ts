@@ -60,7 +60,7 @@ export async function freshChapterAudio(
 const PAUSE_SECONDS = 0.35;
 
 export interface TimelinePart {
-  // Block index in the chapter (element index in its HTML), -1 for the title.
+  // Block index in the chapter (element index in its HTML).
   block: number;
   start: number;
   end: number;
