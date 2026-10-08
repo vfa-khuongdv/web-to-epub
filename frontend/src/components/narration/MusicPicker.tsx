@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useLang } from "../../i18n";
-import { deleteMusicTrack, fetchMusicTracks, uploadMusicTrack } from "../../lib/api";
+import { deleteMusicTrack, fetchMusicTracks, musicAudioUrl, uploadMusicTrack } from "../../lib/api";
 import { RANGE_CLASS, playedStyle } from "../../lib/ui/range";
 import { NarrationPlayer, useNarrationPlayer } from "../../hooks/narrationPlayer";
 import { MusicTrack } from "../../types";
@@ -22,6 +22,10 @@ export default function MusicPicker({ player }: { player: NarrationPlayer }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  // One preview element shared by every row: starting another track replaces this one,
+  // and it is stopped when the picker closes.
+  const previewRef = useRef<HTMLAudioElement | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -32,6 +36,47 @@ export default function MusicPicker({ player }: { player: NarrationPlayer }) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => () => previewRef.current?.pause(), []);
+
+  // The preview follows the volume slider, like the player's music does.
+  useEffect(() => {
+    const audio = previewRef.current;
+    if (audio) audio.volume = Math.max(0, Math.min(1, player.musicVolume));
+  }, [player.musicVolume, previewId]);
+
+  function stopPreview() {
+    previewRef.current?.pause();
+    setPreviewId(null);
+  }
+
+  function preview(track: MusicTrack) {
+    if (previewId === track.id) {
+      stopPreview();
+      return;
+    }
+    setError(null);
+    if (!previewRef.current) {
+      const audio = new Audio();
+      audio.addEventListener("ended", () => setPreviewId(null));
+      previewRef.current = audio;
+    }
+    const audio = previewRef.current;
+    audio.src = musicAudioUrl(track.id);
+    audio.volume = Math.max(0, Math.min(1, player.musicVolume));
+    setPreviewId(track.id);
+    try {
+      const started = audio.play();
+      if (started && typeof started.catch === "function") {
+        started.catch((err: Error) => {
+          setError(err.message);
+          setPreviewId(null);
+        });
+      }
+    } catch {
+      // jsdom has no media playback; the button still toggles.
+    }
+  }
 
   const add = async (file: File) => {
     setError(null);
@@ -57,6 +102,7 @@ export default function MusicPicker({ player }: { player: NarrationPlayer }) {
       await deleteMusicTrack(id);
       setTracks((list) => (list ?? []).filter((track) => track.id !== id));
       if (player.musicTrack === id) player.setMusicTrack(null);
+      if (previewId === id) stopPreview();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -116,6 +162,15 @@ export default function MusicPicker({ player }: { player: NarrationPlayer }) {
                 />
                 <span className="min-w-0 flex-1 truncate">{track.name}</span>
               </label>
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny"
+                aria-label={previewId === track.id ? t("Stop preview") : t("Preview {name}", { name: track.name })}
+                aria-pressed={previewId === track.id}
+                onClick={() => preview(track)}
+              >
+                <Icon name={previewId === track.id ? "pause" : "play"} size={12} />
+              </button>
               <button
                 type="button"
                 className="btn btn-quiet btn-tiny"

@@ -782,4 +782,6 @@ export const en: Record<string, string> = {
   "Clear selection": "Clear selection",
   "Delete {count} chapters? Their narration audio is removed too.": "Delete {count} chapters? Their narration audio is removed too.",
   "Re-crawl {count} chapters? Their saved content will be overwritten.": "Re-crawl {count} chapters? Their saved content will be overwritten.",
+  "Preview {name}": "Preview {name}",
+  "Stop preview": "Stop preview",
 };

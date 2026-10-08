@@ -784,4 +784,6 @@ export const vi: Record<string, string> = {
   "Clear selection": "Bỏ chọn",
   "Delete {count} chapters? Their narration audio is removed too.": "Xoá {count} chương? Audio giọng đọc của chúng cũng bị xoá.",
   "Re-crawl {count} chapters? Their saved content will be overwritten.": "Crawl lại {count} chương? Nội dung đã lưu sẽ bị ghi đè.",
+  "Preview {name}": "Nghe thử {name}",
+  "Stop preview": "Dừng nghe thử",
 };

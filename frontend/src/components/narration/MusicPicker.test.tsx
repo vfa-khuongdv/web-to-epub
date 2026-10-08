@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { fakePlayer } from "../../test/fakePlayer";
@@ -10,6 +10,7 @@ vi.mock("../../lib/api", () => ({
   fetchMusicTracks: vi.fn(),
   uploadMusicTrack: vi.fn(),
   deleteMusicTrack: vi.fn(),
+  musicAudioUrl: (id: string) => `/api/music/${id}/audio`,
 }));
 import { deleteMusicTrack, fetchMusicTracks, uploadMusicTrack } from "../../lib/api";
 import MusicPicker from "./MusicPicker";
@@ -18,7 +19,26 @@ const fetchMock = vi.mocked(fetchMusicTracks);
 const uploadMock = vi.mocked(uploadMusicTrack);
 const deleteMock = vi.mocked(deleteMusicTrack);
 
+class FakeAudio {
+  static instances: FakeAudio[] = [];
+  src = "";
+  volume = 1;
+  listeners: Record<string, () => void> = {};
+  constructor() {
+    FakeAudio.instances.push(this);
+  }
+  addEventListener(type: string, listener: () => void) {
+    this.listeners[type] = listener;
+  }
+  play() {
+    return Promise.resolve();
+  }
+  pause() {}
+}
+
 beforeEach(() => {
+  FakeAudio.instances = [];
+  vi.stubGlobal("Audio", FakeAudio);
   fetchMock.mockReset().mockResolvedValue({
     tracks: [
       { id: "a", name: "Rain" },
@@ -29,7 +49,10 @@ beforeEach(() => {
   uploadMock.mockReset();
   deleteMock.mockReset().mockResolvedValue();
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+});
 
 describe("MusicPicker", () => {
   it("shows a loading note then the tracks, with the current one selected", async () => {
@@ -72,6 +95,30 @@ describe("MusicPicker", () => {
     renderEn(<MusicPicker player={player} />);
     fireEvent.change(screen.getByRole("slider", { name: "Music volume" }), { target: { value: "0.5" } });
     expect(player.setMusicVolume).toHaveBeenCalledWith(0.5);
+  });
+
+  it("previews a track, follows the volume, and stops on a second click or when it ends", async () => {
+    const player = fakePlayer({ musicVolume: 0.4 });
+    const { rerender } = renderEn(<MusicPicker player={player} />);
+    const previewButton = await screen.findByRole("button", { name: "Preview Rain" });
+    await userEvent.click(previewButton);
+    const audio = FakeAudio.instances[0];
+    expect(audio.src).toBe("/api/music/a/audio");
+    expect(audio.volume).toBe(0.4);
+    expect(screen.getByRole("button", { name: "Stop preview" })).toHaveAttribute("aria-pressed", "true");
+    await userEvent.click(screen.getByRole("button", { name: "Stop preview" }));
+    expect(screen.getByRole("button", { name: "Preview Rain" })).toBeInTheDocument();
+
+    await userEvent.click(screen.getByRole("button", { name: "Preview Piano" }));
+    expect(FakeAudio.instances).toHaveLength(1);
+    expect(audio.src).toBe("/api/music/b/audio");
+    fireEvent.change(screen.getByRole("slider", { name: "Music volume" }), { target: { value: "0.7" } });
+    expect(player.setMusicVolume).toHaveBeenCalledWith(0.7);
+    // The provider re-renders with the new volume, like it does in the app.
+    rerender(<MusicPicker player={fakePlayer({ musicVolume: 0.7 })} />);
+    await waitFor(() => expect(audio.volume).toBe(0.7));
+    act(() => audio.listeners.ended());
+    expect(screen.getByRole("button", { name: "Preview Piano" })).toBeInTheDocument();
   });
 
   it("removes a track and clears the selection when it was the playing one", async () => {
