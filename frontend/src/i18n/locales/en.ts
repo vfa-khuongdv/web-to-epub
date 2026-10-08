@@ -821,4 +821,7 @@ export const en: Record<string, string> = {
   "Updated the description of {count} rendered parts.": "Updated the description of {count} rendered parts.",
   "Could not update the parts' descriptions": "Could not update the parts' descriptions",
   "Put this intro into the 📖 line of the parts already rendered": "Put this intro into the 📖 line of the parts already rendered",
+  "Copy the video link": "Copy the video link",
+  "Video link copied.": "Video link copied.",
+  "Could not copy the link": "Could not copy the link",
 };

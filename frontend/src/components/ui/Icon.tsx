@@ -7,6 +7,7 @@ import {
   ChevronRight,
   Circle,
   Clock,
+  Copy,
   Download,
   ExternalLink,
   FileText,
@@ -59,6 +60,7 @@ export type IconName =
   | "dot"
   | "info"
   | "open"
+  | "copy"
   | "sun"
   | "moon"
   | "display"
@@ -102,6 +104,7 @@ const icons: Record<IconName, LucideIcon> = {
   dot: Circle,
   info: Info,
   open: ExternalLink,
+  copy: Copy,
   sun: Sun,
   moon: Moon,
   display: Monitor,

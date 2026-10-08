@@ -397,6 +397,36 @@ describe("YouTubePanel", () => {
     );
   });
 
+  it("copies a video's link from the part list", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "uploaded",
+            videoId: "v1",
+            videoUrl: "https://youtu.be/v1",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Copy the video link" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://youtu.be/v1"));
+    expect(await screen.findByText("Video link copied.")).toBeInTheDocument();
+    delete (navigator as { clipboard?: unknown }).clipboard;
+  });
+
   it("plays a rendered part in the app instead of opening a link", async () => {
     hook.value = hookValue({
       state: {

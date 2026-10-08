@@ -823,4 +823,7 @@ export const vi: Record<string, string> = {
   "Updated the description of {count} rendered parts.": "Đã cập nhật mô tả của {count} phần đã tạo.",
   "Could not update the parts' descriptions": "Không cập nhật được mô tả các phần",
   "Put this intro into the 📖 line of the parts already rendered": "Đưa đoạn giới thiệu này vào dòng 📖 của các phần đã tạo",
+  "Copy the video link": "Sao chép link video",
+  "Video link copied.": "Đã sao chép link video.",
+  "Could not copy the link": "Không sao chép được link",
 };

@@ -440,6 +440,16 @@ export default function YouTubePanel({
     }
   }
 
+  // The link is what the person shares; copying it saves opening the video first.
+  async function copyVideoLink(url: string) {
+    try {
+      await navigator.clipboard.writeText(url);
+      setMessage(t("Video link copied."));
+    } catch {
+      setActionError(t("Could not copy the link"));
+    }
+  }
+
   function openUpload() {
     if (uploadOrders.length === 0) return;
     setDialogError(null);
@@ -834,6 +844,17 @@ export default function YouTubePanel({
                               <Icon name="open" size={12} />
                             </a>
                           )}
+                          {record.videoUrl && (
+                            <button
+                              type="button"
+                              className="btn btn-quiet btn-tiny px-1"
+                              title={t("Copy the video link")}
+                              aria-label={t("Copy the video link")}
+                              onClick={() => void copyVideoLink(record.videoUrl!)}
+                            >
+                              <Icon name="copy" size={12} />
+                            </button>
+                          )}
                           {record.status !== "uploaded" && record.status !== "uploading" && (
                             <button
                               type="button"
@@ -1116,8 +1137,21 @@ function ChapterRow({
   const [publishAt, setPublishAt] = useState(localInputValue(record?.publishAt));
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const uploaded = record?.status === "uploaded";
   const chip = statusChip(record, t);
+
+  // The link is what the person shares; the icon turns into a check for a moment.
+  async function copyLink() {
+    if (!record?.videoUrl) return;
+    try {
+      await navigator.clipboard.writeText(record.videoUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setSaveError(t("Could not copy the link"));
+    }
+  }
 
   useEffect(() => {
     setTitle(record?.title ?? "");
@@ -1201,9 +1235,20 @@ function ChapterRow({
             </button>
           )}
           {uploaded && record?.videoUrl && (
-            <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
-              <Icon name="open" size={13} />
-            </a>
+            <>
+              <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
+                <Icon name="open" size={13} />
+              </a>
+              <button
+                type="button"
+                className="btn btn-quiet btn-tiny px-1"
+                title={copied ? t("Video link copied.") : t("Copy the video link")}
+                aria-label={t("Copy the video link")}
+                onClick={() => void copyLink()}
+              >
+                <Icon name={copied ? "check" : "copy"} size={13} />
+              </button>
+            </>
           )}
         </td>
       </tr>
