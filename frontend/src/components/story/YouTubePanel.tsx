@@ -20,7 +20,7 @@ import {
 import { distributeSchedule, formatPublishAt, isoFromLocalInput, localInputValue, tomorrowLocalDate } from "../../lib/format/schedule";
 import { formatEta } from "../../lib/format/formatEta";
 import { useLang } from "../../i18n";
-import { MusicTrack, StoredStory, YouTubeChapterState, YouTubeCompilationPlan, YouTubeVideoRecord } from "../../types";
+import { MusicTrack, StoredStory, YouTubeChapterState, YouTubeCompilation, YouTubeCompilationPlan, YouTubeVideoRecord } from "../../types";
 import { useYouTube } from "../../hooks/useYouTube";
 import { YOUTUBE_CONNECTED } from "../settings/YouTubeSettings";
 import { Icon } from "../ui/Icon";
@@ -78,6 +78,7 @@ export default function YouTubePanel({
   const [compilationCreatePlaylist, setCompilationCreatePlaylist] = useState(false);
   const [compilationNeedsPlaylist, setCompilationNeedsPlaylist] = useState(false);
   const [compilationDialogError, setCompilationDialogError] = useState<string | null>(null);
+  const [compilationPreview, setCompilationPreview] = useState<YouTubeCompilation | null>(null);
   const [writingIntro, setWritingIntro] = useState(false);
 
   useEffect(() => {
@@ -153,6 +154,13 @@ export default function YouTubePanel({
 
   const byOrder = useMemo(() => new Map((state?.chapters ?? []).map((chapter) => [chapter.order, chapter])), [state]);
   const running = state?.running ?? null;
+  // The bar spans every chapter/part; the percent in flight is the current one's own
+  // progress, so a long part visibly fills it instead of sitting at done/total for minutes.
+  const jobPct = running
+    ? running.total > 0
+      ? Math.min(100, ((running.done + (running.percent ?? 0) / 100) / running.total) * 100)
+      : (running.percent ?? 0)
+    : 0;
   const selectedOrders = useMemo(() => [...selected].sort((a, b) => a - b), [selected]);
   const renderOrders = selectedOrders.filter((order) => {
     const record = byOrder.get(order)?.record;
@@ -582,7 +590,7 @@ export default function YouTubePanel({
               {running && (
                 <section className="flex flex-col gap-1">
                   <ProgressBar
-                    pct={running.total > 0 ? (100 * running.done) / running.total : 0}
+                    pct={jobPct}
                     running
                     label={t("YouTube job progress")}
                   />
@@ -747,10 +755,16 @@ export default function YouTubePanel({
                               <Icon name="open" size={12} />
                             </a>
                           )}
-                          {!record.videoUrl && record.videoPath && (
-                            <a className="btn btn-quiet btn-tiny px-1" href={youTubeCompilationVideoUrl(story.id, record.id)} target="_blank" rel="noreferrer" title={t("Watch the rendered part")}>
+                          {record.videoPath && (
+                            <button
+                              type="button"
+                              className="btn btn-quiet btn-tiny px-1"
+                              title={t("Watch the rendered part")}
+                              aria-label={t("Watch the rendered part")}
+                              onClick={() => setCompilationPreview(record)}
+                            >
                               <Icon name="play" size={12} />
-                            </a>
+                            </button>
                           )}
                           {record.status !== "uploading" && (
                             <button
@@ -833,6 +847,37 @@ export default function YouTubePanel({
                 {t("Upload now")}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {compilationPreview && state && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCompilationPreview(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Watch the rendered part")}
+            className="flex max-h-full w-full max-w-3xl flex-col gap-3 rounded-tool border border-rule bg-chrome p-4"
+          >
+            <div className="flex items-center gap-3">
+              <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{compilationPreview.label}</h3>
+              <button type="button" className="btn btn-quiet btn-tiny" onClick={() => setCompilationPreview(null)}>
+                <Icon name="x" size={12} />
+                {t("Close")}
+              </button>
+            </div>
+            <video
+              controls
+              autoPlay
+              preload="metadata"
+              className="max-h-[70vh] w-full rounded-tool bg-black"
+              src={youTubeCompilationVideoUrl(story.id, compilationPreview.id)}
+            />
           </div>
         </div>
       )}

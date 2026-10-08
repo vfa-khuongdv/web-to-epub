@@ -217,6 +217,16 @@ describe("YouTubePanel", () => {
     expect(screen.getByRole("button", { name: "Make compilation (1 parts)" })).toBeEnabled();
   });
 
+  it("fills the progress bar with the running part's own progress", () => {
+    hook.value = hookValue({
+      state: { ...state, running: { phase: "compilation", done: 1, total: 2, order: 2, percent: 40 } },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // One finished part plus 40% of the second: the bar moves while the part renders.
+    expect(screen.getByRole("progressbar", { name: "YouTube job progress" })).toHaveAttribute("aria-valuenow", "70");
+    expect(screen.getByText(/Part 2\/2 · 40%/)).toBeInTheDocument();
+  });
+
   it("writes the compilation intro with the agent when it is on", async () => {
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
@@ -229,6 +239,35 @@ describe("YouTubePanel", () => {
     hook.value = hookValue({ state: { ...state, agentReady: false } });
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Write intro with AI" })).toBeNull();
+  });
+
+  it("plays a rendered part in the app instead of opening a link", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Watch the rendered part" }));
+    const dialog = screen.getByRole("dialog", { name: "Watch the rendered part" });
+    expect(dialog.querySelector("video")).toHaveAttribute(
+      "src",
+      "/api/stories/s1/youtube/compilation/c1/video"
+    );
   });
 
   it("points at Settings when not connected", () => {
