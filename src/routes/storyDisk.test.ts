@@ -51,6 +51,33 @@ describe("a story's size on disk, and deleting it", () => {
     mkdirSync(folder("covers"), { recursive: true });
     writeFileSync(folder("covers", `${id}.jpg`), Buffer.alloc(300));
 
+    // Rendered YouTube videos (one chapter, one compilation part) and their records.
+    mkdirSync(folder("youtube", id), { recursive: true });
+    writeFileSync(folder("youtube", id, "1.mp4"), Buffer.alloc(7000));
+    writeFileSync(folder("youtube", id, "compilation-1-2.mp4"), Buffer.alloc(9000));
+    await store.storyStore.saveYouTubeVideo({
+      storyId: id,
+      order: 1,
+      status: "rendered",
+      title: "Truyện – Chương 1",
+      videoPath: `youtube/${id}/1.mp4`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+    await store.storyStore.saveCompilation({
+      id: "comp-1",
+      storyId: id,
+      part: 1,
+      parts: 1,
+      label: "Truyện – Trọn bộ (Chương 1-2)",
+      fromOrder: 1,
+      toOrder: 2,
+      status: "rendered",
+      videoPath: `youtube/${id}/compilation-1-2.mp4`,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
     const app = express();
     app.use(express.json());
     app.use("/api", storiesRouter);
@@ -83,10 +110,12 @@ describe("a story's size on disk, and deleting it", () => {
     expect(res.status).toBe(404);
   });
 
-  it("deleting the story removes its pictures, its audio and its cover as well", async () => {
+  it("deleting the story removes its pictures, audio, cover and rendered videos", async () => {
     expect(existsSync(folder("epub-media", id))).toBe(true);
     expect(existsSync(folder("audio", id))).toBe(true);
     expect(existsSync(folder("covers", `${id}.jpg`))).toBe(true);
+    expect(existsSync(folder("youtube", id, "1.mp4"))).toBe(true);
+    expect(existsSync(folder("youtube", id, "compilation-1-2.mp4"))).toBe(true);
 
     const res = await fetch(`${base}/api/stories/${id}`, { method: "DELETE" });
     expect(res.status).toBe(200);
@@ -94,6 +123,13 @@ describe("a story's size on disk, and deleting it", () => {
     expect(existsSync(folder("epub-media", id))).toBe(false);
     expect(existsSync(folder("audio", id))).toBe(false);
     expect(existsSync(folder("covers", `${id}.jpg`))).toBe(false);
+    // Chapter videos and compilation parts alike: the whole youtube/<story> folder goes.
+    expect(existsSync(folder("youtube", id))).toBe(false);
     expect((await fetch(`${base}/api/stories/${id}`)).status).toBe(404);
+
+    // And the records cascade with the story.
+    const store = (await import("../services/storyStore")).storyStore;
+    expect(await store.getYouTubeVideo(id, 1)).toBeUndefined();
+    expect(await store.listCompilations(id)).toEqual([]);
   });
 });
