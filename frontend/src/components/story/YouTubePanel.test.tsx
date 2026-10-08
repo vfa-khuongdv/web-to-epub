@@ -119,6 +119,35 @@ describe("YouTubePanel", () => {
     ).toBeNull();
   });
 
+  it("shows an uploaded compilation's link beside the connected channel", () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        chapters: [{ order: 1, title: "Chương 1", hasAudio: true, audioChanged: false }],
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "uploaded",
+            videoId: "v1",
+            videoUrl: "https://youtu.be/v1",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // Like the chapter playlist's line: the story's video link, right under the channel.
+    expect(
+      screen.getByText((_content, element) => element?.tagName === "P" && (element.textContent ?? "") === "Video: youtu.be/v1")
+    ).toBeInTheDocument();
+  });
+
   it("asks for the playlist confirmation before uploading", async () => {
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
@@ -421,8 +450,11 @@ describe("YouTubePanel", () => {
       },
     });
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
-    // The link itself is shown, like the playlist link in the connected line.
-    expect(screen.getByRole("link", { name: "youtu.be/v1" })).toHaveAttribute("href", "https://youtu.be/v1");
+    // The link itself is shown, like the playlist link in the connected line (and again
+    // in the part list row).
+    const links = screen.getAllByRole("link", { name: "youtu.be/v1" });
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links[0]).toHaveAttribute("href", "https://youtu.be/v1");
     await userEvent.click(screen.getByRole("button", { name: "Copy the video link" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://youtu.be/v1"));
     expect(await screen.findByText("Video link copied.")).toBeInTheDocument();

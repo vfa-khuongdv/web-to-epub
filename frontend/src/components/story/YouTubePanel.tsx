@@ -183,6 +183,9 @@ export default function YouTubePanel({
   const pendingChapterUploads = (state?.chapters ?? []).some(
     (chapter) => chapter.record && chapter.record.status !== "uploaded"
   );
+  // A story put on YouTube as one video (a compilation, with no chapter playlist) gets its
+  // link shown the way the chapter playlist's is shown above.
+  const uploadedCompilations = (state?.compilations ?? []).filter((record) => record.videoUrl);
 
   function toggle(order: number) {
     setSelected((current) => {
@@ -528,6 +531,19 @@ export default function YouTubePanel({
                         name: state.playlist.title,
                       })
                     )}
+                  </p>
+                )}
+                {uploadedCompilations.length > 0 && (
+                  <p className="text-[12px] leading-snug text-ink-3">
+                    {t("Video:")}{" "}
+                    {uploadedCompilations.map((record, index) => (
+                      <span key={record.id}>
+                        {index > 0 && " · "}
+                        <a className="underline" href={record.videoUrl} target="_blank" rel="noreferrer">
+                          {(record.videoUrl ?? "").replace(/^https?:\/\//, "")}
+                        </a>
+                      </span>
+                    ))}
                   </p>
                 )}
                 {!state.cover && (

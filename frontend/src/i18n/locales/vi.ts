@@ -826,4 +826,5 @@ export const vi: Record<string, string> = {
   "Copy the video link": "Sao chép link video",
   "Video link copied.": "Đã sao chép link video.",
   "Could not copy the link": "Không sao chép được link",
+  "Video:": "Video:",
 };

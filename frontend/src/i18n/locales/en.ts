@@ -824,4 +824,5 @@ export const en: Record<string, string> = {
   "Copy the video link": "Copy the video link",
   "Video link copied.": "Video link copied.",
   "Could not copy the link": "Could not copy the link",
+  "Video:": "Video:",
 };
