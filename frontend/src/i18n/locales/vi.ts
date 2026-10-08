@@ -810,8 +810,11 @@ export const vi: Record<string, string> = {
   "Write intro with AI": "Nhờ AI viết giới thiệu",
   "Writing…": "Đang viết…",
   "Could not write the intro": "Không viết được đoạn giới thiệu",
-  "Could not save the schedule": "Không lưu được lịch đăng",
   "Schedule applied to {count} parts.": "Đã áp lịch cho {count} phần.",
   "Schedule applied to {chapters} chapters and {parts} parts.": "Đã áp lịch cho {chapters} chương và {parts} phần.",
   "Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.": "Giờ đăng lấy từ mục Lịch — bấm \"Áp dụng lịch\" ở đó để đổi cho các phần này.",
+  "Part info": "Thông tin phần",
+  "Save this part's info": "Lưu thông tin phần này",
+  "Could not save this part's info": "Không lưu được thông tin phần này",
+  "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.": "Phần còn lại của mô tả — mục lục kèm thời gian, tác giả và hashtag — được ghép khi tạo video; sau đó mở “Thông tin phần” của từng phần để xem hoặc sửa.",
 };

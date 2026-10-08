@@ -840,8 +840,9 @@ youtubeRouter.get("/stories/:id/youtube/compilation/:compilationId/video", async
   res.sendFile(file);
 });
 
-// Reschedules a rendered part ("Apply schedule" also sends this for compilations). Only
-// the local record changes, and only while the part is not on YouTube yet.
+// Reschedules or edits a rendered part — the title/description/tags the description
+// carries (hashtags included), like a chapter's info. "Apply schedule" sends publishAt.
+// Only the local record changes, and only while the part is not on YouTube yet.
 youtubeRouter.patch("/stories/:id/youtube/compilation/:compilationId", async (req, res) => {
   const library = guardJob(req, res);
   if (!library) return;
@@ -860,7 +861,33 @@ youtubeRouter.patch("/stories/:id/youtube/compilation/:compilationId", async (re
     return;
   }
   const body = (req.body ?? {}) as Record<string, unknown>;
-  const patch: { publishAt?: string } = {};
+  const patch: Record<string, string | undefined> = {};
+  if (body.title !== undefined) {
+    if (typeof body.title !== "string" || !body.title.trim()) {
+      res.status(400).json({ message: t("The title cannot be empty") });
+      return;
+    }
+    const title = sanitizeYouTubeText(body.title.trim()).slice(0, 100);
+    if (!title) {
+      res.status(400).json({ message: t("The title cannot be empty") });
+      return;
+    }
+    patch.title = title;
+  }
+  if (body.description !== undefined) {
+    if (typeof body.description !== "string") {
+      res.status(400).json({ message: t("description must be text") });
+      return;
+    }
+    patch.description = sanitizeYouTubeText(body.description).slice(0, 5000);
+  }
+  if (body.tags !== undefined) {
+    if (typeof body.tags !== "string") {
+      res.status(400).json({ message: t("tags must be text") });
+      return;
+    }
+    patch.tags = sanitizeYouTubeText(body.tags).slice(0, 500);
+  }
   if (body.publishAt !== undefined) {
     if (body.publishAt === null || body.publishAt === "") patch.publishAt = undefined;
     else if (typeof body.publishAt === "string") patch.publishAt = body.publishAt.trim().slice(0, 40);

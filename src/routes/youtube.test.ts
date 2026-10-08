@@ -331,7 +331,7 @@ describe("YouTube routes", () => {
     expect(job.createPlaylist).toBe(true);
   });
 
-  it("reschedules a rendered part, but not one already on YouTube", async () => {
+  it("edits a rendered part's info and schedule, but not once it is on YouTube", async () => {
     await stories.saveCompilation({
       id: "c9",
       storyId: id,
@@ -347,10 +347,20 @@ describe("YouTube routes", () => {
     const res = await fetch(`${base}/stories/${id}/youtube/compilation/c9`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ publishAt: "2026-11-20T18:00:00+07:00" }),
+      body: JSON.stringify({
+        publishAt: "2026-11-20T18:00:00+07:00",
+        title: "Truyện – Trọn bộ (Chương 1-1) | Truyện FM",
+        description: "Mô tả\n\n#TruyệnFM #TruyệnAudio",
+        tags: "truyện audio, nghe truyện",
+      }),
     });
     expect(res.status).toBe(200);
-    expect(await stories.getCompilation(id, "c9")).toMatchObject({ publishAt: "2026-11-20T18:00:00+07:00" });
+    expect(await stories.getCompilation(id, "c9")).toMatchObject({
+      publishAt: "2026-11-20T18:00:00+07:00",
+      title: "Truyện – Trọn bộ (Chương 1-1) | Truyện FM",
+      description: "Mô tả\n\n#TruyệnFM #TruyệnAudio",
+      tags: "truyện audio, nghe truyện",
+    });
 
     await stories.saveCompilation({
       id: "c10",

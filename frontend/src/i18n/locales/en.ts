@@ -808,8 +808,11 @@ export const en: Record<string, string> = {
   "Write intro with AI": "Write intro with AI",
   "Writing…": "Writing…",
   "Could not write the intro": "Could not write the intro",
-  "Could not save the schedule": "Could not save the schedule",
   "Schedule applied to {count} parts.": "Schedule applied to {count} parts.",
   "Schedule applied to {chapters} chapters and {parts} parts.": "Schedule applied to {chapters} chapters and {parts} parts.",
   "Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.": "Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.",
+  "Part info": "Part info",
+  "Save this part's info": "Save this part's info",
+  "Could not save this part's info": "Could not save this part's info",
+  "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.": "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.",
 };

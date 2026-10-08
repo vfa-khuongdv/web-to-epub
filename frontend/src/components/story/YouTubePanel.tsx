@@ -80,6 +80,7 @@ export default function YouTubePanel({
   const [compilationNeedsPlaylist, setCompilationNeedsPlaylist] = useState(false);
   const [compilationDialogError, setCompilationDialogError] = useState<string | null>(null);
   const [compilationPreview, setCompilationPreview] = useState<YouTubeCompilation | null>(null);
+  const [compilationInfo, setCompilationInfo] = useState<YouTubeCompilation | null>(null);
   const [writingIntro, setWritingIntro] = useState(false);
 
   useEffect(() => {
@@ -729,6 +730,11 @@ export default function YouTubePanel({
                     maxLength={2000}
                     onChange={(event) => setCompilationIntro(event.target.value)}
                   />
+                  <p className="mt-0.5 text-[11px] leading-snug text-ink-3">
+                    {t(
+                      "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it."
+                    )}
+                  </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <select
@@ -779,6 +785,17 @@ export default function YouTubePanel({
                             <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
                               <Icon name="open" size={12} />
                             </a>
+                          )}
+                          {record.status !== "uploaded" && record.status !== "uploading" && (
+                            <button
+                              type="button"
+                              className="btn btn-quiet btn-tiny px-1"
+                              title={t("Part info")}
+                              aria-label={t("Part info")}
+                              onClick={() => setCompilationInfo(record)}
+                            >
+                              <Icon name="edit" size={12} />
+                            </button>
                           )}
                           {record.videoPath && (
                             <button
@@ -908,6 +925,18 @@ export default function YouTubePanel({
             />
           </div>
         </div>
+      )}
+
+      {compilationInfo && (
+        <CompilationInfoDialog
+          storyId={story.id}
+          record={compilationInfo}
+          onClose={() => setCompilationInfo(null)}
+          onSaved={() => {
+            setCompilationInfo(null);
+            void refresh();
+          }}
+        />
       )}
 
       {uploadOpen && state && (
@@ -1168,5 +1197,106 @@ function ChapterRow({
         </tr>
       )}
     </>
+  );
+}
+
+/**
+ * One rendered part's info, the same fields a chapter row carries: the description the
+ * video gets (already assembled with the intro, contents, credits and hashtags), its tags
+ * and the publish time. Editing is local to the record; upload sends what is here.
+ */
+function CompilationInfoDialog({
+  storyId,
+  record,
+  onClose,
+  onSaved,
+}: {
+  storyId: string;
+  record: YouTubeCompilation;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useLang();
+  const [title, setTitle] = useState(record.title ?? "");
+  const [description, setDescription] = useState(record.description ?? "");
+  const [tags, setTags] = useState(record.tags ?? "");
+  const [publishAt, setPublishAt] = useState(localInputValue(record.publishAt));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    setSaving(true);
+    setError(null);
+    try {
+      await saveYouTubeCompilation(storyId, record.id, {
+        title,
+        description,
+        tags,
+        publishAt: publishAt ? isoFromLocalInput(publishAt) ?? null : null,
+      });
+      onSaved();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label={t("Part info")}
+        className="flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-tool border border-rule bg-chrome p-4"
+      >
+        <div className="flex items-center gap-3">
+          <h3 className="min-w-0 flex-1 truncate text-sm font-semibold">{record.label}</h3>
+          <button type="button" className="btn btn-quiet btn-tiny" onClick={onClose}>
+            <Icon name="x" size={12} />
+            {t("Close")}
+          </button>
+        </div>
+        <label className="field">
+          <span className="label">{t("Title")}</span>
+          <input className="input" value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="label">{t("Description")}</span>
+          <textarea
+            className="input min-h-40"
+            value={description}
+            maxLength={5000}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
+        <label className="field">
+          <span className="label">{t("Tags (comma separated)")}</span>
+          <input className="input" value={tags} maxLength={500} onChange={(event) => setTags(event.target.value)} />
+        </label>
+        <label className="field">
+          <span className="label">{t("Publish at")}</span>
+          <input type="datetime-local" className="input" value={publishAt} onChange={(event) => setPublishAt(event.target.value)} />
+        </label>
+        {error && (
+          <p role="alert" className="text-[12px] text-error">
+            {error}
+          </p>
+        )}
+        <div className="flex items-center justify-end gap-2">
+          <button type="button" className="btn btn-quiet" onClick={onClose}>
+            {t("Cancel")}
+          </button>
+          <button type="button" className="btn btn-primary" disabled={saving} onClick={() => void save()}>
+            {saving ? t("Saving…") : t("Save this part's info")}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

@@ -272,6 +272,43 @@ describe("YouTubePanel", () => {
     expect(await screen.findByText("Schedule applied to 1 parts.")).toBeInTheDocument();
   });
 
+  it("shows and saves a rendered part's description and tags", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            description: "🎧 Nghe truyện audio \"Truyện\".\n\n📖 Mở đầu.\n\n#TruyệnFM #TruyệnAudio",
+            tags: "truyện audio, nghe truyện",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Part info" }));
+    const dialog = screen.getByRole("dialog", { name: "Part info" });
+    // The description the video gets is already assembled: intro, credits and hashtags.
+    expect((dialog.querySelector("textarea") as HTMLTextAreaElement).value).toContain("#TruyệnFM #TruyệnAudio");
+    await userEvent.click(screen.getByRole("button", { name: "Save this part's info" }));
+    await waitFor(() =>
+      expect(api.saveYouTubeCompilation).toHaveBeenCalledWith(
+        "s1",
+        "c1",
+        expect.objectContaining({ tags: "truyện audio, nghe truyện" })
+      )
+    );
+  });
+
   it("plays a rendered part in the app instead of opening a link", async () => {
     hook.value = hookValue({
       state: {
