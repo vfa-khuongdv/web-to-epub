@@ -43,6 +43,17 @@ interface ChapterCardProps {
   // The reader marked the chapter's typos as fixed; missing when it cannot be marked here.
   spellChecked?: boolean;
   onToggleSpellChecked?: () => Promise<void>;
+  // The agent rewrote this chapter for narration (its original text is kept server-side).
+  rewritten?: boolean;
+  // Rewrite this chapter for narration with the agent.
+  onRewrite?: () => void;
+  rewriting?: boolean;
+  rewriteDisabled?: boolean;
+  // Shown as the button's title when it is disabled for a reason worth explaining.
+  rewriteHint?: string;
+  // Put the text the agent first saw back (only for a rewritten chapter).
+  onRestoreRewrite?: () => void;
+  restoreRewriteDisabled?: boolean;
 }
 
 // Playwright's failure text arrives with time annotations from Call log still
@@ -90,6 +101,13 @@ export default function ChapterCard({
   regenerating,
   spellChecked,
   onToggleSpellChecked,
+  rewritten,
+  onRewrite,
+  rewriting,
+  rewriteDisabled,
+  rewriteHint,
+  onRestoreRewrite,
+  restoreRewriteDisabled,
 }: ChapterCardProps) {
   const initialHtml = () => blocksToHtml(chapter.blocks);
   const [html, setHtml] = useState(initialHtml);
@@ -276,6 +294,17 @@ export default function ChapterCard({
     }
   }
 
+  // Rewriting replaces the chapter's text (the server keeps the original), so confirm first.
+  function handleRewrite() {
+    if (window.confirm(t("Rewrite this chapter for narration with the agent? The original text is kept so you can restore it."))) {
+      onRewrite?.();
+    }
+  }
+
+  function handleRestoreRewrite() {
+    if (window.confirm(t("Restore this chapter's original text?"))) onRestoreRewrite?.();
+  }
+
   // Regenerating replaces audio that may have been listened to already, so confirm first.
   function handleRegenerateAudio() {
     if (window.confirm(t("Regenerate this chapter's audio from its current text? The current audio will be replaced."))) {
@@ -316,6 +345,12 @@ export default function ChapterCard({
             />
             <span className="t">{title || chapter.sourceUrl}</span>
             {dirty && <span className="chip shrink-0">{t("Unsaved")}</span>}
+            {rewritten && (
+              <span className="chip shrink-0" title={t("Rewritten for narration")}>
+                <Icon name="sparkles" size={11} />
+                {t("Rewritten")}
+              </span>
+            )}
           </button>
         </td>
         <td className="w-32">
@@ -404,6 +439,31 @@ export default function ChapterCard({
                   onClick={handleToggleSpellChecked}
                 >
                   <Icon name="spellcheck" size={13} />
+                </button>
+              )}
+              {chip === "done" && onRewrite && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-tiny"
+                  title={rewriting ? t("Rewriting…") : rewriteHint ?? t("Rewrite for narration")}
+                  aria-label={t("Rewrite chapter {order} for narration", { order })}
+                  disabled={rewriteDisabled}
+                  onClick={handleRewrite}
+                >
+                  <Icon name="sparkles" size={12} className={rewriting ? "animate-pulse" : undefined} />
+                  {rewriting ? t("Rewriting…") : t("Rewrite")}
+                </button>
+              )}
+              {rewritten && onRestoreRewrite && (
+                <button
+                  type="button"
+                  className="btn btn-quiet btn-tiny px-1"
+                  title={t("Restore original text")}
+                  aria-label={t("Restore original text of chapter {order}", { order })}
+                  disabled={restoreRewriteDisabled}
+                  onClick={handleRestoreRewrite}
+                >
+                  <Icon name="retry" size={12} />
                 </button>
               )}
               {failed && !imported && (

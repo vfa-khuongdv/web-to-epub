@@ -180,3 +180,112 @@ export interface AppUpdateInfo {
   // The release's own notes (markdown) from GitHub; null when it has none.
   notes: string | null;
 }
+
+// ---- Chapter rewrite for narration (routes/rewrite.ts) ----------------------
+
+export interface RewriteChapterState {
+  rewritten: boolean;
+  at?: string;
+  agent?: string;
+}
+
+export interface RewriteRun {
+  done: number;
+  total: number;
+  etaMs?: number;
+  order?: number;
+  chunk?: number;
+  chunks?: number;
+}
+
+export interface RewriteState {
+  narratable: boolean;
+  // The agent is on and installed.
+  ready: boolean;
+  chapters: Record<number, RewriteChapterState>;
+  remaining: number;
+  running: RewriteRun | null;
+}
+
+// ---- YouTube publishing (routes/youtube.ts) ---------------------------------
+
+export type YouTubeChapterStatus = "draft" | "rendering" | "rendered" | "uploading" | "uploaded" | "error";
+export type YouTubePhase = "prepare" | "render" | "upload";
+
+export interface YouTubeVideoRecord {
+  order: number;
+  status: YouTubeChapterStatus;
+  title?: string;
+  description?: string;
+  tags?: string;
+  publishAt?: string;
+  summary?: string;
+  musicId?: string;
+  musicVolume?: number;
+  videoPath?: string;
+  videoSeconds?: number;
+  videoId?: string;
+  videoUrl?: string;
+  privacy?: string;
+  audioKey?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YouTubeChapterState {
+  order: number;
+  title: string;
+  hasAudio: boolean;
+  // The video was rendered from audio that has been regenerated since.
+  audioChanged: boolean;
+  record?: YouTubeVideoRecord;
+}
+
+export interface YouTubeRun {
+  phase: YouTubePhase;
+  done: number;
+  total: number;
+  etaMs?: number;
+  order?: number;
+  percent?: number;
+}
+
+export interface YouTubeState {
+  connected: boolean;
+  channel?: string;
+  cover: boolean;
+  ffmpeg: boolean;
+  config: {
+    channel: string;
+    scheduleTime: string;
+    genreTags: string;
+    musicId?: string;
+    musicVolume: number;
+  };
+  story: { title: string; author?: string; language?: string };
+  playlist: { title: string; id?: string; url?: string; checkedAt?: string; exists: boolean };
+  credits: { author?: string; translator?: string; genreTags: string };
+  chapters: YouTubeChapterState[];
+  running: YouTubeRun | null;
+}
+
+export interface YouTubeConfig {
+  channel: string;
+  clientSecretPath: string;
+  ffmpegPath: string;
+  genreTags: string;
+  scheduleTime: string;
+  musicId?: string;
+  musicVolume: number;
+  syntheticMedia: boolean;
+}
+
+export interface YouTubeStatus {
+  connected: boolean;
+  channel?: string;
+  clientSecretPath: string;
+  hasClientSecret: boolean;
+  ffmpeg: string | null;
+  config: YouTubeConfig;
+}

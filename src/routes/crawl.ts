@@ -108,6 +108,8 @@ crawlRouter.post("/stories/:id/crawl", async (req, res) => {
             stored.title = extracted.titleFromAi ? extracted.title : pickChapterTitle(stored.title, extracted.title, stored.url);
           }
           await library.stories.saveChapter(story.id, stored);
+          // New text from the site replaces whatever the agent rewrote (and its backup).
+          await library.stories.removeRewrite(story.id, stored.order);
           // Release content after saving: `stored` lives in story.chapters so holding it means
           // keeping the entire story in memory until crawl completes.
           stored.blocks = undefined;

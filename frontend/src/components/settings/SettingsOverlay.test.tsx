@@ -17,6 +17,10 @@ vi.mock("../../lib/api", () => ({
 // The three feature sections have their own tests; here they only need to be present.
 vi.mock("../narration/NarrationSettings", () => ({ default: () => <div>narration-section</div> }));
 vi.mock("../narration/MusicPicker", () => ({ MusicSettings: () => <div>music-section</div> }));
+vi.mock("./YouTubeSettings", () => ({
+  default: () => <div>youtube-section</div>,
+  YOUTUBE_CONNECTED: "youtube-connected",
+}));
 vi.mock("./AgentSettings", () => ({
   default: ({ onSaved, onError }: { onSaved: () => void; onError: (m: string) => void }) => (
     <div>

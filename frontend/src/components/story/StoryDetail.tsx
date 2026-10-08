@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, fetchStorySize, refreshStoryToc, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../../lib/api";
+import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, fetchStorySize, refreshStoryToc, restoreRewrittenChapters, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../../lib/api";
 import { blocksToHtml } from "../../lib/reader/blocksToHtml";
 import { formatBytes } from "../../lib/format/formatBytes";
 import { formatEta } from "../../lib/format/formatEta";
@@ -12,6 +12,8 @@ import { ChapterState, toChapterState } from "../../lib/library/chapterState";
 import { CrawlJobState, liveCounts, NoticeInput } from "../../hooks/useCrawlJob";
 import { useStoryNarration } from "../../hooks/useStoryNarration";
 import NarrationPanel, { playerMusic } from "../narration/NarrationPanel";
+import YouTubePanel from "./YouTubePanel";
+import { useRewrite } from "../../hooks/useRewrite";
 import { exportProgressLabel, useEpubExport } from "../../hooks/useEpubExport";
 import { useVault } from "../../vault";
 import { vaultQuery } from "../../vault/token";
@@ -85,7 +87,27 @@ export default function StoryDetail({
     playChapter,
     resumeListen,
   } = useStoryNarration(story, bookTitle, coverUrl);
+  // Rewriting changes chapter text, so a finished run refetches the edited chapters.
+  const rewrite = useRewrite(story.id, narratable, { onFinished: (orders) => void refreshStory(orders) });
+
+  // A failed rewrite has no panel to report into: show it in the story's error banner.
+  useEffect(() => {
+    const message = rewrite.error ?? rewrite.outcome?.lastError;
+    if (message) setError(message);
+  }, [rewrite.error, rewrite.outcome]);
+
+  async function handleRestoreRewrite(order: number) {
+    setError(null);
+    try {
+      await restoreRewrittenChapters(story.id, [order]);
+      await refreshStory([order]);
+      await rewrite.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
   const [includeNarration, setIncludeNarration] = useState(false);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
   // A book imported from a file has no TOC to crawl, check or watch; those controls
   // and the source link would all point at an epub: URL that no site can answer.
   const imported = story.site === IMPORTED_SITE;
@@ -513,6 +535,12 @@ export default function StoryDetail({
               {isExporting ? t("Exporting…") : t("Export EPUB")}
             </button>
             {narratable && narratedCount > 0 && (
+              <button type="button" className="btn" title={t("Make videos for YouTube from the narrated chapters")} onClick={() => setYoutubeOpen(true)}>
+                <Icon name="youtube" size={14} />
+                {t("YouTube")}
+              </button>
+            )}
+            {narratable && narratedCount > 0 && (
               <label
                 className="flex items-center gap-1.5 text-xs text-ink-2"
                 title={t("Kindle does not play audio in EPUB books; Apple Books and Thorium do.")}
@@ -694,6 +722,15 @@ export default function StoryDetail({
       </div>
 
       </div>
+
+      {youtubeOpen && (
+        <YouTubePanel
+          story={story}
+          onClose={() => setYoutubeOpen(false)}
+          onOpenSettings={onOpenSettings}
+          playerMusic={{ track: player.musicTrack, enabled: player.musicEnabled }}
+        />
+      )}
 
       {reading && (
         <ReaderOverlay

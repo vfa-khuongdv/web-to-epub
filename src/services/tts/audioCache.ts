@@ -54,12 +54,8 @@ export function textKey(parts: string[]): string {
 // The audio of a chapter, whatever text it now has. A meta file is the sign the MP3 is
 // complete (see writeAudioMeta).
 export async function readChapterAudio(dataDir: string, storyId: string, order: number): Promise<CachedAudio | undefined> {
-  let meta: AudioMeta;
-  try {
-    meta = JSON.parse(await fs.readFile(metaPath(dataDir, storyId, order), "utf8")) as AudioMeta;
-  } catch {
-    return undefined;
-  }
+  const meta = await readAudioMeta(dataDir, storyId, order);
+  if (!meta) return undefined;
   const filePath = chapterAudioPath(dataDir, storyId, order);
   try {
     await fs.access(filePath);
@@ -67,6 +63,17 @@ export async function readChapterAudio(dataDir: string, storyId: string, order: 
     return undefined;
   }
   return { filePath, seconds: meta.seconds ?? 0, timings: meta.timings };
+}
+
+// The meta alone, for callers that need what the file reads (`text`) rather than only
+// whether it exists — the YouTube feature records it so an edited chapter shows as
+// "audio changed since the video was made".
+export async function readAudioMeta(dataDir: string, storyId: string, order: number): Promise<AudioMeta | undefined> {
+  try {
+    return JSON.parse(await fs.readFile(metaPath(dataDir, storyId, order), "utf8")) as AudioMeta;
+  } catch {
+    return undefined;
+  }
 }
 
 // Written after the MP3 is complete: a crash mid-synthesis leaves an MP3 without a

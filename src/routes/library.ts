@@ -30,6 +30,13 @@ export interface Library {
   // listeners treat any event they get as crawl progress.
   runningNarrations: Map<string, NarrationRun>;
   narrationSubscribers: Set<ExpressResponse>;
+  // Rewriting chapters for narration with the agent (routes/rewrite.ts), and the YouTube
+  // prepare/render/upload jobs (routes/youtube.ts). Both have their own live channels for
+  // the same reason.
+  runningRewrites: Map<string, RewriteRun>;
+  rewriteSubscribers: Set<ExpressResponse>;
+  runningYouTube: Map<string, YouTubeRun>;
+  youtubeSubscribers: Set<ExpressResponse>;
 }
 
 export interface NarrationRun {
@@ -44,6 +51,31 @@ export interface NarrationRun {
   abort: AbortController;
 }
 
+export interface RewriteRun {
+  done: number;
+  total: number;
+  startedAt: number;
+  etaMs?: number;
+  // The chapter being rewritten and which chunk of it.
+  order?: number;
+  chunk?: number;
+  chunks?: number;
+  abort: AbortController;
+}
+
+export interface YouTubeRun {
+  phase: "prepare" | "render" | "upload";
+  done: number;
+  total: number;
+  startedAt: number;
+  etaMs?: number;
+  // The chapter being worked on; `part`/`parts` is upload progress when known.
+  order?: number;
+  percent?: number;
+  message?: string;
+  abort: AbortController;
+}
+
 function createLibrary(dataDir: string, stories: StoryStore): Library {
   return {
     dataDir,
@@ -55,6 +87,10 @@ function createLibrary(dataDir: string, stories: StoryStore): Library {
     liveAllSubscribers: new Set(),
     runningNarrations: new Map(),
     narrationSubscribers: new Set(),
+    runningRewrites: new Map(),
+    rewriteSubscribers: new Set(),
+    runningYouTube: new Map(),
+    youtubeSubscribers: new Set(),
   };
 }
 
@@ -84,4 +120,10 @@ export function libraryFor(req: ExpressRequest, res: ExpressResponse): Library |
     return null;
   }
   return getPrivateLibrary();
+}
+
+// The private library is a hiding place; publishing its stories to a public channel (or to
+// the user's YouTube account at all) defeats the point, so YouTube routes refuse it.
+export function isPrivateLibrary(library: Library): boolean {
+  return library.dataDir === PRIVATE_DIR;
 }

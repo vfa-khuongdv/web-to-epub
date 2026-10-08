@@ -11,11 +11,13 @@ import { highlightsRouter } from "./highlights";
 import { liveRouter } from "./live";
 import { musicRouter } from "./music";
 import { narrationRouter } from "./narration";
+import { rewriteRouter } from "./rewrite";
 import { settingsRouter } from "./settings";
 import { siteSessionsRouter } from "./siteSessions";
 import { storiesRouter } from "./stories";
 import { ttsRouter } from "./tts";
 import { vaultRouter } from "./vault";
+import { youtubeRouter } from "./youtube";
 
 const router = createRouter();
 
@@ -51,6 +53,8 @@ router.use(exportsRouter);
 router.use(liveRouter);
 router.use(narrationRouter);
 router.use(audioExportsRouter);
+router.use(rewriteRouter);
+router.use(youtubeRouter);
 router.use(storiesRouter);
 router.use(chaptersRouter);
 router.use(highlightsRouter);

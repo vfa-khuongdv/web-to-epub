@@ -19,8 +19,9 @@ export type AgentStepKind =
 export interface AgentStep {
   kind: AgentStepKind;
   host: string;
-  // "url" = what kind of page the address is, "toc" = the story and its chapter list, "chapter" = one chapter's text.
-  fn: "url" | "toc" | "chapter" | "article";
+  // "url" = what kind of page the address is, "toc" = the story and its chapter list, "chapter" = one chapter's text,
+  // "rewrite" = a chapter rewritten for narration.
+  fn: "url" | "toc" | "chapter" | "article" | "rewrite";
   agent?: string;
   attempt?: number;
   of?: number;
@@ -28,6 +29,8 @@ export interface AgentStep {
   count?: number;
   reason?: string;
   verdict?: string;
+  // The chapter this step is about (rewrite only).
+  order?: number;
 }
 
 export interface AgentActivityEvent extends AgentStep {

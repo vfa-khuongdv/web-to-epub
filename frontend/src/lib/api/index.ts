@@ -17,3 +17,22 @@ export { fetchSiteSession, importSiteSession, removeSiteSession } from "./siteSe
 export type { SiteSessionStatus } from "./siteSessions";
 export { clearAgentActivity, fetchAgentConfig, fetchAgentModels, fetchStoryAgentCrawler, rewriteStoryAgentCrawler, saveAgentConfig } from "./agent";
 export type { AgentConfig, AgentConfigPatch, AgentInfo, StoryAgentCrawler } from "./agent";
+export { fetchRewriteState, startRewrite, stopRewrite, restoreRewrittenChapters } from "./rewrite";
+export {
+  fetchYouTubeStatus,
+  saveYouTubeSettings,
+  connectYouTube,
+  disconnectYouTube,
+  fetchYouTubeStory,
+  saveYouTubeCredits,
+  syncYouTube,
+  prepareYouTube,
+  renderYouTube,
+  uploadYouTube,
+  stopYouTube,
+  saveYouTubeChapter,
+  deleteYouTubeChapter,
+  youTubeVideoUrl,
+} from "./youtube";
+export type { PrepareYouTubeInput } from "./youtube";
+export type { YouTubeChapterPatch, YouTubeSyncResult } from "./youtube";

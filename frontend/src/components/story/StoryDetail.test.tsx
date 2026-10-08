@@ -49,7 +49,18 @@ vi.mock("../reader/ReaderOverlay", () => ({
   ),
 }));
 vi.mock("../../vault", () => ({ useVault: () => ({ active: false }) }));
+const rewrite = vi.hoisted(() => ({
+  value: { state: null, outcome: null, error: null, start: vi.fn(), stop: vi.fn(), refresh: vi.fn(), dismissOutcome: vi.fn() },
+}));
+vi.mock("../../hooks/useRewrite", () => ({ useRewrite: () => rewrite.value }));
 vi.mock("./AgentCrawlerPanel", () => ({ default: () => <div data-testid="agent-crawler-panel" /> }));
+vi.mock("./YouTubePanel", () => ({
+  default: (p: { onClose: () => void }) => (
+    <div data-testid="youtube-panel">
+      <button onClick={p.onClose}>close-youtube</button>
+    </div>
+  ),
+}));
 
 function ch(order: number, over: Partial<StoredChapter> = {}): StoredChapter {
   return {
@@ -348,6 +359,27 @@ describe("StoryDetail export and reader", () => {
     setup();
     expect(await screen.findByTestId("reader")).toHaveTextContent("start=1");
     expect(clearOpenRequest).toHaveBeenCalled();
+  });
+});
+
+describe("StoryDetail YouTube", () => {
+  it("opens the YouTube panel from the action row and closes it again", async () => {
+    narr.value = makeNarration({
+      narratable: true,
+      narratedCount: 3,
+      narration: { state: { narratable: true, chapters: {}, bytes: 0, running: null }, start: vi.fn(), stop: vi.fn(), refresh: vi.fn(), dismissOutcome: vi.fn() },
+    });
+    setup();
+    expect(screen.queryByTestId("youtube-panel")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "YouTube" }));
+    expect(screen.getByTestId("youtube-panel")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "close-youtube" }));
+    expect(screen.queryByTestId("youtube-panel")).not.toBeInTheDocument();
+  });
+
+  it("hides the YouTube button for a story with no narration", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "YouTube" })).not.toBeInTheDocument();
   });
 });
 

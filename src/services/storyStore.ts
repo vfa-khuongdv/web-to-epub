@@ -6,6 +6,8 @@ import { ContentBlock, StoredChapter, StoredStory, StorySummary } from "../types
 import { DATA_DIR } from "../config/paths";
 import { sanitizeBlocks } from "./sanitizeHtml";
 import { t } from "./lang";
+import { ChapterRewrite, ChapterRewriteRecord } from "./rewrite/types";
+import { YouTubeStoryRecord, YouTubeVideoRecord } from "./youtube/types";
 
 export function storyId(storyUrl: string): string {
   return crypto.createHash("sha1").update(storyUrl).digest("hex").slice(0, 16);
@@ -50,6 +52,20 @@ export interface StoryStore {
   addHighlight(storyId: string, highlight: Omit<Highlight, "id" | "createdAt">): Promise<Highlight>;
   setHighlightColor(storyId: string, id: string, color: HighlightColor): Promise<boolean>;
   removeHighlight(storyId: string, id: string): Promise<boolean>;
+  // Chapter rewrites for narration: which chapters the agent rewrote, and the blocks
+  // each held before its first rewrite (so the original can be restored).
+  listRewrites(storyId: string): Promise<ChapterRewriteRecord[]>;
+  getRewrite(storyId: string, order: number): Promise<ChapterRewrite | undefined>;
+  saveRewrite(storyId: string, order: number, originalBlocks: ContentBlock[], agent?: string): Promise<void>;
+  removeRewrite(storyId: string, order: number): Promise<boolean>;
+  // YouTube publishing state: one row per story (playlist + credits) and one per chapter
+  // (metadata, rendered file, upload result).
+  getYouTubeStory(storyId: string): Promise<YouTubeStoryRecord | undefined>;
+  saveYouTubeStory(record: YouTubeStoryRecord): Promise<void>;
+  listYouTubeVideos(storyId: string): Promise<YouTubeVideoRecord[]>;
+  getYouTubeVideo(storyId: string, order: number): Promise<YouTubeVideoRecord | undefined>;
+  saveYouTubeVideo(record: YouTubeVideoRecord & { storyId: string }): Promise<void>;
+  removeYouTubeVideo(storyId: string, order: number): Promise<boolean>;
 }
 
 const STORY_ID_RE = /^[0-9a-f]{16}$/;
@@ -112,6 +128,85 @@ interface ChapterRow {
   blocks: string | null;
 }
 
+interface RewriteRow {
+  order: number;
+  original_blocks?: string;
+  agent: string | null;
+  created_at: string;
+}
+
+interface YouTubeStoryRow {
+  story_id: string;
+  playlist_title: string;
+  playlist_id: string | null;
+  playlist_url: string | null;
+  playlist_checked_at: string | null;
+  author: string | null;
+  translator: string | null;
+  genre_tags: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface YouTubeVideoRow {
+  order: number;
+  status: string;
+  title: string | null;
+  description: string | null;
+  tags: string | null;
+  publish_at: string | null;
+  summary: string | null;
+  music_id: string | null;
+  music_volume: number | null;
+  video_path: string | null;
+  video_seconds: number | null;
+  video_id: string | null;
+  video_url: string | null;
+  privacy: string | null;
+  audio_key: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toYouTubeVideo(row: YouTubeVideoRow): YouTubeVideoRecord {
+  return {
+    order: row.order,
+    status: row.status as YouTubeVideoRecord["status"],
+    title: row.title ?? undefined,
+    description: row.description ?? undefined,
+    tags: row.tags ?? undefined,
+    publishAt: row.publish_at ?? undefined,
+    summary: row.summary ?? undefined,
+    musicId: row.music_id ?? undefined,
+    musicVolume: row.music_volume ?? undefined,
+    videoPath: row.video_path ?? undefined,
+    videoSeconds: row.video_seconds ?? undefined,
+    videoId: row.video_id ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    privacy: row.privacy ?? undefined,
+    audioKey: row.audio_key ?? undefined,
+    error: row.error ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function toYouTubeStory(row: YouTubeStoryRow): YouTubeStoryRecord {
+  return {
+    storyId: row.story_id,
+    playlistTitle: row.playlist_title,
+    playlistId: row.playlist_id ?? undefined,
+    playlistUrl: row.playlist_url ?? undefined,
+    playlistCheckedAt: row.playlist_checked_at ?? undefined,
+    author: row.author ?? undefined,
+    translator: row.translator ?? undefined,
+    genreTags: row.genre_tags ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 export function createStoryStore(baseDir: string): StoryStore {
   fs.mkdirSync(baseDir, { recursive: true });
   const db = new DatabaseSync(path.join(baseDir, "stories.db"));
@@ -154,6 +249,48 @@ export function createStoryStore(baseDir: string): StoryStore {
       error TEXT,
       error_kind TEXT,
       blocks TEXT,
+      PRIMARY KEY (story_id, "order")
+    );
+    CREATE TABLE IF NOT EXISTS chapter_rewrites (
+      story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      "order" INTEGER NOT NULL,
+      original_blocks TEXT NOT NULL,
+      agent TEXT,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (story_id, "order")
+    );
+    CREATE TABLE IF NOT EXISTS youtube_stories (
+      story_id TEXT PRIMARY KEY REFERENCES stories(id) ON DELETE CASCADE,
+      playlist_title TEXT NOT NULL,
+      playlist_id TEXT,
+      playlist_url TEXT,
+      playlist_checked_at TEXT,
+      author TEXT,
+      translator TEXT,
+      genre_tags TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS youtube_videos (
+      story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      "order" INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      title TEXT,
+      description TEXT,
+      tags TEXT,
+      publish_at TEXT,
+      summary TEXT,
+      music_id TEXT,
+      music_volume REAL,
+      video_path TEXT,
+      video_seconds REAL,
+      video_id TEXT,
+      video_url TEXT,
+      privacy TEXT,
+      audio_key TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
       PRIMARY KEY (story_id, "order")
     );
   `);
@@ -260,6 +397,63 @@ export function createStoryStore(baseDir: string): StoryStore {
         check_error = CASE WHEN ? = 1 THEN ? ELSE check_error END
     WHERE id = ?
   `);
+  const selectRewrites = db.prepare(
+    `SELECT "order", agent, created_at FROM chapter_rewrites WHERE story_id = ? ORDER BY "order"`
+  );
+  const selectRewrite = db.prepare(
+    `SELECT "order", original_blocks, agent, created_at FROM chapter_rewrites WHERE story_id = ? AND "order" = ?`
+  );
+  // The first original wins: a chapter rewritten twice must still restore to the text the
+  // agent first saw, not to the previous rewrite.
+  const insertRewrite = db.prepare(`
+    INSERT INTO chapter_rewrites (story_id, "order", original_blocks, agent, created_at)
+    VALUES (?, ?, ?, ?, ?)
+    ON CONFLICT(story_id, "order") DO NOTHING
+  `);
+  const deleteRewrite = db.prepare(`DELETE FROM chapter_rewrites WHERE story_id = ? AND "order" = ?`);
+  const selectYouTubeStory = db.prepare(`SELECT * FROM youtube_stories WHERE story_id = ?`);
+  const upsertYouTubeStory = db.prepare(`
+    INSERT INTO youtube_stories
+      (story_id, playlist_title, playlist_id, playlist_url, playlist_checked_at, author, translator, genre_tags, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(story_id) DO UPDATE SET
+      playlist_title = excluded.playlist_title,
+      playlist_id = excluded.playlist_id,
+      playlist_url = excluded.playlist_url,
+      playlist_checked_at = excluded.playlist_checked_at,
+      author = excluded.author,
+      translator = excluded.translator,
+      genre_tags = excluded.genre_tags,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at
+  `);
+  const selectYouTubeVideos = db.prepare(`SELECT * FROM youtube_videos WHERE story_id = ? ORDER BY "order"`);
+  const selectYouTubeVideo = db.prepare(`SELECT * FROM youtube_videos WHERE story_id = ? AND "order" = ?`);
+  const upsertYouTubeVideo = db.prepare(`
+    INSERT INTO youtube_videos
+      (story_id, "order", status, title, description, tags, publish_at, summary, music_id, music_volume,
+       video_path, video_seconds, video_id, video_url, privacy, audio_key, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(story_id, "order") DO UPDATE SET
+      status = excluded.status,
+      title = excluded.title,
+      description = excluded.description,
+      tags = excluded.tags,
+      publish_at = excluded.publish_at,
+      summary = excluded.summary,
+      music_id = excluded.music_id,
+      music_volume = excluded.music_volume,
+      video_path = excluded.video_path,
+      video_seconds = excluded.video_seconds,
+      video_id = excluded.video_id,
+      video_url = excluded.video_url,
+      privacy = excluded.privacy,
+      audio_key = excluded.audio_key,
+      error = excluded.error,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at
+  `);
+  const deleteYouTubeVideo = db.prepare(`DELETE FROM youtube_videos WHERE story_id = ? AND "order" = ?`);
 
   function inTransaction<T>(fn: () => T): T {
     db.exec("BEGIN");
@@ -522,6 +716,111 @@ export function createStoryStore(baseDir: string): StoryStore {
     async removeHighlight(id: string, highlightId: string): Promise<boolean> {
       if (!STORY_ID_RE.test(id)) return false;
       return Number(deleteHighlight.run(highlightId, id).changes) > 0;
+    },
+
+    async listRewrites(id: string): Promise<ChapterRewriteRecord[]> {
+      if (!STORY_ID_RE.test(id)) return [];
+      const rows = selectRewrites.all(id) as unknown as RewriteRow[];
+      return rows.map((row) => ({
+        order: row.order,
+        agent: row.agent ?? undefined,
+        createdAt: row.created_at,
+      }));
+    },
+
+    async getRewrite(id: string, order: number): Promise<ChapterRewrite | undefined> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return undefined;
+      const row = selectRewrite.get(id, order) as unknown as RewriteRow | undefined;
+      if (!row?.original_blocks) return undefined;
+      return {
+        order: row.order,
+        originalBlocks: JSON.parse(row.original_blocks) as ContentBlock[],
+        agent: row.agent ?? undefined,
+        createdAt: row.created_at,
+      };
+    },
+
+    async saveRewrite(id: string, order: number, originalBlocks: ContentBlock[], agent?: string): Promise<void> {
+      if (!STORY_ID_RE.test(id)) {
+        throw new Error(t("Invalid story ID: {id}", { id }));
+      }
+      insertRewrite.run(id, order, JSON.stringify(sanitizeBlocks(originalBlocks)), agent ?? null, new Date().toISOString());
+    },
+
+    async removeRewrite(id: string, order: number): Promise<boolean> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return false;
+      return Number(deleteRewrite.run(id, order).changes) > 0;
+    },
+
+    async getYouTubeStory(id: string): Promise<YouTubeStoryRecord | undefined> {
+      if (!STORY_ID_RE.test(id)) return undefined;
+      const row = selectYouTubeStory.get(id) as unknown as YouTubeStoryRow | undefined;
+      return row ? toYouTubeStory(row) : undefined;
+    },
+
+    async saveYouTubeStory(record: YouTubeStoryRecord): Promise<void> {
+      if (!STORY_ID_RE.test(record.storyId)) {
+        throw new Error(t("Invalid story ID: {id}", { id: record.storyId }));
+      }
+      const existing = selectYouTubeStory.get(record.storyId) as unknown as YouTubeStoryRow | undefined;
+      const createdAt = existing?.created_at ?? record.createdAt ?? new Date().toISOString();
+      upsertYouTubeStory.run(
+        record.storyId,
+        record.playlistTitle,
+        record.playlistId ?? null,
+        record.playlistUrl ?? null,
+        record.playlistCheckedAt ?? null,
+        record.author ?? null,
+        record.translator ?? null,
+        record.genreTags ?? null,
+        createdAt,
+        new Date().toISOString()
+      );
+    },
+
+    async listYouTubeVideos(id: string): Promise<YouTubeVideoRecord[]> {
+      if (!STORY_ID_RE.test(id)) return [];
+      return (selectYouTubeVideos.all(id) as unknown as YouTubeVideoRow[]).map(toYouTubeVideo);
+    },
+
+    async getYouTubeVideo(id: string, order: number): Promise<YouTubeVideoRecord | undefined> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return undefined;
+      const row = selectYouTubeVideo.get(id, order) as unknown as YouTubeVideoRow | undefined;
+      return row ? toYouTubeVideo(row) : undefined;
+    },
+
+    async saveYouTubeVideo(record: YouTubeVideoRecord & { storyId: string }): Promise<void> {
+      if (!STORY_ID_RE.test(record.storyId)) {
+        throw new Error(t("Invalid story ID: {id}", { id: record.storyId }));
+      }
+      const existing = selectYouTubeVideo.get(record.storyId, record.order) as unknown as YouTubeVideoRow | undefined;
+      const createdAt = existing?.created_at ?? record.createdAt ?? new Date().toISOString();
+      upsertYouTubeVideo.run(
+        record.storyId,
+        record.order,
+        record.status,
+        record.title ?? null,
+        record.description ?? null,
+        record.tags ?? null,
+        record.publishAt ?? null,
+        record.summary ?? null,
+        record.musicId ?? null,
+        record.musicVolume ?? null,
+        record.videoPath ?? null,
+        record.videoSeconds ?? null,
+        record.videoId ?? null,
+        record.videoUrl ?? null,
+        record.privacy ?? null,
+        record.audioKey ?? null,
+        record.error ?? null,
+        createdAt,
+        new Date().toISOString()
+      );
+    },
+
+    async removeYouTubeVideo(id: string, order: number): Promise<boolean> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return false;
+      return Number(deleteYouTubeVideo.run(id, order).changes) > 0;
     },
   };
 }
