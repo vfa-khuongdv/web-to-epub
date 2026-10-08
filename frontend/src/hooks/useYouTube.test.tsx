@@ -70,6 +70,28 @@ describe("useYouTube", () => {
     await waitFor(() => expect(api.fetchYouTubeStory.mock.calls.length).toBeGreaterThan(calls));
   });
 
+  it("shows a run that just started, before its first chapter ends", async () => {
+    const { result } = renderHook(() => useYouTube("s1", true));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+    FakeEventSource.instances[0].emit({ type: "youtube-running", storyId: "s1", phase: "compilation", done: 0, total: 2 });
+    await waitFor(() => expect(result.current.state?.running).toEqual({ phase: "compilation", done: 0, total: 2 }));
+  });
+
+  it("takes a progress event as the start of a run when the start event was missed", async () => {
+    const { result } = renderHook(() => useYouTube("s1", true));
+    await waitFor(() => expect(result.current.state).not.toBeNull());
+    FakeEventSource.instances[0].emit({
+      type: "youtube-progress",
+      storyId: "s1",
+      phase: "compilation",
+      order: 1,
+      done: 0,
+      total: 2,
+      percent: 25,
+    });
+    await waitFor(() => expect(result.current.state?.running?.percent).toBe(25));
+  });
+
   it("keeps the quota message from an idle event", async () => {
     const { result } = renderHook(() => useYouTube("s1", true));
     await waitFor(() => expect(result.current.state).not.toBeNull());

@@ -284,6 +284,7 @@ export const vi: Record<string, string> = {
   // Highlights
   "Highlights ({count})": "Đã tô ({count})",
   "Chapter {order}": "Chương {order}",
+  "Part {part}/{total}": "Phần {part}/{total}",
   "Nothing highlighted yet — select any text in the page to colour it.": "Chưa tô đoạn nào — bôi đen bất kỳ đoạn nào trong trang để tô màu.",
   "Highlight colour": "Màu tô",
   "Yellow": "Vàng",

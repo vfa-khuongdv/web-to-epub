@@ -596,9 +596,15 @@ export default function YouTubePanel({
                             ? "Making the compilation"
                             : "Uploading"
                     )}
-                    {running.order !== undefined && ` · ${t("Chapter {order}", { order: running.order })}`}
+                    {running.order !== undefined &&
+                      ` · ${
+                        running.phase === "compilation"
+                          ? t("Part {part}/{total}", { part: running.order, total: running.total })
+                          : t("Chapter {order}", { order: running.order })
+                      }`}
                     {running.percent !== undefined && ` · ${running.percent}%`}
-                    {` · ${t("{done}/{total} chapters", { done: running.done, total: running.total })}`}
+                    {running.phase !== "compilation" &&
+                      ` · ${t("{done}/{total} chapters", { done: running.done, total: running.total })}`}
                     {running.etaMs !== undefined && ` · ${t("{eta} remaining", { eta: formatEta(running.etaMs, lang) })}`}
                   </p>
                 </section>

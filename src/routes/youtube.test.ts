@@ -108,6 +108,8 @@ describe("YouTube routes", () => {
     fake.prepare.mockClear();
     fake.render.mockClear();
     fake.upload.mockClear();
+    fake.renderCompilation.mockClear();
+    fake.uploadCompilation.mockClear();
     fake.state = { connected: true, chapters: [], playlist: { title: "T", exists: false }, running: null };
     await stories.removeYouTubeVideo(id, 1);
     await stories.removeYouTubeVideo(id, 2);
@@ -251,6 +253,50 @@ describe("YouTube routes", () => {
     expect(job.orders).toEqual([1, 2]);
     expect(job.intro).toBe("Giới thiệu");
     expect(job.labelWord).toBe("Tuyển tập");
+  });
+
+  it("announces a job on the live channel before its first chapter ends", async () => {
+    const controller = new AbortController();
+    const live = await fetch(`${base}/youtube/live`, { signal: controller.signal });
+    const reader = live.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const nextEvent = async (): Promise<Record<string, unknown>> => {
+      for (;;) {
+        const index = buffer.indexOf("\n\n");
+        if (index >= 0) {
+          const chunk = buffer.slice(0, index);
+          buffer = buffer.slice(index + 2);
+          if (chunk.startsWith("data: ")) return JSON.parse(chunk.slice(6));
+          continue;
+        }
+        const { value, done } = await reader.read();
+        if (done) throw new Error("live stream ended");
+        buffer += decoder.decode(value, { stream: true });
+      }
+    };
+    try {
+      expect(await nextEvent()).toMatchObject({ type: "snapshot" });
+
+      const render = await fetch(`${base}/stories/${id}/youtube/compilation`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders: [1, 2] }),
+      });
+      expect(render.status).toBe(202);
+
+      // The panel learns the run started here — waiting for the first part to finish is
+      // minutes of a silent, disabled UI.
+      expect(await nextEvent()).toMatchObject({
+        type: "youtube-running",
+        storyId: id,
+        phase: "compilation",
+        done: 0,
+        total: 1,
+      });
+    } finally {
+      controller.abort();
+    }
   });
 
   it("asks for the playlist confirmation before uploading a compilation", async () => {

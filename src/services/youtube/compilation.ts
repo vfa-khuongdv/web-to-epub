@@ -199,15 +199,20 @@ export async function planCompilation(library: Library, storyId: string, orders:
 }
 
 // The concat demuxer needs a list file; paths are quoted for names with spaces/quotes.
-async function concatAudio(command: string, files: string[], out: string, signal?: AbortSignal): Promise<void> {
+async function concatAudio(
+  command: string,
+  files: string[],
+  out: string,
+  options: { signal?: AbortSignal; durationSeconds?: number; onProgress?: (fraction: number) => void }
+): Promise<void> {
   const listFile = `${out}.list.txt`;
   const contents = files.map((file) => `file '${file.replace(/'/g, "'\\''")}'`).join("\n");
   await fs.writeFile(listFile, `${contents}\n`);
   try {
     await runFfmpeg(
       command,
-      ["-y", "-loglevel", "error", "-f", "concat", "-safe", "0", "-i", listFile, "-vn", "-c:a", "libmp3lame", "-b:a", "128k", out],
-      { signal }
+      ["-y", "-loglevel", "error", "-progress", "pipe:1", "-nostats", "-f", "concat", "-safe", "0", "-i", listFile, "-vn", "-c:a", "libmp3lame", "-b:a", "128k", out],
+      { signal: options.signal, durationSeconds: options.durationSeconds, onProgress: options.onProgress }
     );
   } finally {
     await fs.rm(listFile, { force: true });
@@ -306,7 +311,21 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
         createdAt: previous?.createdAt ?? new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       });
-      await concatAudio(command, files, audioPath, signal);
+      // Joining + re-encoding the audio, then encoding the video: the two stages make one
+      // 0–100% per part, split at the halfway point so the bar never jumps backwards.
+      await concatAudio(command, files, audioPath, {
+        signal,
+        durationSeconds: partSeconds,
+        onProgress: (fraction) =>
+          onEvent({
+            type: "youtube-progress",
+            phase: "compilation",
+            order: part.part,
+            done,
+            total,
+            percent: Math.round(fraction * 50),
+          }),
+      });
       await renderVideo({
         command,
         coverPath: cover.filePath,
@@ -323,7 +342,7 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
             order: part.part,
             done,
             total,
-            percent: Math.round(fraction * 100),
+            percent: 50 + Math.round(fraction * 50),
           }),
       });
       const meta = compilationMeta({

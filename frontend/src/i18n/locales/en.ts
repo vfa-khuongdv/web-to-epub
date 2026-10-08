@@ -283,6 +283,7 @@ export const en: Record<string, string> = {
   // Highlights
   "Highlights ({count})": "Highlights ({count})",
   "Chapter {order}": "Chapter {order}",
+  "Part {part}/{total}": "Part {part}/{total}",
   "Nothing highlighted yet — select any text in the page to colour it.": "Nothing highlighted yet — select any text in the page to colour it.",
   "Highlight colour": "Highlight colour",
   "Yellow": "Yellow",

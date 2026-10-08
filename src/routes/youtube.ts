@@ -298,6 +298,9 @@ function startRun(library: Library, storyId: string, phase: YouTubePhase, total:
   const abort = new AbortController();
   const run = { phase, done: 0, total, startedAt: Date.now(), abort };
   library.runningYouTube.set(storyId, run);
+  // The panel has to know a job started before its first chapter ends: a compilation part
+  // can take minutes (join + encode), so without this the UI sat silent at 0%.
+  publishYouTube(library, storyId, { type: "youtube-running", phase, done: 0, total });
   return run;
 }
 

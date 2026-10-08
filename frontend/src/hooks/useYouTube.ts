@@ -93,16 +93,28 @@ export function useYouTube(storyId: string, enabled: boolean) {
           break;
         case "youtube-progress":
           setState((current) =>
-            current?.running
-              ? { ...current, running: { ...current.running, order: event.order, percent: event.percent } }
+            current
+              ? {
+                  ...current,
+                  running: current.running
+                    ? { ...current.running, order: event.order, percent: event.percent }
+                    : // The start event can be missed (a reconnect, a panel opened late):
+                      // a progress event is still a run, so show it instead of staying silent.
+                      { phase: event.phase, done: event.done, total: event.total, order: event.order, percent: event.percent },
+                }
               : current
           );
           break;
         case "youtube-chapter-done":
           if (event.state === "error") lastError.current = event.message;
           setState((current) =>
-            current?.running
-              ? { ...current, running: { ...current.running, done: event.done, etaMs: event.etaMs, order: event.order } }
+            current
+              ? {
+                  ...current,
+                  running: current.running
+                    ? { ...current.running, done: event.done, etaMs: event.etaMs, order: event.order }
+                    : { phase: event.phase, done: event.done, total: event.total, etaMs: event.etaMs, order: event.order },
+                }
               : current
           );
           void refresh();
