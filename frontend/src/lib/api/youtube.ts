@@ -172,15 +172,26 @@ export async function renderYouTubeCompilation(storyId: string, input: RenderCom
   return (await res.json()) as { total: number };
 }
 
+export interface UploadCompilationOptions {
+  ids?: string[];
+  // True only after the person confirmed creating the missing playlist.
+  createPlaylist?: boolean;
+  // False when the person chose to upload without any playlist at all.
+  withPlaylist?: boolean;
+}
+
 export async function uploadYouTubeCompilation(
   storyId: string,
-  ids?: string[],
-  createPlaylist?: boolean
+  options: UploadCompilationOptions = {}
 ): Promise<{ total: number }> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/upload`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ ids, createPlaylist: createPlaylist === true }),
+    body: JSON.stringify({
+      ids: options.ids,
+      createPlaylist: options.createPlaylist === true,
+      withPlaylist: options.withPlaylist !== false,
+    }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;

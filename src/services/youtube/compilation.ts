@@ -413,6 +413,8 @@ export interface CompilationUploadInput {
   ids?: string[];
   // True only after the person confirmed creating the compilation playlist.
   createPlaylist: boolean;
+  // False = upload with no playlist at all: nothing is created and nothing is added.
+  withPlaylist?: boolean;
   signal: AbortSignal;
   onEvent: (event: YouTubeEvent) => void;
 }
@@ -423,12 +425,17 @@ export async function uploadCompilations(
   const { library, story, signal, onEvent } = input;
   const token = await accessToken(input.account);
   const title = compilationPlaylistTitle(story.title, input.config.channel);
-  let playlist = await findPlaylist(token, title);
-  if (!playlist) {
-    if (!input.createPlaylist) throw new Error(t("The playlist \"{name}\" does not exist yet", { name: title }));
-    playlist = await createPlaylist(token, { title });
+  // No playlist asked for: the videos just go up (private, or scheduled as the records say).
+  let playlist: Awaited<ReturnType<typeof findPlaylist>>;
+  let items: Awaited<ReturnType<typeof listPlaylistItems>> = [];
+  if (input.withPlaylist !== false) {
+    playlist = await findPlaylist(token, title);
+    if (!playlist) {
+      if (!input.createPlaylist) throw new Error(t("The playlist \"{name}\" does not exist yet", { name: title }));
+      playlist = await createPlaylist(token, { title });
+    }
+    items = await listPlaylistItems(token, playlist.id);
   }
-  const items = await listPlaylistItems(token, playlist.id);
 
   const all = (await library.stories.listCompilations(story.id)).filter(
     (record) => !input.ids || input.ids.includes(record.id)
@@ -486,7 +493,7 @@ export async function uploadCompilations(
         };
         await library.stories.saveCompilation({ ...current, storyId: story.id });
       }
-      if (!items.some((item) => item.videoId === videoId)) {
+      if (playlist && !items.some((item) => item.videoId === videoId)) {
         const position = playlistPosition(items, current.fromOrder);
         await insertPlaylistItem(token, { playlistId: playlist.id, videoId, position });
         items.push({ videoId, title: current.title ?? "" });

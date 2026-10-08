@@ -331,6 +331,33 @@ describe("YouTube routes", () => {
     expect(job.createPlaylist).toBe(true);
   });
 
+  it("uploads without a playlist when the dialog turned it off", async () => {
+    await stories.saveCompilation({
+      id: "c11",
+      storyId: id,
+      part: 1,
+      parts: 1,
+      label: "Truyện – Trọn bộ (Chương 1-2)",
+      fromOrder: 1,
+      toOrder: 2,
+      status: "rendered",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const res = await fetch(`${base}/stories/${id}/youtube/compilation/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ids: ["c11"], withPlaylist: false }),
+    });
+    // No playlist exists and none was confirmed: with the playlist off there is nothing
+    // to confirm, the videos just go up.
+    expect(res.status).toBe(202);
+    await vi.waitFor(() => expect(fake.uploadCompilation).toHaveBeenCalledTimes(1));
+    const job = fake.uploadCompilation.mock.calls[0][0] as unknown as { withPlaylist: boolean; createPlaylist: boolean };
+    expect(job.withPlaylist).toBe(false);
+    expect(job.createPlaylist).toBe(false);
+  });
+
   it("edits a rendered part's info and schedule, but not once it is on YouTube", async () => {
     await stories.saveCompilation({
       id: "c9",

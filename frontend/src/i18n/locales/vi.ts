@@ -817,4 +817,5 @@ export const vi: Record<string, string> = {
   "Save this part's info": "Lưu thông tin phần này",
   "Could not save this part's info": "Không lưu được thông tin phần này",
   "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.": "Phần còn lại của mô tả — mục lục kèm thời gian, tác giả và hashtag — được ghép khi tạo video; sau đó mở “Thông tin phần” của từng phần để xem hoặc sửa.",
+  "Add the videos to the playlist \"{name}\".": "Thêm các video vào danh sách phát “{name}”.",
 };

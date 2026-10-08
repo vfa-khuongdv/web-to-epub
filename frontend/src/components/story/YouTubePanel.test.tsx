@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, screen, waitFor } from "@testing-library/react";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderEn } from "../../test/renderEn";
@@ -93,6 +93,7 @@ afterEach(cleanup);
 beforeEach(() => {
   hook.value = hookValue();
   api.uploadYouTube.mockClear();
+  api.uploadYouTubeCompilation.mockClear();
   api.fetchMusicTracks.mockClear();
   api.saveYouTubeCompilation.mockClear();
   api.syncYouTube.mockReset().mockResolvedValue({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true });
@@ -306,6 +307,41 @@ describe("YouTubePanel", () => {
         "c1",
         expect.objectContaining({ tags: "truyện audio, nghe truyện" })
       )
+    );
+  });
+
+  it("can upload a part without using the playlist", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Upload compilation (1)" }));
+    const dialog = screen.getByRole("dialog", { name: "Upload compilation" });
+    // Off means: no playlist created, nothing added — the upload button stays usable.
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /Add the videos to the playlist/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Upload now" }));
+    await waitFor(() =>
+      expect(api.uploadYouTubeCompilation).toHaveBeenCalledWith("s1", {
+        ids: ["c1"],
+        createPlaylist: undefined,
+        withPlaylist: false,
+      })
     );
   });
 

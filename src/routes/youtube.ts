@@ -727,8 +727,9 @@ youtubeRouter.post("/stories/:id/youtube/compilation", async (req, res) => {
   watchRun(library, story.id, "compilation", run, job);
 });
 
-// Uploads the rendered parts to the story's compilation playlist ("<Truyện> – Trọn bộ"),
-// always private and only after the confirmation the UI asks for.
+// Uploads the rendered parts, always private and only after the confirmation the UI asks
+// for: into the story's compilation playlist ("<Truyện> – Trọn bộ", created only when the
+// person confirmed it), or with no playlist at all when the dialog turned it off.
 youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) => {
   const library = guardJob(req, res);
   if (!library) return;
@@ -747,7 +748,7 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     return;
   }
   const config = loadYouTubeConfig();
-  const body = (req.body ?? {}) as { ids?: unknown; createPlaylist?: unknown };
+  const body = (req.body ?? {}) as { ids?: unknown; createPlaylist?: unknown; withPlaylist?: unknown };
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : undefined;
   const ready = (await library.stories.listCompilations(story.id)).filter(
     (record) =>
@@ -759,6 +760,8 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     return;
   }
   const createPlaylist = body.createPlaylist === true;
+  // The dialog can upload without a playlist: then nothing is created and nothing is added.
+  const withPlaylist = body.withPlaylist !== false;
   let token: string;
   try {
     token = await accessToken(account);
@@ -766,20 +769,22 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     res.status(409).json({ message: err instanceof Error ? err.message : t("Could not connect YouTube") });
     return;
   }
-  const title = compilationChannelPlaylist(story.title, config.channel);
-  try {
-    const existing = await findPlaylist(token, title);
-    if (!existing && !createPlaylist) {
-      res.status(409).json({
-        code: "playlist-missing",
-        playlistName: title,
-        message: t("The playlist \"{name}\" does not exist yet", { name: title }),
-      });
+  if (withPlaylist) {
+    const title = compilationChannelPlaylist(story.title, config.channel);
+    try {
+      const existing = await findPlaylist(token, title);
+      if (!existing && !createPlaylist) {
+        res.status(409).json({
+          code: "playlist-missing",
+          playlistName: title,
+          message: t("The playlist \"{name}\" does not exist yet", { name: title }),
+        });
+        return;
+      }
+    } catch (err) {
+      res.status(502).json({ message: err instanceof Error ? err.message : t("YouTube request failed") });
       return;
     }
-  } catch (err) {
-    res.status(502).json({ message: err instanceof Error ? err.message : t("YouTube request failed") });
-    return;
   }
 
   const run = startRun(library, story.id, "compilation", ready.length);
@@ -791,6 +796,7 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     account,
     ids,
     createPlaylist,
+    withPlaylist,
     signal: run.abort.signal,
     onEvent: runEventSink(library, story.id, run, "compilation"),
   });

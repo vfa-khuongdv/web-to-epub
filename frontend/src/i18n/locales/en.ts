@@ -815,4 +815,5 @@ export const en: Record<string, string> = {
   "Save this part's info": "Save this part's info",
   "Could not save this part's info": "Could not save this part's info",
   "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.": "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.",
+  "Add the videos to the playlist \"{name}\".": "Add the videos to the playlist \"{name}\".",
 };

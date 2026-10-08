@@ -77,6 +77,7 @@ export default function YouTubePanel({
   const [compilationPlan, setCompilationPlan] = useState<YouTubeCompilationPlan | null>(null);
   const [compilationUploadOpen, setCompilationUploadOpen] = useState(false);
   const [compilationCreatePlaylist, setCompilationCreatePlaylist] = useState(false);
+  const [compilationWithPlaylist, setCompilationWithPlaylist] = useState(true);
   const [compilationNeedsPlaylist, setCompilationNeedsPlaylist] = useState(false);
   const [compilationDialogError, setCompilationDialogError] = useState<string | null>(null);
   const [compilationPreview, setCompilationPreview] = useState<YouTubeCompilation | null>(null);
@@ -354,17 +355,18 @@ export default function YouTubePanel({
     setCompilationDialogError(null);
     setCompilationNeedsPlaylist(false);
     setCompilationCreatePlaylist(false);
+    setCompilationWithPlaylist(true);
     setCompilationUploadOpen(true);
   }
 
   function confirmCompilationUpload() {
     void run(async () => {
       try {
-        await uploadYouTubeCompilation(
-          story.id,
-          readyCompilations.map((record) => record.id),
-          compilationNeedsPlaylist ? compilationCreatePlaylist : undefined
-        );
+        await uploadYouTubeCompilation(story.id, {
+          ids: readyCompilations.map((record) => record.id),
+          createPlaylist: compilationNeedsPlaylist ? compilationCreatePlaylist : undefined,
+          withPlaylist: compilationWithPlaylist,
+        });
         setCompilationUploadOpen(false);
       } catch (err) {
         const apiErr = err as { code?: string; message: string };
@@ -862,7 +864,16 @@ export default function YouTubePanel({
             <p className="text-[11px] leading-snug text-ink-3">
               {t("Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.")}
             </p>
-            {compilationNeedsPlaylist && (
+            <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
+              <input
+                type="checkbox"
+                className="mt-0.5 size-3.5 accent-select"
+                checked={compilationWithPlaylist}
+                onChange={(event) => setCompilationWithPlaylist(event.target.checked)}
+              />
+              <span>{t("Add the videos to the playlist \"{name}\".", { name: state.compilationPlaylist })}</span>
+            </label>
+            {compilationWithPlaylist && compilationNeedsPlaylist && (
               <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
                 <input
                   type="checkbox"
@@ -885,7 +896,7 @@ export default function YouTubePanel({
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={busy || (compilationNeedsPlaylist && !compilationCreatePlaylist)}
+                disabled={busy || (compilationWithPlaylist && compilationNeedsPlaylist && !compilationCreatePlaylist)}
                 onClick={confirmCompilationUpload}
               >
                 <Icon name="upload" size={13} />
