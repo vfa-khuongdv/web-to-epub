@@ -810,4 +810,8 @@ export const vi: Record<string, string> = {
   "Write intro with AI": "Nhờ AI viết giới thiệu",
   "Writing…": "Đang viết…",
   "Could not write the intro": "Không viết được đoạn giới thiệu",
+  "Could not save the schedule": "Không lưu được lịch đăng",
+  "Schedule applied to {count} parts.": "Đã áp lịch cho {count} phần.",
+  "Schedule applied to {chapters} chapters and {parts} parts.": "Đã áp lịch cho {chapters} chương và {parts} phần.",
+  "Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.": "Giờ đăng lấy từ mục Lịch — bấm \"Áp dụng lịch\" ở đó để đổi cho các phần này.",
 };

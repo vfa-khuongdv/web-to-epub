@@ -350,6 +350,7 @@ const vi: Record<string, string> = {
     "Chương này đã ở trên YouTube; hãy xoá video trong YouTube Studio trước",
   "The YouTube job failed": "Tiến trình YouTube thất bại",
   "The agent could not write the intro": "Agent không viết được đoạn giới thiệu",
+  "This part is already on YouTube — its publish time cannot be changed here": "Phần này đã đăng lên YouTube — không đổi được giờ đăng ở đây",
   "Story is being rewritten or published, cannot delete":
     "Truyện đang được viết lại hoặc đang đăng YouTube, không thể xoá",
   "{field} must be text": "{field} phải là chuỗi",

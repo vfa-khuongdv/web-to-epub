@@ -840,6 +840,40 @@ youtubeRouter.get("/stories/:id/youtube/compilation/:compilationId/video", async
   res.sendFile(file);
 });
 
+// Reschedules a rendered part ("Apply schedule" also sends this for compilations). Only
+// the local record changes, and only while the part is not on YouTube yet.
+youtubeRouter.patch("/stories/:id/youtube/compilation/:compilationId", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const record = await library.stories.getCompilation(story.id, req.params.compilationId);
+  if (!record) {
+    res.status(404).json({ message: t("No video for this chapter yet") });
+    return;
+  }
+  if (record.status === "uploaded") {
+    res.status(409).json({ message: t("This part is already on YouTube — its publish time cannot be changed here") });
+    return;
+  }
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  const patch: { publishAt?: string } = {};
+  if (body.publishAt !== undefined) {
+    if (body.publishAt === null || body.publishAt === "") patch.publishAt = undefined;
+    else if (typeof body.publishAt === "string") patch.publishAt = body.publishAt.trim().slice(0, 40);
+    else {
+      res.status(400).json({ message: t("publishAt must be an ISO 8601 time") });
+      return;
+    }
+  }
+  const next = { ...record, ...patch, updatedAt: new Date().toISOString() };
+  await library.stories.saveCompilation({ ...next, storyId: story.id });
+  res.json({ record: next });
+});
+
 // Uploads private, optionally scheduled, and adds each video to the story's playlist.
 // A missing playlist needs the person's confirmation: without createPlaylist the request
 // is refused with the name, and the UI asks before calling again.

@@ -19,6 +19,7 @@ const api = vi.hoisted(() => ({
   uploadYouTube: vi.fn(async () => ({ total: 1 })),
   stopYouTube: vi.fn(async () => {}),
   saveYouTubeChapter: vi.fn(async () => ({})),
+  saveYouTubeCompilation: vi.fn(async () => {}),
   saveYouTubeCredits: vi.fn(async () => {}),
   syncYouTube: vi.fn(async () => ({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true })),
   planYouTubeCompilation: vi.fn(async () => ({ totalHours: 2, missing: [], parts: [{ part: 1, from: 1, to: 1, hours: 2 }] })),
@@ -93,6 +94,7 @@ beforeEach(() => {
   hook.value = hookValue();
   api.uploadYouTube.mockClear();
   api.fetchMusicTracks.mockClear();
+  api.saveYouTubeCompilation.mockClear();
   api.syncYouTube.mockReset().mockResolvedValue({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true });
 });
 
@@ -239,6 +241,35 @@ describe("YouTubePanel", () => {
     hook.value = hookValue({ state: { ...state, agentReady: false } });
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     expect(screen.queryByRole("button", { name: "Write intro with AI" })).toBeNull();
+  });
+
+  it("applies the schedule to rendered compilation parts too", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // No chapter selected: the rendered parts are what the button reschedules.
+    await userEvent.click(screen.getByRole("button", { name: "Apply schedule" }));
+    await waitFor(() =>
+      expect(api.saveYouTubeCompilation).toHaveBeenCalledWith("s1", "c1", { publishAt: expect.any(String) })
+    );
+    expect(await screen.findByText("Schedule applied to 1 parts.")).toBeInTheDocument();
   });
 
   it("plays a rendered part in the app instead of opening a link", async () => {

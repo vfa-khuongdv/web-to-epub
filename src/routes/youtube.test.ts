@@ -331,6 +331,48 @@ describe("YouTube routes", () => {
     expect(job.createPlaylist).toBe(true);
   });
 
+  it("reschedules a rendered part, but not one already on YouTube", async () => {
+    await stories.saveCompilation({
+      id: "c9",
+      storyId: id,
+      part: 1,
+      parts: 2,
+      label: "Truyện – Trọn bộ Phần 1 (Chương 1-1)",
+      fromOrder: 1,
+      toOrder: 1,
+      status: "rendered",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const res = await fetch(`${base}/stories/${id}/youtube/compilation/c9`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publishAt: "2026-11-20T18:00:00+07:00" }),
+    });
+    expect(res.status).toBe(200);
+    expect(await stories.getCompilation(id, "c9")).toMatchObject({ publishAt: "2026-11-20T18:00:00+07:00" });
+
+    await stories.saveCompilation({
+      id: "c10",
+      storyId: id,
+      part: 2,
+      parts: 2,
+      label: "Truyện – Trọn bộ Phần 2 (Chương 2-2)",
+      fromOrder: 2,
+      toOrder: 2,
+      status: "uploaded",
+      videoId: "v2",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const refused = await fetch(`${base}/stories/${id}/youtube/compilation/c10`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ publishAt: "2026-11-21T18:00:00+07:00" }),
+    });
+    expect(refused.status).toBe(409);
+  });
+
   it("reports the compilation playlist and parts in the panel state", async () => {
     await stories.saveCompilation({
       id: "c2",

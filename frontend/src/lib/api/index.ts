@@ -33,6 +33,7 @@ export {
   renderYouTubeCompilation,
   uploadYouTubeCompilation,
   deleteYouTubeCompilation,
+  saveYouTubeCompilation,
   youTubeCompilationVideoUrl,
   uploadYouTube,
   stopYouTube,

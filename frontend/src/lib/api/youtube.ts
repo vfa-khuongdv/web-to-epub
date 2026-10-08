@@ -233,6 +233,23 @@ export async function deleteYouTubeChapter(storyId: string, order: number): Prom
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not remove this chapter's upload info")));
 }
 
+// Reschedules a rendered compilation part (the local record only; uploaded parts refuse).
+export async function saveYouTubeCompilation(
+  storyId: string,
+  compilationId: string,
+  patch: { publishAt?: string | null }
+): Promise<void> {
+  const res = await apiFetch(
+    `/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/${encodeURIComponent(compilationId)}`,
+    {
+      method: "PATCH",
+      headers: langHeaders({ "Content-Type": "application/json" }),
+      body: JSON.stringify(patch),
+    }
+  );
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not save the schedule")));
+}
+
 // The rendered MP4, for the preview player (Range-capable).
 export function youTubeVideoUrl(storyId: string, order: number): string {
   return `/api/stories/${encodeURIComponent(storyId)}/youtube/${order}/video`;

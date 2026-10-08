@@ -808,4 +808,8 @@ export const en: Record<string, string> = {
   "Write intro with AI": "Write intro with AI",
   "Writing…": "Writing…",
   "Could not write the intro": "Could not write the intro",
+  "Could not save the schedule": "Could not save the schedule",
+  "Schedule applied to {count} parts.": "Schedule applied to {count} parts.",
+  "Schedule applied to {chapters} chapters and {parts} parts.": "Schedule applied to {chapters} chapters and {parts} parts.",
+  "Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.": "Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.",
 };

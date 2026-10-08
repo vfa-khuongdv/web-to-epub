@@ -5,6 +5,7 @@ import {
   prepareYouTube,
   renderYouTube,
   saveYouTubeChapter,
+  saveYouTubeCompilation,
   deleteYouTubeCompilation,
   planYouTubeCompilation,
   renderYouTubeCompilation,
@@ -218,17 +219,36 @@ export default function YouTubePanel({
     });
   }
 
+  // Parts whose publish time can still change here: rendered, not yet on YouTube.
+  const reschedulableParts = (state?.compilations ?? []).filter(
+    (record) => record.status === "rendered" || record.status === "error"
+  );
+
+  // The Schedule block is for everything it can schedule: the selected chapters' records
+  // and the rendered compilation parts (their times are otherwise only set when rendered).
   function applySchedule() {
-    if (selectedOrders.length === 0) return;
+    if (selectedOrders.length === 0 && reschedulableParts.length === 0) return;
     void run(async () => {
-      const publishAt = distributeSchedule(selectedOrders, startDate, startTime, perDay);
-      for (const order of selectedOrders) {
-        const record = byOrder.get(order)?.record;
-        if (!record) continue;
+      const chapters = selectedOrders.filter((order) => byOrder.get(order)?.record);
+      const publishAt = distributeSchedule(chapters, startDate, startTime, perDay);
+      for (const order of chapters) {
         await saveYouTubeChapter(story.id, order, { publishAt: publishAt[order] ?? null });
       }
+      const partTimes = distributeSchedule(reschedulableParts.map((record) => record.part), startDate, startTime, perDay);
+      for (const record of reschedulableParts) {
+        await saveYouTubeCompilation(story.id, record.id, { publishAt: partTimes[record.part] ?? null });
+      }
       await refresh();
-      setMessage(t("Schedule applied to {count} chapters.", { count: selectedOrders.length }));
+      setMessage(
+        reschedulableParts.length === 0
+          ? t("Schedule applied to {count} chapters.", { count: chapters.length })
+          : chapters.length === 0
+            ? t("Schedule applied to {count} parts.", { count: reschedulableParts.length })
+            : t("Schedule applied to {chapters} chapters and {parts} parts.", {
+                chapters: chapters.length,
+                parts: reschedulableParts.length,
+              })
+      );
     });
   }
 
@@ -555,7 +575,12 @@ export default function YouTubePanel({
                         onChange={(event) => setPerDay(Math.max(1, Number(event.target.value) || 1))}
                       />
                     </label>
-                    <button type="button" className="btn btn-quiet btn-tiny" disabled={busy || selectedOrders.length === 0} onClick={applySchedule}>
+                    <button
+                      type="button"
+                      className="btn btn-quiet btn-tiny"
+                      disabled={busy || running !== null || (selectedOrders.length === 0 && reschedulableParts.length === 0)}
+                      onClick={applySchedule}
+                    >
                       {t("Apply schedule")}
                     </button>
                   </div>
@@ -817,6 +842,9 @@ export default function YouTubePanel({
                 </li>
               ))}
             </ul>
+            <p className="text-[11px] leading-snug text-ink-3">
+              {t("Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.")}
+            </p>
             {compilationNeedsPlaylist && (
               <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
                 <input
