@@ -28,11 +28,16 @@ export {
   syncYouTube,
   prepareYouTube,
   renderYouTube,
+  planYouTubeCompilation,
+  renderYouTubeCompilation,
+  uploadYouTubeCompilation,
+  deleteYouTubeCompilation,
+  youTubeCompilationVideoUrl,
   uploadYouTube,
   stopYouTube,
   saveYouTubeChapter,
   deleteYouTubeChapter,
   youTubeVideoUrl,
 } from "./youtube";
-export type { PrepareYouTubeInput } from "./youtube";
+export type { PrepareYouTubeInput, RenderCompilationInput } from "./youtube";
 export type { YouTubeChapterPatch, YouTubeSyncResult } from "./youtube";

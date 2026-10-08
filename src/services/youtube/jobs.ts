@@ -31,7 +31,7 @@ import { findFfmpeg, renderVideo } from "./video";
  * only fills drafts, render only writes files, and upload runs only when the route was
  * called with the person's confirmation (the route enforces the playlist confirmation).
  */
-export type YouTubePhase = "prepare" | "render" | "upload";
+export type YouTubePhase = "prepare" | "render" | "upload" | "compilation";
 
 export type YouTubeEvent =
   | { type: "youtube-progress"; phase: YouTubePhase; order?: number; done: number; total: number; percent?: number }
@@ -602,6 +602,8 @@ export interface YouTubeStateChapter {
   order: number;
   title: string;
   hasAudio: boolean;
+  // Audio length in seconds, for the compilation plan shown in the panel.
+  seconds?: number;
   // The video was made from audio that has since been regenerated.
   audioChanged: boolean;
   record?: YouTubeVideoRecord;
@@ -641,6 +643,7 @@ export async function youTubeState(library: Library, story: StoredStory, config:
       order: chapter.order,
       title: chapter.title,
       hasAudio: Boolean(audio),
+      seconds: audio?.seconds,
       audioChanged: Boolean(record?.audioKey && meta?.text && record.audioKey !== meta.text),
       record,
     });

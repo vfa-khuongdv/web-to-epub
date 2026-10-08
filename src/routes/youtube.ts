@@ -20,6 +20,13 @@ import {
 import { findPlaylist } from "../services/youtube/api";
 import { expandHome, loadYouTubeConfig, saveYouTubeConfig, YouTubeConfig } from "../services/youtube/config";
 import {
+  compilationChannelPlaylist,
+  planCompilation,
+  renderCompilations,
+  resolveCompilationPath,
+  uploadCompilations,
+} from "../services/youtube/compilation";
+import {
   prepareYouTubeChapters,
   renderYouTubeVideos,
   resolveVideoPath,
@@ -262,9 +269,12 @@ youtubeRouter.get("/stories/:id/youtube", async (req, res) => {
   }
   const config = loadYouTubeConfig();
   const state = await youTubeState(library, story, config);
+  const compilations = await library.stories.listCompilations(story.id);
   const run = library.runningYouTube.get(story.id);
   res.json({
     ...state,
+    compilationPlaylist: compilationChannelPlaylist(story.title, config.channel),
+    compilations,
     running: run
       ? { phase: run.phase, done: run.done, total: run.total, etaMs: run.etaMs, order: run.order, percent: run.percent }
       : null,
@@ -558,6 +568,231 @@ youtubeRouter.post("/stories/:id/youtube/sync", async (req, res) => {
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : t("YouTube request failed") });
   }
+});
+
+// Plans the story's compilation: how many parts the chosen chapters make, and any
+// chapter still missing narration audio.
+youtubeRouter.post("/stories/:id/youtube/compilation/plan", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const body = (req.body ?? {}) as ChapterOrders;
+  const allowed = new Set(story.chapters.filter((chapter) => chapter.status === "done").map((chapter) => chapter.order));
+  const orders = ordersFrom(body, allowed);
+  if (orders.length === 0) {
+    res.status(400).json({ message: t("Choose at least one chapter") });
+    return;
+  }
+  const plan = await planCompilation(library, story.id, orders);
+  res.json({
+    totalHours: plan.totalHours,
+    missing: plan.missing,
+    parts: plan.parts.map(({ part, from, to, hours }) => ({ part, from, to, hours })),
+  });
+});
+
+// Joins the chosen chapters into one long video per part. Files only; nothing leaves the
+// machine, and it never runs without the person pressing the button.
+youtubeRouter.post("/stories/:id/youtube/compilation", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  if (library.runningYouTube.has(story.id)) {
+    res.status(409).json({ message: t("A YouTube job is already running for this story") });
+    return;
+  }
+  const config = loadYouTubeConfig();
+  if (!findFfmpeg(config.ffmpegPath)) {
+    res.status(409).json({
+      message: t("ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube."),
+    });
+    return;
+  }
+  if (!library.covers.find(story.id)) {
+    res.status(409).json({ message: t("This story has no cover image yet — add one before making videos") });
+    return;
+  }
+  const body = (req.body ?? {}) as ChapterOrders & {
+    intro?: unknown;
+    labelWord?: unknown;
+    musicId?: unknown;
+    musicVolume?: unknown;
+    publishAt?: unknown;
+  };
+  const allowed = new Set(story.chapters.filter((chapter) => chapter.status === "done").map((chapter) => chapter.order));
+  const orders = ordersFrom(body, allowed);
+  if (orders.length === 0) {
+    res.status(400).json({ message: t("Choose at least one chapter") });
+    return;
+  }
+  const plan = await planCompilation(library, story.id, orders);
+  if (plan.missing.length > 0) {
+    res.status(400).json({
+      message: t("Chapter {order} has no audio yet — narrate it first", { order: plan.missing[0] }),
+    });
+    return;
+  }
+  let music: { id?: string; volume?: number } | undefined;
+  if (body.musicId !== undefined) {
+    if (typeof body.musicId !== "string") {
+      res.status(400).json({ message: t("musicId must be text") });
+      return;
+    }
+    if (body.musicId && !(await backgroundMusic.get(body.musicId))) {
+      res.status(400).json({ message: t("Background music track not found") });
+      return;
+    }
+    const volume = body.musicVolume === undefined ? config.musicVolume : Number(body.musicVolume);
+    if (!Number.isFinite(volume) || volume < 0 || volume > 4) {
+      res.status(400).json({ message: t("musicVolume must be a number between 0 and 4") });
+      return;
+    }
+    music = { id: body.musicId || undefined, volume };
+  }
+  const publishAt: Record<number, string> = {};
+  if (body.publishAt && typeof body.publishAt === "object") {
+    for (const [key, value] of Object.entries(body.publishAt as Record<string, unknown>)) {
+      const part = Number(key);
+      if (Number.isInteger(part) && typeof value === "string" && value.trim()) publishAt[part] = value.trim();
+    }
+  }
+
+  const run = startRun(library, story.id, "compilation", plan.parts.length);
+  res.status(202).json({ started: true, total: plan.parts.length, parts: plan.parts.length });
+  const job = renderCompilations({
+    library,
+    story,
+    config,
+    orders,
+    intro: typeof body.intro === "string" ? body.intro.trim().slice(0, 2000) : undefined,
+    labelWord: typeof body.labelWord === "string" ? body.labelWord.trim().slice(0, 40) : undefined,
+    music,
+    publishAt,
+    signal: run.abort.signal,
+    onEvent: runEventSink(library, story.id, run, "compilation"),
+  });
+  watchRun(library, story.id, "compilation", run, job);
+});
+
+// Uploads the rendered parts to the story's compilation playlist ("<Truyện> – Trọn bộ"),
+// always private and only after the confirmation the UI asks for.
+youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  if (library.runningYouTube.has(story.id)) {
+    res.status(409).json({ message: t("A YouTube job is already running for this story") });
+    return;
+  }
+  const account = await loadAccount();
+  if (!account) {
+    res.status(409).json({ message: t("Not signed in to YouTube — connect the account in Settings → YouTube") });
+    return;
+  }
+  const config = loadYouTubeConfig();
+  const body = (req.body ?? {}) as { ids?: unknown; createPlaylist?: unknown };
+  const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : undefined;
+  const ready = (await library.stories.listCompilations(story.id)).filter(
+    (record) =>
+      (ids === undefined || ids.includes(record.id)) &&
+      (record.status === "rendered" || record.status === "error" || record.status === "uploading")
+  );
+  if (ready.length === 0) {
+    res.status(400).json({ message: t("No videos are ready to upload") });
+    return;
+  }
+  const createPlaylist = body.createPlaylist === true;
+  let token: string;
+  try {
+    token = await accessToken(account);
+  } catch (err) {
+    res.status(409).json({ message: err instanceof Error ? err.message : t("Could not connect YouTube") });
+    return;
+  }
+  const title = compilationChannelPlaylist(story.title, config.channel);
+  try {
+    const existing = await findPlaylist(token, title);
+    if (!existing && !createPlaylist) {
+      res.status(409).json({
+        code: "playlist-missing",
+        playlistName: title,
+        message: t("The playlist \"{name}\" does not exist yet", { name: title }),
+      });
+      return;
+    }
+  } catch (err) {
+    res.status(502).json({ message: err instanceof Error ? err.message : t("YouTube request failed") });
+    return;
+  }
+
+  const run = startRun(library, story.id, "compilation", ready.length);
+  res.status(202).json({ started: true, total: ready.length });
+  const job = uploadCompilations({
+    library,
+    story,
+    config,
+    account,
+    ids,
+    createPlaylist,
+    signal: run.abort.signal,
+    onEvent: runEventSink(library, story.id, run, "compilation"),
+  });
+  watchRun(library, story.id, "compilation", run, job);
+});
+
+// Drop a part's record and its rendered file (the YouTube video, if any, stays).
+youtubeRouter.delete("/stories/:id/youtube/compilation/:compilationId", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  if (library.runningYouTube.has(story.id)) {
+    res.status(409).json({ message: t("A YouTube job is already running for this story") });
+    return;
+  }
+  const record = await library.stories.getCompilation(story.id, req.params.compilationId);
+  if (!record) {
+    res.status(404).json({ message: t("No video for this chapter yet") });
+    return;
+  }
+  const file = resolveCompilationPath(library.dataDir, story.id, record);
+  if (file) await fs.rm(file, { force: true });
+  await library.stories.removeCompilation(story.id, req.params.compilationId);
+  res.json({ ok: true });
+});
+
+// Serves a rendered part for the preview player.
+youtubeRouter.get("/stories/:id/youtube/compilation/:compilationId/video", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const record = await library.stories.getCompilation(story.id, req.params.compilationId);
+  const file = record ? resolveCompilationPath(library.dataDir, story.id, record) : undefined;
+  if (!file || !(await fs.stat(file).catch(() => undefined))) {
+    res.status(404).json({ message: t("No video for this chapter yet") });
+    return;
+  }
+  res.type("video/mp4");
+  res.sendFile(file);
 });
 
 // Uploads private, optionally scheduled, and adds each video to the story's playlist.

@@ -7,7 +7,7 @@ import { DATA_DIR } from "../config/paths";
 import { sanitizeBlocks } from "./sanitizeHtml";
 import { t } from "./lang";
 import { ChapterRewrite, ChapterRewriteRecord } from "./rewrite/types";
-import { YouTubeStoryRecord, YouTubeVideoRecord } from "./youtube/types";
+import { YouTubeCompilationRecord, YouTubeStoryRecord, YouTubeVideoRecord } from "./youtube/types";
 
 export function storyId(storyUrl: string): string {
   return crypto.createHash("sha1").update(storyUrl).digest("hex").slice(0, 16);
@@ -66,6 +66,11 @@ export interface StoryStore {
   getYouTubeVideo(storyId: string, order: number): Promise<YouTubeVideoRecord | undefined>;
   saveYouTubeVideo(record: YouTubeVideoRecord & { storyId: string }): Promise<void>;
   removeYouTubeVideo(storyId: string, order: number): Promise<boolean>;
+  // Compilations (several chapters joined into one long video), part by part.
+  listCompilations(storyId: string): Promise<YouTubeCompilationRecord[]>;
+  getCompilation(storyId: string, id: string): Promise<YouTubeCompilationRecord | undefined>;
+  saveCompilation(record: YouTubeCompilationRecord & { storyId: string }): Promise<void>;
+  removeCompilation(storyId: string, id: string): Promise<boolean>;
 }
 
 const STORY_ID_RE = /^[0-9a-f]{16}$/;
@@ -169,6 +174,53 @@ interface YouTubeVideoRow {
   updated_at: string;
 }
 
+interface YouTubeCompilationRow {
+  id: string;
+  story_id: string;
+  part: number;
+  parts: number;
+  label: string;
+  from_order: number;
+  to_order: number;
+  status: string;
+  title: string | null;
+  description: string | null;
+  tags: string | null;
+  publish_at: string | null;
+  video_path: string | null;
+  video_seconds: number | null;
+  video_id: string | null;
+  video_url: string | null;
+  privacy: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toYouTubeCompilation(row: YouTubeCompilationRow): YouTubeCompilationRecord {
+  return {
+    id: row.id,
+    part: row.part,
+    parts: row.parts,
+    label: row.label,
+    fromOrder: row.from_order,
+    toOrder: row.to_order,
+    status: row.status as YouTubeCompilationRecord["status"],
+    title: row.title ?? undefined,
+    description: row.description ?? undefined,
+    tags: row.tags ?? undefined,
+    publishAt: row.publish_at ?? undefined,
+    videoPath: row.video_path ?? undefined,
+    videoSeconds: row.video_seconds ?? undefined,
+    videoId: row.video_id ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    privacy: row.privacy ?? undefined,
+    error: row.error ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
 function toYouTubeVideo(row: YouTubeVideoRow): YouTubeVideoRecord {
   return {
     order: row.order,
@@ -268,6 +320,28 @@ export function createStoryStore(baseDir: string): StoryStore {
       author TEXT,
       translator TEXT,
       genre_tags TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS youtube_compilations (
+      id TEXT PRIMARY KEY,
+      story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      part INTEGER NOT NULL,
+      parts INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      from_order INTEGER NOT NULL,
+      to_order INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      title TEXT,
+      description TEXT,
+      tags TEXT,
+      publish_at TEXT,
+      video_path TEXT,
+      video_seconds REAL,
+      video_id TEXT,
+      video_url TEXT,
+      privacy TEXT,
+      error TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
     );
@@ -454,6 +528,34 @@ export function createStoryStore(baseDir: string): StoryStore {
       updated_at = excluded.updated_at
   `);
   const deleteYouTubeVideo = db.prepare(`DELETE FROM youtube_videos WHERE story_id = ? AND "order" = ?`);
+  const selectCompilations = db.prepare(`SELECT * FROM youtube_compilations WHERE story_id = ? ORDER BY from_order, part`);
+  const selectCompilation = db.prepare(`SELECT * FROM youtube_compilations WHERE story_id = ? AND id = ?`);
+  const upsertCompilation = db.prepare(`
+    INSERT INTO youtube_compilations
+      (id, story_id, part, parts, label, from_order, to_order, status, title, description, tags, publish_at,
+       video_path, video_seconds, video_id, video_url, privacy, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(id) DO UPDATE SET
+      part = excluded.part,
+      parts = excluded.parts,
+      label = excluded.label,
+      from_order = excluded.from_order,
+      to_order = excluded.to_order,
+      status = excluded.status,
+      title = excluded.title,
+      description = excluded.description,
+      tags = excluded.tags,
+      publish_at = excluded.publish_at,
+      video_path = excluded.video_path,
+      video_seconds = excluded.video_seconds,
+      video_id = excluded.video_id,
+      video_url = excluded.video_url,
+      privacy = excluded.privacy,
+      error = excluded.error,
+      created_at = excluded.created_at,
+      updated_at = excluded.updated_at
+  `);
+  const deleteCompilation = db.prepare(`DELETE FROM youtube_compilations WHERE story_id = ? AND id = ?`);
 
   function inTransaction<T>(fn: () => T): T {
     db.exec("BEGIN");
@@ -821,6 +923,52 @@ export function createStoryStore(baseDir: string): StoryStore {
     async removeYouTubeVideo(id: string, order: number): Promise<boolean> {
       if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return false;
       return Number(deleteYouTubeVideo.run(id, order).changes) > 0;
+    },
+
+    async listCompilations(id: string): Promise<YouTubeCompilationRecord[]> {
+      if (!STORY_ID_RE.test(id)) return [];
+      return (selectCompilations.all(id) as unknown as YouTubeCompilationRow[]).map(toYouTubeCompilation);
+    },
+
+    async getCompilation(id: string, compilationId: string): Promise<YouTubeCompilationRecord | undefined> {
+      if (!STORY_ID_RE.test(id)) return undefined;
+      const row = selectCompilation.get(id, compilationId) as unknown as YouTubeCompilationRow | undefined;
+      return row ? toYouTubeCompilation(row) : undefined;
+    },
+
+    async saveCompilation(record: YouTubeCompilationRecord & { storyId: string }): Promise<void> {
+      if (!STORY_ID_RE.test(record.storyId)) {
+        throw new Error(t("Invalid story ID: {id}", { id: record.storyId }));
+      }
+      const existing = selectCompilation.get(record.storyId, record.id) as unknown as YouTubeCompilationRow | undefined;
+      const createdAt = existing?.created_at ?? record.createdAt ?? new Date().toISOString();
+      upsertCompilation.run(
+        record.id,
+        record.storyId,
+        record.part,
+        record.parts,
+        record.label,
+        record.fromOrder,
+        record.toOrder,
+        record.status,
+        record.title ?? null,
+        record.description ?? null,
+        record.tags ?? null,
+        record.publishAt ?? null,
+        record.videoPath ?? null,
+        record.videoSeconds ?? null,
+        record.videoId ?? null,
+        record.videoUrl ?? null,
+        record.privacy ?? null,
+        record.error ?? null,
+        createdAt,
+        new Date().toISOString()
+      );
+    },
+
+    async removeCompilation(id: string, compilationId: string): Promise<boolean> {
+      if (!STORY_ID_RE.test(id)) return false;
+      return Number(deleteCompilation.run(id, compilationId).changes) > 0;
     },
   };
 }

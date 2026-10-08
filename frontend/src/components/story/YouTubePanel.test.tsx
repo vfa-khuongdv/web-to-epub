@@ -21,6 +21,11 @@ const api = vi.hoisted(() => ({
   saveYouTubeChapter: vi.fn(async () => ({})),
   saveYouTubeCredits: vi.fn(async () => {}),
   syncYouTube: vi.fn(async () => ({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true })),
+  planYouTubeCompilation: vi.fn(async () => ({ totalHours: 2, missing: [], parts: [{ part: 1, from: 1, to: 1, hours: 2 }] })),
+  renderYouTubeCompilation: vi.fn(async () => ({ total: 1 })),
+  uploadYouTubeCompilation: vi.fn(async () => ({ total: 1 })),
+  deleteYouTubeCompilation: vi.fn(async () => {}),
+  youTubeCompilationVideoUrl: (storyId: string, id: string) => `/api/stories/${storyId}/youtube/compilation/${id}/video`,
   deleteYouTubeChapter: vi.fn(async () => {}),
   youTubeVideoUrl: (storyId: string, order: number) => `/api/stories/${storyId}/youtube/${order}/video`,
 }));
@@ -63,6 +68,8 @@ const state: YouTubeState = {
       record: { order: 1, status: "rendered", title: "Truyện – Chương 1 | Truyện FM", createdAt: "", updatedAt: "" },
     },
   ],
+  compilationPlaylist: "Truyện – Trọn bộ | Truyện FM",
+  compilations: [],
   running: null,
 };
 
@@ -197,6 +204,15 @@ describe("YouTubePanel", () => {
     // on screen after the render finished.
     expect(screen.queryByText(/Making 1 videos/)).not.toBeInTheDocument();
     vi.unstubAllGlobals();
+  });
+
+  it("plans the full-story compilation for the selected chapters", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    await waitFor(() => expect(api.planYouTubeCompilation).toHaveBeenCalledWith("s1", [1]));
+    expect(await screen.findByText("Plan: 1 chapters · 2.0 hours · 1 parts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make compilation (1 parts)" })).toBeEnabled();
   });
 
   it("points at Settings when not connected", () => {

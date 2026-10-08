@@ -1,4 +1,4 @@
-import { YouTubeConfig, YouTubeState, YouTubeStatus, YouTubeVideoRecord } from "../../types";
+import { YouTubeCompilation, YouTubeCompilationPlan, YouTubeConfig, YouTubeState, YouTubeStatus, YouTubeVideoRecord } from "../../types";
 import { apiFetch, apiError, langHeaders, readJsonError, tr } from "./http";
 
 // YouTube publishing (routes/youtube.ts). The account and settings are install-wide; the
@@ -129,6 +129,65 @@ export async function stopYouTube(storyId: string): Promise<void> {
     headers: langHeaders(),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not stop the YouTube job")));
+}
+
+export interface RenderCompilationInput {
+  orders: number[];
+  intro?: string;
+  labelWord?: string;
+  musicId?: string;
+  musicVolume?: number;
+  publishAt?: Record<number, string>;
+}
+
+// Plans the compilation: parts and hours, plus chapters still missing narration audio.
+export async function planYouTubeCompilation(storyId: string, orders: number[]): Promise<YouTubeCompilationPlan> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/plan`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ orders }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not plan the compilation")));
+  return (await res.json()) as YouTubeCompilationPlan;
+}
+
+export async function renderYouTubeCompilation(storyId: string, input: RenderCompilationInput): Promise<{ total: number }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify(input),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not start making the compilation")));
+  return (await res.json()) as { total: number };
+}
+
+export async function uploadYouTubeCompilation(
+  storyId: string,
+  ids?: string[],
+  createPlaylist?: boolean
+): Promise<{ total: number }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/upload`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ ids, createPlaylist: createPlaylist === true }),
+  });
+  if (!res.ok) {
+    const data = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
+    throw apiError(data?.message || tr("Could not start the upload"), res.status, data?.code);
+  }
+  return (await res.json()) as { total: number };
+}
+
+export async function deleteYouTubeCompilation(storyId: string, id: string): Promise<void> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/${encodeURIComponent(id)}`, {
+    method: "DELETE",
+    headers: langHeaders(),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not remove this part")));
+}
+
+export function youTubeCompilationVideoUrl(storyId: string, id: string): string {
+  return `/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/${encodeURIComponent(id)}/video`;
 }
 
 export interface YouTubeChapterPatch {

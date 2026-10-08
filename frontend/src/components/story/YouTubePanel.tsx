@@ -5,16 +5,21 @@ import {
   prepareYouTube,
   renderYouTube,
   saveYouTubeChapter,
+  deleteYouTubeCompilation,
+  planYouTubeCompilation,
+  renderYouTubeCompilation,
   saveYouTubeCredits,
   stopYouTube,
   syncYouTube,
   uploadYouTube,
+  uploadYouTubeCompilation,
+  youTubeCompilationVideoUrl,
   youTubeVideoUrl,
 } from "../../lib/api";
 import { distributeSchedule, formatPublishAt, isoFromLocalInput, localInputValue, tomorrowLocalDate } from "../../lib/format/schedule";
 import { formatEta } from "../../lib/format/formatEta";
 import { useLang } from "../../i18n";
-import { MusicTrack, StoredStory, YouTubeChapterState, YouTubeVideoRecord } from "../../types";
+import { MusicTrack, StoredStory, YouTubeChapterState, YouTubeCompilationPlan, YouTubeVideoRecord } from "../../types";
 import { useYouTube } from "../../hooks/useYouTube";
 import { YOUTUBE_CONNECTED } from "../settings/YouTubeSettings";
 import { Icon } from "../ui/Icon";
@@ -63,6 +68,15 @@ export default function YouTubePanel({
   const [createPlaylist, setCreatePlaylist] = useState(false);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const synced = useRef(false);
+  // Full-story video (compilation): the plan is fetched from the server so the panel and
+  // the renderer agree on the split.
+  const [compilationIntro, setCompilationIntro] = useState("");
+  const [compilationLabelWord, setCompilationLabelWord] = useState("Trọn bộ");
+  const [compilationPlan, setCompilationPlan] = useState<YouTubeCompilationPlan | null>(null);
+  const [compilationUploadOpen, setCompilationUploadOpen] = useState(false);
+  const [compilationCreatePlaylist, setCompilationCreatePlaylist] = useState(false);
+  const [compilationNeedsPlaylist, setCompilationNeedsPlaylist] = useState(false);
+  const [compilationDialogError, setCompilationDialogError] = useState<string | null>(null);
 
   useEffect(() => {
     fetchMusicTracks()
@@ -235,6 +249,96 @@ export default function YouTubePanel({
       await saveYouTubeCredits(story.id, { author, translator, genreTags });
       await refresh();
       setMessage(t("General info saved."));
+    });
+  }
+
+  const readyCompilations = (state?.compilations ?? []).filter(
+    (record) => record.status === "rendered" || record.status === "error" || record.status === "uploading"
+  );
+
+  async function viewCompilationPlan() {
+    if (selectedOrders.length === 0) return;
+    await run(async () => {
+      const plan = await planYouTubeCompilation(story.id, selectedOrders);
+      setCompilationPlan(plan);
+      if (plan.missing.length > 0) {
+        setMessage(t("Narrate these chapters first: {orders}", { orders: plan.missing.join(", ") }));
+      } else {
+        setMessage(
+          t("Plan: {count} chapters · {hours} hours · {parts} parts", {
+            count: selectedOrders.length,
+            hours: plan.totalHours.toFixed(1),
+            parts: plan.parts.length,
+          })
+        );
+      }
+    });
+  }
+
+  function makeCompilation() {
+    if (!compilationPlan || compilationPlan.missing.length > 0) return;
+    const parts = compilationPlan.parts.length;
+    if (
+      !window.confirm(
+        t("Make {count} long videos on this computer? Each part can take a few minutes.", { count: parts })
+      )
+    ) {
+      return;
+    }
+    void run(async () => {
+      const publishAt = distributeSchedule(
+        Array.from({ length: parts }, (_, index) => index + 1),
+        startDate,
+        startTime,
+        perDay
+      );
+      await renderYouTubeCompilation(story.id, {
+        orders: selectedOrders,
+        intro: compilationIntro,
+        labelWord: compilationLabelWord,
+        musicId,
+        musicVolume,
+        publishAt,
+      });
+      setCompilationPlan(null);
+    });
+  }
+
+  function openCompilationUpload() {
+    if (readyCompilations.length === 0) return;
+    setCompilationDialogError(null);
+    setCompilationNeedsPlaylist(false);
+    setCompilationCreatePlaylist(false);
+    setCompilationUploadOpen(true);
+  }
+
+  function confirmCompilationUpload() {
+    void run(async () => {
+      try {
+        await uploadYouTubeCompilation(
+          story.id,
+          readyCompilations.map((record) => record.id),
+          compilationNeedsPlaylist ? compilationCreatePlaylist : undefined
+        );
+        setCompilationUploadOpen(false);
+      } catch (err) {
+        const apiErr = err as { code?: string; message: string };
+        if (apiErr.code === "playlist-missing") {
+          // The server asks for the confirmation before it creates the playlist.
+          setCompilationNeedsPlaylist(true);
+          setCompilationDialogError(apiErr.message);
+          return;
+        }
+        setCompilationDialogError(apiErr.message);
+      }
+    });
+  }
+
+  async function removeCompilation(id: string, label: string) {
+    if (!window.confirm(t("Remove {label} and its rendered video? The YouTube video stays.", { label }))) return;
+    await run(async () => {
+      await deleteYouTubeCompilation(story.id, id);
+      await refresh();
     });
   }
 
@@ -472,7 +576,9 @@ export default function YouTubePanel({
                         ? "Writing upload info"
                         : running.phase === "render"
                           ? "Making videos"
-                          : "Uploading"
+                          : running.phase === "compilation"
+                            ? "Making the compilation"
+                            : "Uploading"
                     )}
                     {running.order !== undefined && ` · ${t("Chapter {order}", { order: running.order })}`}
                     {running.percent !== undefined && ` · ${running.percent}%`}
@@ -537,10 +643,164 @@ export default function YouTubePanel({
                 </table>
                 {state.chapters.length === 0 && <p className="py-3 text-[12px] text-ink-3">{t("No crawled chapters yet.")}</p>}
               </section>
+
+              <section className="flex flex-col gap-3 rounded-tool border border-rule bg-raised px-3 py-2.5">
+                <div>
+                  <div className="text-[13px] font-semibold">{t("Full-story video (compilation)")}</div>
+                  <p className="mt-0.5 text-[12px] leading-snug text-ink-3">
+                    {t(
+                      "Joins the selected chapters into one long video per part (under 11 hours), with a timestamped table of contents in the description."
+                    )}
+                  </p>
+                </div>
+                <label className="field">
+                  <span className="label">{t("Story intro (2–3 sentences)")}</span>
+                  <textarea
+                    className="input min-h-20"
+                    value={compilationIntro}
+                    maxLength={2000}
+                    onChange={(event) => setCompilationIntro(event.target.value)}
+                  />
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="input w-40"
+                    aria-label={t("Compilation label")}
+                    value={compilationLabelWord}
+                    onChange={(event) => setCompilationLabelWord(event.target.value)}
+                  >
+                    <option value="Trọn bộ">Trọn bộ</option>
+                    <option value="Tuyển tập">Tuyển tập</option>
+                  </select>
+                  <button type="button" className="btn btn-tiny" disabled={busy || selectedOrders.length === 0} onClick={() => void viewCompilationPlan()}>
+                    {t("View plan")}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-tiny"
+                    disabled={busy || running !== null || !compilationPlan || compilationPlan.missing.length > 0}
+                    onClick={makeCompilation}
+                  >
+                    <Icon name="youtube" size={12} />
+                    {t("Make compilation ({count} parts)", { count: compilationPlan?.parts.length ?? 0 })}
+                  </button>
+                  <button
+                    type="button"
+                    className="btn btn-tiny"
+                    disabled={busy || running !== null || readyCompilations.length === 0}
+                    onClick={openCompilationUpload}
+                  >
+                    <Icon name="upload" size={12} />
+                    {t("Upload compilation ({count})", { count: readyCompilations.length })}
+                  </button>
+                </div>
+                <p className="text-[11px] leading-snug text-ink-3">
+                  {t("The playlist for compilations: {name}", { name: state.compilationPlaylist })}
+                </p>
+                {state.compilations.length > 0 && (
+                  <ul className="flex flex-col gap-1 text-[12px]">
+                    {state.compilations.map((record) => {
+                      const chip = statusChip(record, t);
+                      return (
+                        <li key={record.id} className="flex items-center gap-2 border-b border-rule pb-1 last:border-b-0">
+                          {chip && <StatusChip state={chip.state} label={chip.label} />}
+                          <span className="min-w-0 flex-1 truncate">{record.label}</span>
+                          <span className="text-ink-3">{record.videoSeconds ? `${Math.round(record.videoSeconds / 3600)} h` : ""}</span>
+                          {record.error && <span className="min-w-0 flex-1 truncate text-error">{record.error}</span>}
+                          {record.videoUrl && (
+                            <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
+                              <Icon name="open" size={12} />
+                            </a>
+                          )}
+                          {!record.videoUrl && record.videoPath && (
+                            <a className="btn btn-quiet btn-tiny px-1" href={youTubeCompilationVideoUrl(story.id, record.id)} target="_blank" rel="noreferrer" title={t("Watch the rendered part")}>
+                              <Icon name="play" size={12} />
+                            </a>
+                          )}
+                          {record.status !== "uploading" && (
+                            <button
+                              type="button"
+                              className="btn btn-quiet btn-tiny px-1"
+                              aria-label={t("Remove {label}", { label: record.label })}
+                              disabled={busy || running !== null}
+                              onClick={() => void removeCompilation(record.id, record.label)}
+                            >
+                              <Icon name="trash" size={12} />
+                            </button>
+                          )}
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </section>
             </>
           )}
         </div>
       </div>
+
+      {compilationUploadOpen && state && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 p-4"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setCompilationUploadOpen(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Upload compilation")}
+            className="flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-tool border border-rule bg-chrome p-4"
+          >
+            <h3 className="text-sm font-semibold">
+              {t("Upload {count} long videos to YouTube", { count: readyCompilations.length })}
+            </h3>
+            <p className="text-[12px] leading-snug text-ink-2">
+              {t("Every video is uploaded as private. A scheduled video becomes public by itself at its publish time.")}
+            </p>
+            <ul className="flex flex-col gap-0.5 text-[12px] text-ink-2">
+              {readyCompilations.map((record) => (
+                <li key={record.id} className="flex items-center justify-between gap-3">
+                  <span className="truncate">{record.label}</span>
+                  <span className="shrink-0 text-ink-3">
+                    {record.publishAt ? formatPublishAt(record.publishAt) : t("private, no schedule")}
+                  </span>
+                </li>
+              ))}
+            </ul>
+            {compilationNeedsPlaylist && (
+              <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
+                <input
+                  type="checkbox"
+                  className="mt-0.5 size-3.5 accent-select"
+                  checked={compilationCreatePlaylist}
+                  onChange={(event) => setCompilationCreatePlaylist(event.target.checked)}
+                />
+                <span>{t("Create the playlist \"{name}\" (public, one per story).", { name: state.compilationPlaylist })}</span>
+              </label>
+            )}
+            {compilationDialogError && (
+              <p role="alert" className="text-[12px] text-error">
+                {compilationDialogError}
+              </p>
+            )}
+            <div className="flex items-center justify-end gap-2">
+              <button type="button" className="btn btn-quiet" onClick={() => setCompilationUploadOpen(false)}>
+                {t("Cancel")}
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || (compilationNeedsPlaylist && !compilationCreatePlaylist)}
+                onClick={confirmCompilationUpload}
+              >
+                <Icon name="upload" size={13} />
+                {t("Upload now")}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {uploadOpen && state && (
         <div
@@ -616,7 +876,7 @@ export default function YouTubePanel({
 }
 
 function statusChip(
-  record: YouTubeVideoRecord | undefined,
+  record: { status: string } | undefined,
   t: (key: string, params?: Record<string, string | number>) => string
 ): { state: ChipState; label: string } | null {
   if (!record) return null;
@@ -633,6 +893,8 @@ function statusChip(
       return { state: "done", label: t("Uploaded") };
     case "error":
       return { state: "error", label: t("Error") };
+    default:
+      return null;
   }
 }
 

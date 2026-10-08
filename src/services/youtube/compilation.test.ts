@@ -1,0 +1,85 @@
+import { describe, expect, it } from "vitest";
+import {
+  compilationLabel,
+  compilationMeta,
+  compilationPlaylistTitle,
+  planCompilationParts,
+  timestamp,
+  tocFor,
+} from "./compilation";
+
+describe("planCompilationParts", () => {
+  it("splits in chapter order under the limit", () => {
+    const seconds = new Map([
+      [1, 100],
+      [2, 100],
+      [3, 100],
+      [4, 100],
+    ]);
+    // 250s fits two chapters; the third starts a new part.
+    expect(planCompilationParts([1, 2, 3, 4], seconds, 250)).toEqual([
+      [1, 2],
+      [3, 4],
+    ]);
+    expect(planCompilationParts([1, 2, 3, 4], seconds, 10_000)).toEqual([[1, 2, 3, 4]]);
+  });
+
+  it("keeps a chapter longer than the limit in a part of its own", () => {
+    const seconds = new Map([
+      [1, 500],
+      [2, 10],
+    ]);
+    expect(planCompilationParts([1, 2], seconds, 100)).toEqual([[1], [2]]);
+  });
+});
+
+describe("timestamps and table of contents", () => {
+  it("prints m:ss and h:mm:ss", () => {
+    expect(timestamp(65)).toBe("1:05");
+    expect(timestamp(3725)).toBe("1:02:05");
+  });
+
+  it("starts each part at 0:00 and accumulates the chapter lengths", () => {
+    const seconds = new Map([
+      [1, 60],
+      [2, 125],
+    ]);
+    expect(tocFor([1, 2], seconds)).toEqual(["0:00 Chương 1", "1:00 Chương 2"]);
+  });
+});
+
+describe("compilation metadata", () => {
+  const base = {
+    storyTitle: "Truyện",
+    channel: "Kênh Khác",
+    labelWord: "Trọn bộ",
+    intro: "Một câu giới thiệu.",
+    toc: ["0:00 Chương 1", "1:00 Chương 2"],
+    author: "Tác giả",
+  };
+
+  it("names parts, videos and the playlist the way the skill does", () => {
+    expect(compilationLabel("Trọn bộ", 1, 3, 1, 50)).toBe("Trọn bộ Phần 1 (Chương 1-50)");
+    expect(compilationLabel("Trọn bộ", 1, 1, 1, 50)).toBe("Trọn bộ (Chương 1-50)");
+    expect(compilationPlaylistTitle("Truyện", "Truyện FM")).toBe("Truyện – Trọn bộ | Truyện FM");
+  });
+
+  it("builds the title, the timestamped description and the tags", () => {
+    const meta = compilationMeta({ ...base, label: "Trọn bộ Phần 1 (Chương 1-50)" });
+    expect(meta.title).toBe("Truyện – Trọn bộ Phần 1 (Chương 1–50) | Kênh Khác");
+    expect(meta.description).toContain('🎧 Nghe truyện audio "Truyện" – Trọn bộ Phần 1 (Chương 1–50).');
+    expect(meta.description).toContain("📖 Một câu giới thiệu.");
+    expect(meta.description).toContain("⏱️ Mục lục:\n0:00 Chương 1\n1:00 Chương 2");
+    expect(meta.description).toContain("✍️ Tác giả: Tác giả");
+    expect(meta.description).toContain("🔔 Đăng ký kênh Kênh Khác");
+    expect(meta.description).toContain("#KênhKhác #Truyện #TruyệnAudio #NgheTruyện");
+    expect(meta.tags).toContain("Truyện trọn bộ");
+    expect(meta.tags).toContain("nghe truyện ngủ");
+    expect(meta.playlistTitle).toBe("Truyện – Trọn bộ | Kênh Khác");
+  });
+
+  it("leaves the intro out when it is empty", () => {
+    const meta = compilationMeta({ ...base, intro: "  ", label: "Trọn bộ (Chương 1-2)" });
+    expect(meta.description).not.toContain("📖");
+  });
+});

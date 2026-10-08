@@ -64,7 +64,7 @@ export interface RewriteRun {
 }
 
 export interface YouTubeRun {
-  phase: "prepare" | "render" | "upload";
+  phase: "prepare" | "render" | "upload" | "compilation";
   done: number;
   total: number;
   startedAt: number;

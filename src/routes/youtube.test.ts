@@ -21,6 +21,9 @@ const fake = vi.hoisted(() => ({
   state: {} as Record<string, unknown>,
   prepare: vi.fn(async () => ({ done: 1, failed: 0 })),
   sync: vi.fn(async () => ({ imported: 2, updated: 0, playlistTitle: "T", playlistExists: true })),
+  plan: vi.fn(async () => ({ totalHours: 2, missing: [], parts: [{ part: 1, from: 1, to: 2, hours: 2 }] })),
+  renderCompilation: vi.fn(async () => ({ done: 1, failed: 0 })),
+  uploadCompilation: vi.fn(async () => ({ done: 1, failed: 0 })),
   render: vi.fn(async () => ({ done: 1, failed: 0 })),
   upload: vi.fn(async () => ({ done: 1, failed: 0 })),
 }));
@@ -47,6 +50,13 @@ vi.mock("../services/youtube/account", () => ({
 }));
 vi.mock("../services/youtube/api", () => ({ findPlaylist: async () => fake.playlist }));
 vi.mock("../services/youtube/video", () => ({ findFfmpeg: () => fake.ffmpeg }));
+vi.mock("../services/youtube/compilation", () => ({
+  planCompilation: (...args: unknown[]) => fake.plan(...(args as [])),
+  renderCompilations: (...args: unknown[]) => fake.renderCompilation(...(args as [])),
+  uploadCompilations: (...args: unknown[]) => fake.uploadCompilation(...(args as [])),
+  compilationChannelPlaylist: (title: string, channel: string) => `${title} – Trọn bộ | ${channel}`,
+  resolveCompilationPath: () => undefined,
+}));
 vi.mock("../services/agent/agentConfig", () => ({ activeAgent: () => fake.agent }));
 
 function makeStory(id: string): StoredStory {
@@ -196,6 +206,81 @@ describe("YouTube routes", () => {
     await vi.waitFor(() => expect(fake.render).toHaveBeenCalledTimes(1));
     const job = fake.render.mock.calls[0][0] as unknown as { music?: { id?: string; volume?: number } };
     expect(job.music).toEqual({ id: track.id, volume: 0.2 });
+  });
+
+  it("plans and starts a full-story compilation", async () => {
+    const plan = await fetch(`${base}/stories/${id}/youtube/compilation/plan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orders: [1, 2] }),
+    });
+    expect(plan.status).toBe(200);
+    expect(await plan.json()).toEqual({ totalHours: 2, missing: [], parts: [{ part: 1, from: 1, to: 2, hours: 2 }] });
+
+    const render = await fetch(`${base}/stories/${id}/youtube/compilation`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orders: [1, 2], intro: "Giới thiệu", labelWord: "Tuyển tập" }),
+    });
+    expect(render.status).toBe(202);
+    expect(await render.json()).toEqual({ started: true, total: 1, parts: 1 });
+    await vi.waitFor(() => expect(fake.renderCompilation).toHaveBeenCalledTimes(1));
+    const job = fake.renderCompilation.mock.calls[0][0] as unknown as { orders: number[]; intro: string; labelWord: string };
+    expect(job.orders).toEqual([1, 2]);
+    expect(job.intro).toBe("Giới thiệu");
+    expect(job.labelWord).toBe("Tuyển tập");
+  });
+
+  it("asks for the playlist confirmation before uploading a compilation", async () => {
+    await stories.saveCompilation({
+      id: "c1",
+      storyId: id,
+      part: 1,
+      parts: 1,
+      label: "Truyện – Trọn bộ (Chương 1-2)",
+      fromOrder: 1,
+      toOrder: 2,
+      status: "rendered",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const refused = await fetch(`${base}/stories/${id}/youtube/compilation/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    expect(refused.status).toBe(409);
+    expect((await refused.json()) as { code?: string }).toMatchObject({ code: "playlist-missing" });
+
+    const confirmed = await fetch(`${base}/stories/${id}/youtube/compilation/upload`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ createPlaylist: true }),
+    });
+    expect(confirmed.status).toBe(202);
+    await vi.waitFor(() => expect(fake.uploadCompilation).toHaveBeenCalledTimes(1));
+    const job = fake.uploadCompilation.mock.calls[0][0] as unknown as { createPlaylist: boolean };
+    expect(job.createPlaylist).toBe(true);
+  });
+
+  it("reports the compilation playlist and parts in the panel state", async () => {
+    await stories.saveCompilation({
+      id: "c2",
+      storyId: id,
+      part: 1,
+      parts: 1,
+      label: "Truyện – Trọn bộ (Chương 1-2)",
+      fromOrder: 1,
+      toOrder: 2,
+      status: "rendered",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const res = await fetch(`${base}/stories/${id}/youtube`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { compilationPlaylist: string; compilations: { id: string }[] };
+    expect(body.compilationPlaylist).toBe("Truyện – Trọn bộ | Truyện FM");
+    expect(body.compilations.map((record) => record.id)).toContain("c2");
   });
 
   it("refuses to upload when not signed in", async () => {

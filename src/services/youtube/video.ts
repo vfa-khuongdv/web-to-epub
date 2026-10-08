@@ -149,13 +149,13 @@ export function encodeArgs(input: EncodeInput): string[] {
   return args;
 }
 
-interface RunOptions {
+export interface RunOptions {
   signal?: AbortSignal;
   onProgress?: (fraction: number) => void;
   durationSeconds?: number;
 }
 
-function runFfmpeg(command: string, args: string[], options: RunOptions): Promise<void> {
+export function runFfmpeg(command: string, args: string[], options: RunOptions): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(command, args, { stdio: ["ignore", "pipe", "pipe"] });
     let stderr = "";

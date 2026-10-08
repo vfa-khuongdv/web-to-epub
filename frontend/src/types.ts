@@ -210,7 +210,7 @@ export interface RewriteState {
 // ---- YouTube publishing (routes/youtube.ts) ---------------------------------
 
 export type YouTubeChapterStatus = "draft" | "rendering" | "rendered" | "uploading" | "uploaded" | "error";
-export type YouTubePhase = "prepare" | "render" | "upload";
+export type YouTubePhase = "prepare" | "render" | "upload" | "compilation";
 
 export interface YouTubeVideoRecord {
   order: number;
@@ -237,6 +237,8 @@ export interface YouTubeChapterState {
   order: number;
   title: string;
   hasAudio: boolean;
+  // Audio length in seconds, for the compilation plan.
+  seconds?: number;
   // The video was rendered from audio that has been regenerated since.
   audioChanged: boolean;
   record?: YouTubeVideoRecord;
@@ -267,7 +269,41 @@ export interface YouTubeState {
   playlist: { title: string; id?: string; url?: string; checkedAt?: string; exists: boolean };
   credits: { author?: string; translator?: string; genreTags: string };
   chapters: YouTubeChapterState[];
+  // The playlist compilations are uploaded to, and the parts made so far.
+  compilationPlaylist: string;
+  compilations: YouTubeCompilation[];
   running: YouTubeRun | null;
+}
+
+export type YouTubeCompilationStatus = "rendering" | "rendered" | "uploading" | "uploaded" | "error";
+
+// One part of the story's compilation (several chapters in one long video).
+export interface YouTubeCompilation {
+  id: string;
+  part: number;
+  parts: number;
+  label: string;
+  fromOrder: number;
+  toOrder: number;
+  status: YouTubeCompilationStatus;
+  title?: string;
+  description?: string;
+  tags?: string;
+  publishAt?: string;
+  videoPath?: string;
+  videoSeconds?: number;
+  videoId?: string;
+  videoUrl?: string;
+  privacy?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YouTubeCompilationPlan {
+  totalHours: number;
+  missing: number[];
+  parts: { part: number; from: number; to: number; hours: number }[];
 }
 
 export interface YouTubeConfig {

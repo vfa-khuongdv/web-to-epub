@@ -33,6 +33,8 @@ const base: YouTubeState = {
   playlist: { title: "Truyện – Truyện Audio Full | Truyện FM", exists: false },
   credits: { genreTags: "truyện ngôn tình" },
   chapters: [{ order: 1, title: "Chương 1", hasAudio: true, audioChanged: false }],
+  compilationPlaylist: "Truyện – Trọn bộ | Truyện FM",
+  compilations: [],
   running: null,
 };
 

@@ -31,6 +31,36 @@ export interface YouTubeVideoRecord {
   updatedAt: string;
 }
 
+export type YouTubeCompilationStatus = "rendering" | "rendered" | "uploading" | "uploaded" | "error";
+
+/**
+ * One part of a story's compilation (several chapters joined into one long video, split
+ * so no part passes YouTube's 12-hour limit — the workspace's `truyen-fm-compilation`
+ * skill). Parts live outside `youtube_videos` because they are not chapters.
+ */
+export interface YouTubeCompilationRecord {
+  id: string;
+  part: number;
+  parts: number;
+  // "Trọn bộ Phần 1 (Chương 1–50)" — shown in the panel and in the title.
+  label: string;
+  fromOrder: number;
+  toOrder: number;
+  status: YouTubeCompilationStatus;
+  title?: string;
+  description?: string;
+  tags?: string;
+  publishAt?: string;
+  videoPath?: string;
+  videoSeconds?: number;
+  videoId?: string;
+  videoUrl?: string;
+  privacy?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface YouTubeStoryRecord {
   storyId: string;
   playlistTitle: string;
