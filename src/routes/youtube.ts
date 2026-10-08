@@ -69,8 +69,8 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-function callbackPage(message: string): string {
-  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>Truyện FM</title></head><body style="font-family:sans-serif;padding:2rem"><p>${escapeHtml(message)}</p></body></html>`;
+function callbackPage(message: string, channel: string): string {
+  return `<!doctype html><html lang="vi"><head><meta charset="utf-8"><title>${escapeHtml(channel)}</title></head><body style="font-family:sans-serif;padding:2rem"><p>${escapeHtml(message)}</p></body></html>`;
 }
 
 // Sign-ins waiting for Google to redirect back; state is single-use and expires.
@@ -179,7 +179,7 @@ youtubeRouter.get("/youtube/callback", async (req, res) => {
   const flow = pendingFlows.get(state);
   pendingFlows.delete(state);
   if (!flow || !code) {
-    res.status(400).type("html").send(callbackPage(t("Sign-in failed or expired. Open Settings → YouTube and try again.")));
+    res.status(400).type("html").send(callbackPage(t("Sign-in failed or expired. Open Settings → YouTube and try again."), loadYouTubeConfig().channel));
     return;
   }
   try {
@@ -206,9 +206,9 @@ youtubeRouter.get("/youtube/callback", async (req, res) => {
     await saveAccount(account);
     res
       .type("html")
-      .send(callbackPage(t("YouTube connected: {channel}. You can close this tab.", { channel: channel?.title ?? "" })));
+      .send(callbackPage(t("YouTube connected: {channel}. You can close this tab.", { channel: channel?.title ?? "" }), loadYouTubeConfig().channel));
   } catch (err) {
-    res.status(502).type("html").send(callbackPage(err instanceof Error ? err.message : t("Could not connect YouTube")));
+    res.status(502).type("html").send(callbackPage(err instanceof Error ? err.message : t("Could not connect YouTube"), loadYouTubeConfig().channel));
   }
 });
 

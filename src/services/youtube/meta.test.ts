@@ -51,6 +51,15 @@ describe("YouTube metadata", () => {
     ]);
   });
 
+  it("takes the channel hashtag from the configured channel, not a hard-coded one", () => {
+    const other = descriptionFor({ storyTitle: "A", order: 1, channel: "Kênh Khác" });
+    expect(other).toContain("Đăng ký kênh Kênh Khác");
+    expect(other).toContain("#KênhKhác #A #TruyệnAudio #NgheTruyện");
+    expect(other).not.toContain("#TruyệnFM");
+    // An empty channel leaves the other hashtags alone.
+    expect(descriptionFor({ storyTitle: "A", order: 1, channel: "" })).toContain("#A #TruyệnAudio #NgheTruyện");
+  });
+
   it("turns the story title into a hashtag", () => {
     expect(hashtagFromTitle("nữ phụ hằng ngày cầu ly hôn")).toBe("NữPhụHằngNgàyCầuLyHôn");
   });

@@ -47,12 +47,15 @@ export function descriptionFor(input: DescriptionInput): string {
   if (translator) lines.push(`🌐 Dịch: ${translator}`);
   if (schedule) lines.push(`⏰ Cập nhật mỗi tối lúc ${schedule}.`);
   if (author || translator || schedule) lines.push("");
+  const channelHashtag = hashtagFromTitle(input.channel);
   lines.push(
     `🔔 Đăng ký kênh ${input.channel} và bấm chuông để không bỏ lỡ chương mới.`,
     "",
     "⚠️ Nội dung chỉ nhằm mục đích giải trí.",
     "",
-    `#TruyệnFM #${hashtagFromTitle(input.storyTitle)} #TruyệnAudio #NgheTruyện`
+    [channelHashtag && `#${channelHashtag}`, `#${hashtagFromTitle(input.storyTitle)}`, "#TruyệnAudio", "#NgheTruyện"]
+      .filter(Boolean)
+      .join(" ")
   );
   return sanitizeYouTubeText(lines.join("\n"));
 }
