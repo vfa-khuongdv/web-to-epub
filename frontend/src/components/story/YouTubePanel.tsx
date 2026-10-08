@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  applyYouTubeIntro,
   deleteYouTubeChapter,
   fetchMusicTracks,
   prepareYouTube,
@@ -83,6 +84,7 @@ export default function YouTubePanel({
   const [compilationPreview, setCompilationPreview] = useState<YouTubeCompilation | null>(null);
   const [compilationInfo, setCompilationInfo] = useState<YouTubeCompilation | null>(null);
   const [writingIntro, setWritingIntro] = useState(false);
+  const [applyingIntro, setApplyingIntro] = useState(false);
 
   useEffect(() => {
     fetchMusicTracks()
@@ -295,10 +297,32 @@ export default function YouTubePanel({
     try {
       const { intro } = await writeYouTubeIntro(story.id, selectedOrders);
       setCompilationIntro(intro);
+      // Videos rendered earlier keep the description they were made with, so put the new
+      // intro into them right away — that is what the person just asked for.
+      if (reschedulableParts.length > 0) {
+        const { updated } = await applyYouTubeIntro(story.id, intro);
+        if (updated > 0) setMessage(t("Updated the description of {count} rendered parts.", { count: updated }));
+        await refresh();
+      }
     } catch (err) {
       setActionError((err as Error).message);
     } finally {
       setWritingIntro(false);
+    }
+  }
+
+  async function applyIntro() {
+    if (!compilationIntro.trim() || applyingIntro) return;
+    setApplyingIntro(true);
+    setActionError(null);
+    try {
+      const { updated } = await applyYouTubeIntro(story.id, compilationIntro);
+      setMessage(t("Updated the description of {count} rendered parts.", { count: updated }));
+      await refresh();
+    } catch (err) {
+      setActionError((err as Error).message);
+    } finally {
+      setApplyingIntro(false);
     }
   }
 
@@ -723,6 +747,20 @@ export default function YouTubePanel({
                       >
                         <Icon name="sparkles" size={12} className={writingIntro ? "animate-pulse" : undefined} />
                         {writingIntro ? t("Writing…") : t("Write intro with AI")}
+                      </button>
+                    )}
+                    {reschedulableParts.length > 0 && (
+                      <button
+                        type="button"
+                        className="btn btn-quiet btn-tiny"
+                        disabled={busy || applyingIntro || !compilationIntro.trim()}
+                        title={t("Put this intro into the 📖 line of the parts already rendered")}
+                        onClick={() => void applyIntro()}
+                      >
+                        <Icon name="check" size={12} className={applyingIntro ? "animate-pulse" : undefined} />
+                        {applyingIntro
+                          ? t("Updating…")
+                          : t("Update the parts' descriptions ({count})", { count: reschedulableParts.length })}
                       </button>
                     )}
                   </div>

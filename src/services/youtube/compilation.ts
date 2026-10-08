@@ -150,6 +150,22 @@ export function compilationMeta(input: CompilationMetaInput): {
   };
 }
 
+// The 📖 line of a rendered description, updated in place: the contents, credits and
+// hashtags stay exactly as the render wrote them.
+export function withIntro(description: string, intro: string): string {
+  const block = `📖 ${intro.trim()}`;
+  if (!description.trim()) return block;
+  const lines = description.split("\n");
+  const index = lines.findIndex((line) => line.startsWith("📖 "));
+  if (index >= 0) {
+    lines[index] = block;
+    return lines.join("\n");
+  }
+  // Right under the opening "🎧 …" line and its blank line.
+  lines.splice(1, 0, "", block);
+  return lines.join("\n");
+}
+
 export function compilationVideoPath(storyId: string, from: number, to: number): string {
   return ["youtube", storyId, `compilation-${from}-${to}.mp4`].join("/");
 }

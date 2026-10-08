@@ -28,6 +28,7 @@ const api = vi.hoisted(() => ({
   deleteYouTubeCompilation: vi.fn(async () => {}),
   youTubeCompilationVideoUrl: (storyId: string, id: string) => `/api/stories/${storyId}/youtube/compilation/${id}/video`,
   writeYouTubeIntro: vi.fn(async () => ({ intro: "Giới thiệu do AI viết." })),
+  applyYouTubeIntro: vi.fn(async () => ({ updated: 1 })),
   deleteYouTubeChapter: vi.fn(async () => {}),
   youTubeVideoUrl: (storyId: string, order: number) => `/api/stories/${storyId}/youtube/${order}/video`,
 }));
@@ -94,6 +95,7 @@ beforeEach(() => {
   hook.value = hookValue();
   api.uploadYouTube.mockClear();
   api.uploadYouTubeCompilation.mockClear();
+  api.applyYouTubeIntro.mockClear();
   api.fetchMusicTracks.mockClear();
   api.saveYouTubeCompilation.mockClear();
   api.syncYouTube.mockReset().mockResolvedValue({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true });
@@ -236,6 +238,44 @@ describe("YouTubePanel", () => {
     await userEvent.click(screen.getByRole("button", { name: "Write intro with AI" }));
     await waitFor(() => expect(api.writeYouTubeIntro).toHaveBeenCalledWith("s1", [1]));
     expect(await screen.findByDisplayValue("Giới thiệu do AI viết.")).toBeInTheDocument();
+  });
+
+  it("puts a generated intro into the rendered parts' descriptions", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write intro with AI" }));
+    // The videos already made keep their own description: the intro goes straight into it.
+    await waitFor(() => expect(api.applyYouTubeIntro).toHaveBeenCalledWith("s1", "Giới thiệu do AI viết."));
+    expect(await screen.findByText("Updated the description of 1 rendered parts.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Update the parts' descriptions (1)" })).toBeEnabled();
+  });
+
+  it("keeps the AI intro button to writing alone when nothing is rendered", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write intro with AI" }));
+    await waitFor(() => expect(api.writeYouTubeIntro).toHaveBeenCalledWith("s1", [1]));
+    expect(api.applyYouTubeIntro).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: /Update the parts' descriptions/ })).toBeNull();
   });
 
   it("hides the AI intro button when the agent is off", () => {

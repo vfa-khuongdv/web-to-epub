@@ -25,6 +25,7 @@ import {
   renderCompilations,
   resolveCompilationPath,
   uploadCompilations,
+  withIntro,
 } from "../services/youtube/compilation";
 import {
   prepareYouTubeChapters,
@@ -613,6 +614,42 @@ youtubeRouter.post("/stories/:id/youtube/compilation/intro", async (req, res) =>
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : t("The agent could not write the intro") });
   }
+});
+
+// Puts the current intro into the descriptions of the parts already rendered — the videos
+// may have been made before the intro was written. Only the 📖 line changes; contents,
+// credits and hashtags stay as the render wrote them, and uploaded parts are left alone
+// (their description lives on YouTube).
+youtubeRouter.post("/stories/:id/youtube/compilation/description", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  if (library.runningYouTube.has(story.id)) {
+    res.status(409).json({ message: t("A YouTube job is already running for this story") });
+    return;
+  }
+  const body = (req.body ?? {}) as { intro?: unknown };
+  if (typeof body.intro !== "string" || !body.intro.trim()) {
+    res.status(400).json({ message: t("The intro cannot be empty") });
+    return;
+  }
+  const intro = body.intro.trim().slice(0, 2000);
+  const records = (await library.stories.listCompilations(story.id)).filter(
+    (record) => record.status === "rendered" || record.status === "error"
+  );
+  for (const record of records) {
+    await library.stories.saveCompilation({
+      ...record,
+      storyId: story.id,
+      description: withIntro(record.description ?? "", intro),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+  res.json({ updated: records.length });
 });
 
 // Plans the story's compilation: how many parts the chosen chapters make, and any

@@ -6,6 +6,7 @@ import {
   planCompilationParts,
   timestamp,
   tocFor,
+  withIntro,
 } from "./compilation";
 
 describe("planCompilationParts", () => {
@@ -45,6 +46,24 @@ describe("timestamps and table of contents", () => {
       [2, 125],
     ]);
     expect(tocFor([1, 2], seconds)).toEqual(["0:00 Chương 1", "1:00 Chương 2"]);
+  });
+});
+
+describe("withIntro", () => {
+  it("puts the 📖 line under the opening line when the render had no intro", () => {
+    const description = '🎧 Nghe truyện audio "A".\n\n⏱️ Mục lục:\n0:00 Chương 1\n\n#A #TruyệnAudio';
+    expect(withIntro(description, "Mở đầu.")).toBe(
+      '🎧 Nghe truyện audio "A".\n\n📖 Mở đầu.\n\n⏱️ Mục lục:\n0:00 Chương 1\n\n#A #TruyệnAudio'
+    );
+  });
+
+  it("replaces an intro the render already wrote", () => {
+    const description = '🎧 Nghe truyện audio "A".\n\n📖 Cũ.\n\n⏱️ Mục lục:\n\n#A';
+    expect(withIntro(description, "Mới.")).toBe('🎧 Nghe truyện audio "A".\n\n📖 Mới.\n\n⏱️ Mục lục:\n\n#A');
+  });
+
+  it("handles a record whose description was never written", () => {
+    expect(withIntro("", "Mở đầu.")).toBe("📖 Mở đầu.");
   });
 });
 

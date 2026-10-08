@@ -151,6 +151,18 @@ export async function writeYouTubeIntro(storyId: string, orders: number[]): Prom
   return (await res.json()) as { intro: string };
 }
 
+// Puts an intro into the descriptions of the parts already rendered (the 📖 line only);
+// returns how many parts changed.
+export async function applyYouTubeIntro(storyId: string, intro: string): Promise<{ updated: number }> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/description`, {
+    method: "POST",
+    headers: langHeaders({ "Content-Type": "application/json" }),
+    body: JSON.stringify({ intro }),
+  });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not update the parts' descriptions")));
+  return (await res.json()) as { updated: number };
+}
+
 // Plans the compilation: parts and hours, plus chapters still missing narration audio.
 export async function planYouTubeCompilation(storyId: string, orders: number[]): Promise<YouTubeCompilationPlan> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/plan`, {

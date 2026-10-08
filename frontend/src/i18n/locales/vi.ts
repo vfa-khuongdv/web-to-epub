@@ -818,4 +818,9 @@ export const vi: Record<string, string> = {
   "Could not save this part's info": "Không lưu được thông tin phần này",
   "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it.": "Phần còn lại của mô tả — mục lục kèm thời gian, tác giả và hashtag — được ghép khi tạo video; sau đó mở “Thông tin phần” của từng phần để xem hoặc sửa.",
   "Add the videos to the playlist \"{name}\".": "Thêm các video vào danh sách phát “{name}”.",
+  "Update the parts' descriptions ({count})": "Cập nhật mô tả các phần ({count})",
+  "Updating…": "Đang cập nhật…",
+  "Updated the description of {count} rendered parts.": "Đã cập nhật mô tả của {count} phần đã tạo.",
+  "Could not update the parts' descriptions": "Không cập nhật được mô tả các phần",
+  "Put this intro into the 📖 line of the parts already rendered": "Đưa đoạn giới thiệu này vào dòng 📖 của các phần đã tạo",
 };

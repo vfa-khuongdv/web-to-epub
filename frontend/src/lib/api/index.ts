@@ -30,6 +30,7 @@ export {
   renderYouTube,
   planYouTubeCompilation,
   writeYouTubeIntro,
+  applyYouTubeIntro,
   renderYouTubeCompilation,
   uploadYouTubeCompilation,
   deleteYouTubeCompilation,

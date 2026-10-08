@@ -351,6 +351,7 @@ const vi: Record<string, string> = {
   "The YouTube job failed": "Tiến trình YouTube thất bại",
   "The agent could not write the intro": "Agent không viết được đoạn giới thiệu",
   "This part is already on YouTube — its publish time cannot be changed here": "Phần này đã đăng lên YouTube — không đổi được giờ đăng ở đây",
+  "The intro cannot be empty": "Đoạn giới thiệu không được để trống",
   "Story is being rewritten or published, cannot delete":
     "Truyện đang được viết lại hoặc đang đăng YouTube, không thể xoá",
   "{field} must be text": "{field} phải là chuỗi",
