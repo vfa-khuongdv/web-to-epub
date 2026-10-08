@@ -11,6 +11,7 @@ export function summaryPrompt(storyTitle: string, order: number, text: string): 
     "Bạn tóm tắt một chương truyện để làm mô tả video YouTube.",
     "Viết 2–3 câu tiếng Việt, chỉ nêu những sự việc thực sự xảy ra trong chương, đúng tên nhân vật;",
     "không bịa, không thêm bình luận, không suy đoán, không mở đầu bằng \"Chương này\".",
+    "viết liền một đoạn văn, không xuống dòng, không dùng markdown.",
     "Trả về DUY NHẤT một JSON đúng định dạng, không giải thích thêm:",
     '{"summary": "..."}',
     "",
@@ -29,7 +30,8 @@ export function parseSummary(reply: string, key: "summary" | "intro" = "summary"
     try {
       const value = JSON.parse(reply.slice(start, end + 1)) as Record<string, unknown>;
       const text = value[key];
-      if (typeof text === "string" && text.trim()) return text.trim().slice(0, 600);
+      // One paragraph, like the 📖 line in a chapter's description (and the fallback below).
+      if (typeof text === "string" && text.trim()) return text.trim().replace(/\s+/g, " ").slice(0, 600);
     } catch {
       /* not JSON: fall through to the plain-reply case */
     }
@@ -42,9 +44,10 @@ export function parseSummary(reply: string, key: "summary" | "intro" = "summary"
 
 export function introPrompt(storyTitle: string, text: string): string {
   return [
-    "Bạn viết đoạn giới thiệu cho video truyện audio trên YouTube.",
-    "Viết 2–3 câu tiếng Việt từ phần đầu của truyện: bối cảnh, nhân vật chính và tình huống mở đầu.",
-    "Không tiết lộ kết thúc hay tình tiết về sau; không bịa, không thêm bình luận, không mở đầu bằng \"Truyện kể về\".",
+    "Bạn viết đoạn giới thiệu truyện để mở đầu phần mô tả của video YouTube, cùng định dạng với phần tóm tắt trong mô tả từng chương.",
+    "Viết 2–3 câu tiếng Việt, chỉ nêu những sự việc thực sự xảy ra ở phần đầu truyện, đúng tên nhân vật;",
+    "không bịa, không thêm bình luận, không suy đoán, không tiết lộ kết thúc hay tình tiết về sau, không mở đầu bằng \"Truyện kể về\";",
+    "viết liền một đoạn văn, không xuống dòng, không dùng markdown.",
     "Trả về DUY NHẤT một JSON đúng định dạng, không giải thích thêm:",
     '{"intro": "..."}',
     "",
