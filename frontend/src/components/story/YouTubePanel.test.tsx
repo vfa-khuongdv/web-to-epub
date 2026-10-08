@@ -421,6 +421,8 @@ describe("YouTubePanel", () => {
       },
     });
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // The link itself is shown, like the playlist link in the connected line.
+    expect(screen.getByRole("link", { name: "youtu.be/v1" })).toHaveAttribute("href", "https://youtu.be/v1");
     await userEvent.click(screen.getByRole("button", { name: "Copy the video link" }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://youtu.be/v1"));
     expect(await screen.findByText("Video link copied.")).toBeInTheDocument();

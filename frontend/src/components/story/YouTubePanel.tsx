@@ -840,8 +840,14 @@ export default function YouTubePanel({
                           <span className="text-ink-3">{record.videoSeconds ? `${Math.round(record.videoSeconds / 3600)} h` : ""}</span>
                           {record.error && <span className="min-w-0 flex-1 truncate text-error">{record.error}</span>}
                           {record.videoUrl && (
-                            <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
-                              <Icon name="open" size={12} />
+                            <a
+                              className="underline text-ink-2"
+                              href={record.videoUrl}
+                              target="_blank"
+                              rel="noreferrer"
+                              title={t("Open on YouTube")}
+                            >
+                              {record.videoUrl.replace(/^https?:\/\//, "")}
                             </a>
                           )}
                           {record.videoUrl && (
@@ -1284,6 +1290,17 @@ function ChapterRow({
                   </button>
                   {record.videoPath && (
                     <video controls preload="metadata" className="max-h-56 w-full max-w-md rounded-tool" src={youTubeVideoUrl(storyId, chapter.order)} />
+                  )}
+                  {record.videoUrl && (
+                    <a
+                      className="underline text-[12px] text-ink-2"
+                      href={record.videoUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      title={t("Open on YouTube")}
+                    >
+                      {record.videoUrl.replace(/^https?:\/\//, "")}
+                    </a>
                   )}
                 </div>
                 {saveError && (
