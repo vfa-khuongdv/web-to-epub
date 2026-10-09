@@ -30,6 +30,7 @@ import {
   Play,
   RotateCw,
   Settings,
+  Share2,
   SpellCheck,
   Square,
   Sun,
@@ -82,6 +83,7 @@ export type IconName =
   | "regenerate"
   | "sparkles"
   | "youtube"
+  | "share"
   | "more";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
@@ -126,6 +128,7 @@ const icons: Record<IconName, LucideIcon> = {
   regenerate: AudioLines,
   sparkles: Sparkles,
   youtube: MonitorPlay,
+  share: Share2,
   more: Ellipsis,
 };
 

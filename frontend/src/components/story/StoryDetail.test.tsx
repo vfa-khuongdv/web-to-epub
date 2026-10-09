@@ -494,7 +494,7 @@ describe("StoryDetail YouTube", () => {
     });
     setup();
     expect(screen.queryByTestId("youtube-panel")).not.toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "YouTube" }));
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
     expect(screen.getByTestId("youtube-panel")).toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "close-youtube" }));
     expect(screen.queryByTestId("youtube-panel")).not.toBeInTheDocument();
@@ -502,7 +502,7 @@ describe("StoryDetail YouTube", () => {
 
   it("hides the YouTube button for a story with no narration", () => {
     setup();
-    expect(screen.queryByRole("button", { name: "YouTube" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Publish" })).not.toBeInTheDocument();
   });
 });
 

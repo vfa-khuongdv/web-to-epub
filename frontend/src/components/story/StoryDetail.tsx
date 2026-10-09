@@ -601,9 +601,9 @@ export default function StoryDetail({
               {isExporting ? t("Exporting…") : t("Export EPUB")}
             </button>
             {narratable && narratedCount > 0 && (
-              <button type="button" className="btn" title={t("Make videos for YouTube from the narrated chapters")} onClick={() => setYoutubeOpen(true)}>
-                <Icon name="youtube" size={14} />
-                {t("YouTube")}
+              <button type="button" className="btn" title={t("Make videos from the narrated chapters and publish them to YouTube and Facebook")} onClick={() => setYoutubeOpen(true)}>
+                <Icon name="upload" size={14} />
+                {t("Publish")}
               </button>
             )}
             {narratable && narratedCount > 0 && (

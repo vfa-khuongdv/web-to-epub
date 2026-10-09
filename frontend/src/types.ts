@@ -210,7 +210,7 @@ export interface RewriteState {
 // ---- YouTube publishing (routes/youtube.ts) ---------------------------------
 
 export type YouTubeChapterStatus = "draft" | "rendering" | "rendered" | "uploading" | "uploaded" | "error";
-export type YouTubePhase = "prepare" | "render" | "upload" | "compilation";
+export type YouTubePhase = "prepare" | "render" | "upload" | "compilation" | "facebook";
 
 export interface YouTubeVideoRecord {
   order: number;
@@ -326,4 +326,31 @@ export interface YouTubeStatus {
   hasClientSecret: boolean;
   ffmpeg: string | null;
   config: YouTubeConfig;
+}
+
+export interface FacebookStatus {
+  connected: boolean;
+  pageName?: string;
+  pageUrl?: string;
+  pageId?: string;
+}
+
+export interface FacebookVideoRecord {
+  order: number;
+  status: "uploading" | "uploaded" | "error";
+  videoId?: string;
+  videoUrl?: string;
+  scheduledAt?: string;
+  error?: string;
+}
+
+export interface FacebookStoryState {
+  connected: boolean;
+  pageName?: string;
+  videos: FacebookVideoRecord[];
+  // Chapters with a rendered video that are not on the Page yet.
+  ready: number[];
+  // The joined "full" video(s) of the story, posted as a whole.
+  compilations: { id: string; status: "uploading" | "uploaded" | "error"; videoUrl?: string; error?: string }[];
+  readyCompilations: { id: string; label: string }[];
 }

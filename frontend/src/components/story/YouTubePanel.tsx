@@ -13,6 +13,8 @@ import {
   saveYouTubeCredits,
   stopYouTube,
   syncYouTube,
+  uploadFacebook,
+  uploadFacebookCompilation,
   uploadYouTube,
   uploadYouTubeCompilation,
   writeYouTubeIntro,
@@ -22,9 +24,11 @@ import {
 import { distributeSchedule, formatPublishAt, isoFromLocalInput, localInputValue, tomorrowLocalDate } from "../../lib/format/schedule";
 import { formatEta } from "../../lib/format/formatEta";
 import { useLang } from "../../i18n";
-import { MusicTrack, StoredStory, YouTubeChapterState, YouTubeCompilation, YouTubeCompilationPlan, YouTubeVideoRecord } from "../../types";
+import { FacebookVideoRecord, MusicTrack, StoredStory, YouTubeChapterState, YouTubeCompilation, YouTubeCompilationPlan, YouTubeVideoRecord } from "../../types";
+import { useFacebookStory } from "../../hooks/useFacebookStory";
 import { useYouTube } from "../../hooks/useYouTube";
 import { YOUTUBE_CONNECTED } from "../settings/YouTubeSettings";
+import PublishDestinations, { Destination } from "./PublishDestinations";
 import { Icon } from "../ui/Icon";
 import { ProgressBar } from "../ui/ProgressBar";
 import { ChipState, StatusChip } from "../ui/StatusChip";
@@ -69,6 +73,9 @@ export default function YouTubePanel({
   const [message, setMessage] = useState<string | null>(null);
   const [uploadOpen, setUploadOpen] = useState(false);
   const [createPlaylist, setCreatePlaylist] = useState(false);
+  // Where the open publish dialog sends the videos (chapters or compilation parts).
+  const [toYouTube, setToYouTube] = useState(true);
+  const [toFacebook, setToFacebook] = useState(true);
   const [dialogError, setDialogError] = useState<string | null>(null);
   const synced = useRef(false);
   // Full-story video (compilation): the plan is fetched from the server so the panel and
@@ -159,6 +166,14 @@ export default function YouTubePanel({
 
   const byOrder = useMemo(() => new Map((state?.chapters ?? []).map((chapter) => [chapter.order, chapter])), [state]);
   const running = state?.running ?? null;
+  const facebook = useFacebookStory(story.id, running !== null);
+  const facebookReady = facebook?.connected ? facebook.ready : [];
+  const facebookParts = facebook?.connected ? facebook.readyCompilations : [];
+  const facebookByOrder = useMemo(
+    () => new Map((facebook?.videos ?? []).map((video) => [video.order, video])),
+    [facebook]
+  );
+  const facebookPublished = (facebook?.videos ?? []).filter((video) => video.status === "uploaded").length;
   // The bar spans every chapter/part; the percent in flight is the current one's own
   // progress, so a long part visibly fills it instead of sitting at done/total for minutes.
   const jobPct = running
@@ -176,6 +191,14 @@ export default function YouTubePanel({
     return record && (record.status === "rendered" || record.status === "error");
   });
   const uploadedCount = (state?.chapters ?? []).filter((chapter) => chapter.record?.status === "uploaded").length;
+  // What the publish button covers: YouTube chapters the person selected, plus every
+  // rendered chapter not yet on the Page.
+  const youtubeUploadable = state?.connected ? uploadOrders : [];
+  const publishCount = new Set([...youtubeUploadable, ...facebookReady]).size;
+  // What the open dialog will send, following its destination checkboxes.
+  const publishOrders = [...new Set([...(toYouTube ? youtubeUploadable : []), ...(toFacebook ? facebookReady : [])])].sort(
+    (x, y) => x - y
+  );
   const playlistMissing = state ? !state.playlist.exists : false;
   // The playlist is only for the chapters' uploads: with nothing prepared (or everything
   // already on YouTube) warning about it reads as if an upload were still pending — the
@@ -298,6 +321,14 @@ export default function YouTubePanel({
   const readyCompilations = (state?.compilations ?? []).filter(
     (record) => record.status === "rendered" || record.status === "error" || record.status === "uploading"
   );
+  const youtubeParts = state?.connected ? readyCompilations : [];
+  const facebookPartById = new Map((facebook?.compilations ?? []).map((part) => [part.id, part]));
+  const compilationPublishCount = new Set([...youtubeParts.map((part) => part.id), ...facebookParts.map((part) => part.id)]).size;
+  const compilationPublishParts = (state?.compilations ?? []).filter(
+    (record) =>
+      (toYouTube && youtubeParts.some((part) => part.id === record.id)) ||
+      (toFacebook && facebookParts.some((part) => part.id === record.id))
+  );
 
   async function writeIntro() {
     if (selectedOrders.length === 0 || writingIntro) return;
@@ -384,7 +415,9 @@ export default function YouTubePanel({
   }
 
   function openCompilationUpload() {
-    if (readyCompilations.length === 0) return;
+    if (compilationPublishCount === 0) return;
+    setToYouTube(youtubeParts.length > 0);
+    setToFacebook(facebookParts.length > 0);
     setCompilationDialogError(null);
     setCompilationNeedsPlaylist(false);
     setCompilationCreatePlaylist(false);
@@ -395,11 +428,16 @@ export default function YouTubePanel({
   function confirmCompilationUpload() {
     void run(async () => {
       try {
-        await uploadYouTubeCompilation(story.id, {
-          ids: readyCompilations.map((record) => record.id),
-          createPlaylist: compilationNeedsPlaylist ? compilationCreatePlaylist : undefined,
-          withPlaylist: compilationWithPlaylist,
-        });
+        if (toYouTube && youtubeParts.length > 0) {
+          await uploadYouTubeCompilation(story.id, {
+            ids: youtubeParts.map((record) => record.id),
+            createPlaylist: compilationNeedsPlaylist ? compilationCreatePlaylist : undefined,
+            withPlaylist: compilationWithPlaylist,
+            facebook: toFacebook && facebookParts.length > 0 ? facebookParts.map((part) => part.id) : undefined,
+          });
+        } else if (toFacebook) {
+          await uploadFacebookCompilation(story.id, facebookParts.map((part) => part.id));
+        }
         setCompilationUploadOpen(false);
       } catch (err) {
         const apiErr = err as { code?: string; message: string };
@@ -454,16 +492,27 @@ export default function YouTubePanel({
   }
 
   function openUpload() {
-    if (uploadOrders.length === 0) return;
+    if (publishCount === 0) return;
     setDialogError(null);
     setCreatePlaylist(!playlistMissing);
+    setToYouTube(youtubeUploadable.length > 0);
+    setToFacebook(facebookReady.length > 0);
     setUploadOpen(true);
   }
 
   function confirmUpload() {
     void run(async () => {
       try {
-        await uploadYouTube(story.id, uploadOrders, playlistMissing ? createPlaylist : undefined);
+        if (toYouTube && youtubeUploadable.length > 0) {
+          await uploadYouTube(
+            story.id,
+            youtubeUploadable,
+            playlistMissing ? createPlaylist : undefined,
+            toFacebook && facebookReady.length > 0 ? facebookReady : undefined
+          );
+        } else if (toFacebook) {
+          await uploadFacebook(story.id, facebookReady);
+        }
         setUploadOpen(false);
       } catch (err) {
         const apiErr = err as { code?: string; message: string };
@@ -476,14 +525,90 @@ export default function YouTubePanel({
     });
   }
 
+  const destinations: Destination[] = state
+    ? [
+        {
+          id: "youtube",
+          name: "YouTube",
+          icon: "youtube",
+          connected: state.connected,
+          status: state.connected ? t("Connected: {channel}", { channel: state.channel ?? "" }) : t("Not connected to YouTube yet."),
+          published: uploadedCount,
+          total: state.chapters.filter((chapter) => chapter.record).length,
+          connectLabel: t("Connect YouTube"),
+          settingsLabel: t("YouTube settings"),
+          actions: (
+            <button
+              type="button"
+              className="btn btn-tiny"
+              disabled={busy || !state.connected}
+              onClick={() => void run(async () => void (await syncFromYouTube(true)))}
+            >
+              {t("Sync from YouTube")}
+            </button>
+          ),
+          details: (
+            <>
+              {(state.playlist.exists || pendingChapterUploads) && (
+                <p className="text-[12px] leading-snug text-ink-3">
+                  {state.playlist.exists ? (
+                    <>
+                      {t("Playlist:")}{" "}
+                      {state.playlist.url ? (
+                        <a className="underline" href={state.playlist.url} target="_blank" rel="noreferrer">
+                          {state.playlist.title}
+                        </a>
+                      ) : (
+                        state.playlist.title
+                      )}
+                    </>
+                  ) : (
+                    t("The playlist \"{name}\" does not exist yet — it will be created only after you confirm it at upload.", {
+                      name: state.playlist.title,
+                    })
+                  )}
+                </p>
+              )}
+              {uploadedCompilations.length > 0 && (
+                <p className="text-[12px] leading-snug text-ink-3">
+                  {t("Video:")}{" "}
+                  {uploadedCompilations.map((record, index) => (
+                    <span key={record.id}>
+                      {index > 0 && " · "}
+                      <a className="underline" href={record.videoUrl} target="_blank" rel="noreferrer">
+                        {(record.videoUrl ?? "").replace(/^https?:\/\//, "")}
+                      </a>
+                    </span>
+                  ))}
+                </p>
+              )}
+            </>
+          ),
+        },
+        {
+          id: "facebook",
+          name: "Facebook",
+          icon: "share",
+          connected: facebook?.connected ?? false,
+          status: facebook?.connected
+            ? t("Connected: {channel}", { channel: facebook.pageName ?? "" })
+            : t("Not connected to Facebook yet."),
+          published: facebookPublished,
+          total: state.chapters.filter((chapter) => chapter.record).length,
+          connectLabel: t("Connect Facebook"),
+          settingsLabel: t("Facebook settings"),
+        },
+      ]
+    : [];
+
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-chrome" role="dialog" aria-modal="true" aria-label={t("YouTube")}>
+    <div className="fixed inset-0 z-40 flex flex-col bg-chrome" role="dialog" aria-modal="true" aria-label={t("Publish")}>
       <header className="flex h-11 flex-none items-center gap-3 border-b border-rule-2 px-3.5">
         <button type="button" className="btn btn-quiet btn-tiny" onClick={onClose}>
           <Icon name="x" size={12} />
           {t("Close")}
         </button>
-        <b className="text-sm">{t("YouTube")}</b>
+        <b className="text-sm">{t("Publish")}</b>
         <span className="ml-auto truncate text-xs text-ink-3">{story.title}</span>
       </header>
 
@@ -493,68 +618,19 @@ export default function YouTubePanel({
             <p className="text-[13px] text-ink-3">{error ?? t("Loading…")}</p>
           ) : (
             <>
-              <section className="flex flex-col gap-2 rounded-tool border border-rule bg-raised px-3 py-2.5">
-                <div className="flex flex-wrap items-center gap-2 text-[13px]">
-                  <Icon name="youtube" size={16} />
-                  {state.connected ? (
-                    <span>{t("Connected: {channel}", { channel: state.channel ?? "" })}</span>
-                  ) : (
-                    <span>{t("Not connected to YouTube yet.")}</span>
+              <PublishDestinations destinations={destinations} onOpenSettings={onOpenSettings} />
+              {(!state.cover || !state.ffmpeg) && (
+                <section className="flex flex-col gap-1">
+                  {!state.cover && (
+                    <p className="text-[12px] text-error">{t("This story has no cover image yet — add one before making videos")}</p>
                   )}
-                  <button
-                    type="button"
-                    className="btn btn-tiny ml-auto"
-                    disabled={busy || !state.connected}
-                    onClick={() => void run(async () => void (await syncFromYouTube(true)))}
-                  >
-                    {t("Sync from YouTube")}
-                  </button>
-                  <button type="button" className="btn btn-tiny" onClick={onOpenSettings}>
-                    {state.connected ? t("YouTube settings") : t("Connect YouTube")}
-                  </button>
-                </div>
-                {(state.playlist.exists || pendingChapterUploads) && (
-                  <p className="text-[12px] leading-snug text-ink-3">
-                    {state.playlist.exists ? (
-                      <>
-                        {t("Playlist:")}{" "}
-                        {state.playlist.url ? (
-                          <a className="underline" href={state.playlist.url} target="_blank" rel="noreferrer">
-                            {state.playlist.title}
-                          </a>
-                        ) : (
-                          state.playlist.title
-                        )}
-                      </>
-                    ) : (
-                      t("The playlist \"{name}\" does not exist yet — it will be created only after you confirm it at upload.", {
-                        name: state.playlist.title,
-                      })
-                    )}
-                  </p>
-                )}
-                {uploadedCompilations.length > 0 && (
-                  <p className="text-[12px] leading-snug text-ink-3">
-                    {t("Video:")}{" "}
-                    {uploadedCompilations.map((record, index) => (
-                      <span key={record.id}>
-                        {index > 0 && " · "}
-                        <a className="underline" href={record.videoUrl} target="_blank" rel="noreferrer">
-                          {(record.videoUrl ?? "").replace(/^https?:\/\//, "")}
-                        </a>
-                      </span>
-                    ))}
-                  </p>
-                )}
-                {!state.cover && (
-                  <p className="text-[12px] text-error">{t("This story has no cover image yet — add one before making videos")}</p>
-                )}
-                {!state.ffmpeg && (
-                  <p className="text-[12px] text-error">
-                    {t("ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube.")}
-                  </p>
-                )}
-              </section>
+                  {!state.ffmpeg && (
+                    <p className="text-[12px] text-error">
+                      {t("ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube.")}
+                    </p>
+                  )}
+                </section>
+              )}
 
               <section className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <label className="field">
@@ -660,9 +736,9 @@ export default function YouTubePanel({
                   <Icon name="youtube" size={13} />
                   {t("Make videos ({count})", { count: renderOrders.length })}
                 </button>
-                <button type="button" className="btn" disabled={busy || running !== null || uploadOrders.length === 0} onClick={openUpload}>
+                <button type="button" className="btn" disabled={busy || running !== null || publishCount === 0} onClick={openUpload}>
                   <Icon name="upload" size={13} />
-                  {t("Upload ({count})", { count: uploadOrders.length })}
+                  {t("Publish ({count})", { count: publishCount })}
                 </button>
                 {running && (
                   <button type="button" className="btn" onClick={() => void run(async () => void (await stopYouTube(story.id)))}>
@@ -688,7 +764,9 @@ export default function YouTubePanel({
                           ? "Making videos"
                           : running.phase === "compilation"
                             ? "Making the compilation"
-                            : "Uploading"
+                            : running.phase === "facebook"
+                              ? "Posting to Facebook"
+                              : "Uploading"
                     )}
                     {running.order !== undefined &&
                       ` · ${
@@ -738,9 +816,11 @@ export default function YouTubePanel({
                       <th className="w-9" />
                       <th className="num w-11">#</th>
                       <th>{t("Chapter")}</th>
-                      <th className="w-32">{t("Status")}</th>
+                      <th className="w-28">{t("Video")}</th>
+                      <th className="w-40">YouTube</th>
+                      <th className="w-40">Facebook</th>
                       <th className="w-36">{t("Publish at")}</th>
-                      <th className="w-20" />
+                      <th className="w-12" />
                     </tr>
                   </thead>
                   <tbody>
@@ -749,6 +829,7 @@ export default function YouTubePanel({
                         key={chapter.order}
                         storyId={story.id}
                         chapter={chapter}
+                        facebook={facebookByOrder.get(chapter.order)}
                         selected={selected.has(chapter.order)}
                         onToggle={() => toggle(chapter.order)}
                         onSaved={() => void refresh()}
@@ -835,11 +916,11 @@ export default function YouTubePanel({
                   <button
                     type="button"
                     className="btn btn-tiny"
-                    disabled={busy || running !== null || readyCompilations.length === 0}
+                    disabled={busy || running !== null || compilationPublishCount === 0}
                     onClick={openCompilationUpload}
                   >
                     <Icon name="upload" size={12} />
-                    {t("Upload compilation ({count})", { count: readyCompilations.length })}
+                    {t("Publish compilation ({count})", { count: compilationPublishCount })}
                   </button>
                 </div>
                 <p className="text-[11px] leading-snug text-ink-3">
@@ -876,6 +957,14 @@ export default function YouTubePanel({
                             >
                               <Icon name="copy" size={12} />
                             </button>
+                          )}
+                          {facebookPartById.get(record.id) && (
+                            <PlatformStatus
+                              chip={statusChip(facebookPartById.get(record.id), t)}
+                              url={facebookPartById.get(record.id)?.status === "uploaded" ? facebookPartById.get(record.id)?.videoUrl : undefined}
+                              openTitle={t("Open on Facebook")}
+                              error={facebookPartById.get(record.id)?.error}
+                            />
                           )}
                           {record.status !== "uploaded" && record.status !== "uploading" && (
                             <button
@@ -931,21 +1020,22 @@ export default function YouTubePanel({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={t("Upload compilation")}
+            aria-label={t("Publish compilation")}
             className="flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-tool border border-rule bg-chrome p-4"
           >
             <h3 className="text-sm font-semibold">
-              {t("Upload {count} long videos to YouTube", { count: readyCompilations.length })}
+              {t("Publish {count} long videos", { count: compilationPublishParts.length })}
             </h3>
-            <p className="text-[12px] leading-snug text-ink-2">
-              {t("Every video is uploaded as private. A scheduled video becomes public by itself at its publish time.")}
-            </p>
+            <DestinationChoices
+              youtube={{ count: youtubeParts.length, checked: toYouTube, onChange: setToYouTube }}
+              facebook={{ count: facebookParts.length, checked: toFacebook, onChange: setToFacebook, page: facebook?.pageName ?? "" }}
+            />
             <ul className="flex flex-col gap-0.5 text-[12px] text-ink-2">
-              {readyCompilations.map((record) => (
+              {compilationPublishParts.map((record) => (
                 <li key={record.id} className="flex items-center justify-between gap-3">
                   <span className="truncate">{record.label}</span>
                   <span className="shrink-0 text-ink-3">
-                    {record.publishAt ? formatPublishAt(record.publishAt) : t("private, no schedule")}
+                    {record.publishAt ? formatPublishAt(record.publishAt) : noScheduleLabel(toYouTube, toFacebook, t)}
                   </span>
                 </li>
               ))}
@@ -953,6 +1043,7 @@ export default function YouTubePanel({
             <p className="text-[11px] leading-snug text-ink-3">
               {t("Times come from the Schedule block — press \"Apply schedule\" there to change them for these parts.")}
             </p>
+            {toYouTube && (
             <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
               <input
                 type="checkbox"
@@ -962,7 +1053,8 @@ export default function YouTubePanel({
               />
               <span>{t("Add the videos to the playlist \"{name}\".", { name: state.compilationPlaylist })}</span>
             </label>
-            {compilationWithPlaylist && compilationNeedsPlaylist && (
+            )}
+            {toYouTube && compilationWithPlaylist && compilationNeedsPlaylist && (
               <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
                 <input
                   type="checkbox"
@@ -985,11 +1077,15 @@ export default function YouTubePanel({
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={busy || (compilationWithPlaylist && compilationNeedsPlaylist && !compilationCreatePlaylist)}
+                disabled={
+                  busy ||
+                  compilationPublishParts.length === 0 ||
+                  (toYouTube && compilationWithPlaylist && compilationNeedsPlaylist && !compilationCreatePlaylist)
+                }
                 onClick={confirmCompilationUpload}
               >
                 <Icon name="upload" size={13} />
-                {t("Upload now")}
+                {t("Publish now")}
               </button>
             </div>
           </div>
@@ -1049,15 +1145,16 @@ export default function YouTubePanel({
           <div
             role="dialog"
             aria-modal="true"
-            aria-label={t("Upload to YouTube")}
+            aria-label={t("Publish videos")}
             className="flex max-h-full w-full max-w-lg flex-col gap-3 overflow-y-auto rounded-tool border border-rule bg-chrome p-4"
           >
-            <h3 className="text-sm font-semibold">{t("Upload {count} videos to YouTube", { count: uploadOrders.length })}</h3>
-            <p className="text-[12px] leading-snug text-ink-2">
-              {t("Every video is uploaded as private. A scheduled video becomes public by itself at its publish time.")}
-            </p>
+            <h3 className="text-sm font-semibold">{t("Publish {count} videos", { count: publishOrders.length })}</h3>
+            <DestinationChoices
+              youtube={{ count: youtubeUploadable.length, checked: toYouTube, onChange: setToYouTube }}
+              facebook={{ count: facebookReady.length, checked: toFacebook, onChange: setToFacebook, page: facebook?.pageName ?? "" }}
+            />
             <ul className="flex flex-col gap-0.5 text-[12px] text-ink-2">
-              {uploadOrders.slice(0, 8).map((order) => {
+              {publishOrders.slice(0, 8).map((order) => {
                 const record = byOrder.get(order)?.record;
                 return (
                   <li key={order} className="flex items-center justify-between gap-3">
@@ -1065,14 +1162,14 @@ export default function YouTubePanel({
                       {t("Chapter {order}", { order })} — {record?.title ?? byOrder.get(order)?.title}
                     </span>
                     <span className="shrink-0 text-ink-3">
-                      {record?.publishAt ? formatPublishAt(record.publishAt) : t("private, no schedule")}
+                      {record?.publishAt ? formatPublishAt(record.publishAt) : noScheduleLabel(toYouTube, toFacebook, t)}
                     </span>
                   </li>
                 );
               })}
-              {uploadOrders.length > 8 && <li className="text-ink-3">{t("…and {count} more", { count: uploadOrders.length - 8 })}</li>}
+              {publishOrders.length > 8 && <li className="text-ink-3">{t("…and {count} more", { count: publishOrders.length - 8 })}</li>}
             </ul>
-            {playlistMissing && (
+            {toYouTube && playlistMissing && (
               <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
                 <input
                   type="checkbox"
@@ -1083,9 +1180,11 @@ export default function YouTubePanel({
                 <span>{t("Create the playlist \"{name}\" (public, one per story).", { name: state.playlist.title })}</span>
               </label>
             )}
-            <p className="text-[11px] leading-snug text-ink-3">
-              {t("YouTube's API allows about 6 uploads a day; the run stops when the quota is reached and can be resumed later.")}
-            </p>
+            {toYouTube && (
+              <p className="text-[11px] leading-snug text-ink-3">
+                {t("YouTube's API allows about 6 uploads a day; the run stops when the quota is reached and can be resumed later.")}
+              </p>
+            )}
             {dialogError && (
               <p role="alert" className="text-[12px] text-error">
                 {dialogError}
@@ -1098,11 +1197,11 @@ export default function YouTubePanel({
               <button
                 type="button"
                 className="btn btn-primary"
-                disabled={busy || (playlistMissing && !createPlaylist)}
+                disabled={busy || publishOrders.length === 0 || (toYouTube && playlistMissing && !createPlaylist)}
                 onClick={confirmUpload}
               >
                 <Icon name="upload" size={13} />
-                {t("Upload now")}
+                {t("Publish now")}
               </button>
             </div>
           </div>
@@ -1138,6 +1237,7 @@ function statusChip(
 function ChapterRow({
   storyId,
   chapter,
+  facebook,
   selected,
   onToggle,
   onSaved,
@@ -1145,6 +1245,7 @@ function ChapterRow({
 }: {
   storyId: string;
   chapter: YouTubeChapterState;
+  facebook?: FacebookVideoRecord;
   selected: boolean;
   onToggle: () => void;
   onSaved: () => void;
@@ -1160,7 +1261,11 @@ function ChapterRow({
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const uploaded = record?.status === "uploaded";
-  const chip = statusChip(record, t);
+  // Making the video is one state, each place it is published to is its own.
+  const madeStatus = record && (record.status === "uploading" || record.status === "uploaded") ? { status: "rendered" } : record;
+  const videoChip = statusChip(madeStatus, t);
+  const youtubeChip = record?.status === "uploading" || record?.status === "uploaded" ? statusChip(record, t) : null;
+  const facebookChip = statusChip(facebook, t);
 
   useEffect(() => {
     setTitle(record?.title ?? "");
@@ -1228,9 +1333,20 @@ function ChapterRow({
             {!chapter.hasAudio && <span className="chip shrink-0">{t("No audio yet")}</span>}
           </button>
         </td>
-        <td className="w-32">{chip ? <StatusChip state={chip.state} label={chip.label} /> : <span className="text-ink-3">—</span>}</td>
+        <td className="w-28">{videoChip ? <StatusChip state={videoChip.state} label={videoChip.label} /> : <span className="text-ink-3">—</span>}</td>
+        <td className="w-40">
+          <PlatformStatus chip={youtubeChip} url={uploaded ? record?.videoUrl : undefined} openTitle={t("Open on YouTube")} />
+        </td>
+        <td className="w-40">
+          <PlatformStatus
+            chip={facebookChip}
+            url={facebook?.status === "uploaded" ? facebook.videoUrl : undefined}
+            openTitle={t("Open on Facebook")}
+            error={facebook?.status === "error" ? facebook.error : undefined}
+          />
+        </td>
         <td className="w-36 text-[12px] text-ink-2">{record?.publishAt ? formatPublishAt(record.publishAt) : "—"}</td>
-        <td className="w-20">
+        <td className="w-12">
           {record && record.status !== "uploading" && (
             <button
               type="button"
@@ -1243,16 +1359,11 @@ function ChapterRow({
               <Icon name="trash" size={13} />
             </button>
           )}
-          {uploaded && record?.videoUrl && (
-            <a className="btn btn-quiet btn-tiny px-1" href={record.videoUrl} target="_blank" rel="noreferrer" title={t("Open on YouTube")}>
-              <Icon name="open" size={13} />
-            </a>
-          )}
         </td>
       </tr>
       {open && (
         <tr className="chapter-open">
-          <td colSpan={6}>
+          <td colSpan={8}>
             {record ? (
               <div className="flex flex-col gap-3 p-3">
                 {record.error && (
@@ -1409,5 +1520,97 @@ function CompilationInfoDialog({
         </div>
       </div>
     </div>
+  );
+}
+
+// What a video without a publish time does: private on YouTube, public at once on Facebook.
+function noScheduleLabel(
+  toYouTube: boolean,
+  toFacebook: boolean,
+  t: (key: string, params?: Record<string, string | number>) => string
+): string {
+  if (toYouTube && toFacebook) return t("YouTube private · Facebook public now");
+  return toFacebook ? t("public right away") : t("private, no schedule");
+}
+
+/**
+ * The publish dialogs' "where to": one checkbox per destination that has something to
+ * send, each saying what happens there, so the person confirms both rules at once.
+ */
+function DestinationChoices({
+  youtube,
+  facebook,
+}: {
+  youtube: { count: number; checked: boolean; onChange: (checked: boolean) => void };
+  facebook: { count: number; checked: boolean; onChange: (checked: boolean) => void; page: string };
+}) {
+  const { t } = useLang();
+  return (
+    <div className="flex flex-col gap-1.5">
+      {youtube.count > 0 && (
+        <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-3.5 accent-select"
+            aria-label={t("Publish to YouTube")}
+            checked={youtube.checked}
+            onChange={(event) => youtube.onChange(event.target.checked)}
+          />
+          <span>
+            <b>YouTube</b> · {t("{count} videos", { count: youtube.count })}
+            <br />
+            <span className="text-ink-3">
+              {t("Every video is uploaded as private. A scheduled video becomes public by itself at its publish time.")}
+            </span>
+          </span>
+        </label>
+      )}
+      {facebook.count > 0 && (
+        <label className="flex items-start gap-2 rounded-tool border border-rule-2 bg-raised px-2.5 py-2 text-[12px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-3.5 accent-select"
+            aria-label={t("Publish to Facebook")}
+            checked={facebook.checked}
+            onChange={(event) => facebook.onChange(event.target.checked)}
+          />
+          <span>
+            <b>Facebook</b> · {t("{count} videos", { count: facebook.count })}
+            <br />
+            <span className="text-ink-3">
+              {t(
+                "Posted to the Page \"{page}\": public right away, or at its publish time when one is set (10 minutes to 30 days ahead)."
+              , { page: facebook.page })}
+            </span>
+          </span>
+        </label>
+      )}
+    </div>
+  );
+}
+
+// One platform's state for a chapter: its chip, a link to the published video, and the
+// error when posting failed (kept on the chip's title so the row stays one line).
+function PlatformStatus({
+  chip,
+  url,
+  openTitle,
+  error,
+}: {
+  chip: { state: ChipState; label: string } | null;
+  url?: string;
+  openTitle: string;
+  error?: string;
+}) {
+  if (!chip) return <span className="text-ink-3">—</span>;
+  return (
+    <span className="inline-flex items-center gap-1" title={error}>
+      <StatusChip state={chip.state} label={chip.label} />
+      {url && (
+        <a className="btn btn-quiet btn-tiny px-1" href={url} target="_blank" rel="noreferrer" title={openTitle} aria-label={openTitle}>
+          <Icon name="open" size={13} />
+        </a>
+      )}
+    </span>
   );
 }

@@ -44,3 +44,4 @@ export {
 } from "./youtube";
 export type { PrepareYouTubeInput, RenderCompilationInput } from "./youtube";
 export type { YouTubeChapterPatch, YouTubeSyncResult } from "./youtube";
+export { fetchFacebookStatus, connectFacebook, disconnectFacebook, fetchFacebookStory, uploadFacebook, uploadFacebookCompilation } from "./facebook";

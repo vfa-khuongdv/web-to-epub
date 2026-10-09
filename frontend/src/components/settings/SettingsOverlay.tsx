@@ -13,6 +13,7 @@ import { timeAgo } from "../../lib/format/timeAgo";
 import { AppInfo, AppSettings } from "../../types";
 import { Icon } from "../ui/Icon";
 import { MusicSettings } from "../narration/MusicPicker";
+import FacebookSettings from "./FacebookSettings";
 import YouTubeSettings from "./YouTubeSettings";
 import AgentSettings from "./AgentSettings";
 import NarrationSettings from "../narration/NarrationSettings";
@@ -286,6 +287,10 @@ function SettingsBody({
 
       <Section title={t("YouTube")}>
         <YouTubeSettings onSaved={onFlashSaved} onError={setError} />
+      </Section>
+
+      <Section title={t("Facebook")}>
+        <FacebookSettings onSaved={onFlashSaved} onError={setError} />
       </Section>
 
       <Section title={t("Private mode")}>

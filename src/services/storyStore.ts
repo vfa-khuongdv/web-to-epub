@@ -7,6 +7,7 @@ import { DATA_DIR } from "../config/paths";
 import { sanitizeBlocks } from "./sanitizeHtml";
 import { t } from "./lang";
 import { ChapterRewrite, ChapterRewriteRecord } from "./rewrite/types";
+import { FacebookCompilationRecord, FacebookVideoRecord } from "./facebook/types";
 import { YouTubeCompilationRecord, YouTubeStoryRecord, YouTubeVideoRecord } from "./youtube/types";
 
 export function storyId(storyUrl: string): string {
@@ -71,6 +72,14 @@ export interface StoryStore {
   getCompilation(storyId: string, id: string): Promise<YouTubeCompilationRecord | undefined>;
   saveCompilation(record: YouTubeCompilationRecord & { storyId: string }): Promise<void>;
   removeCompilation(storyId: string, id: string): Promise<boolean>;
+  // Facebook Page posts of a story's chapter videos, one row per chapter.
+  listFacebookVideos(storyId: string): Promise<FacebookVideoRecord[]>;
+  getFacebookVideo(storyId: string, order: number): Promise<FacebookVideoRecord | undefined>;
+  saveFacebookVideo(record: FacebookVideoRecord & { storyId: string }): Promise<void>;
+  removeFacebookVideo(storyId: string, order: number): Promise<boolean>;
+  listFacebookCompilations(storyId: string): Promise<FacebookCompilationRecord[]>;
+  getFacebookCompilation(storyId: string, id: string): Promise<FacebookCompilationRecord | undefined>;
+  saveFacebookCompilation(record: FacebookCompilationRecord & { storyId: string }): Promise<void>;
 }
 
 const STORY_ID_RE = /^[0-9a-f]{16}$/;
@@ -151,6 +160,54 @@ interface YouTubeStoryRow {
   genre_tags: string | null;
   created_at: string;
   updated_at: string;
+}
+
+interface FacebookVideoRow {
+  order: number;
+  status: string;
+  video_id: string | null;
+  video_url: string | null;
+  scheduled_at: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toFacebookVideo(row: FacebookVideoRow): FacebookVideoRecord {
+  return {
+    order: row.order,
+    status: row.status as FacebookVideoRecord["status"],
+    videoId: row.video_id ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    scheduledAt: row.scheduled_at ?? undefined,
+    error: row.error ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+interface FacebookCompilationRow {
+  id: string;
+  status: string;
+  video_id: string | null;
+  video_url: string | null;
+  scheduled_at: string | null;
+  error: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+function toFacebookCompilation(row: FacebookCompilationRow): FacebookCompilationRecord {
+  return {
+    id: row.id,
+    status: row.status as FacebookCompilationRecord["status"],
+    videoId: row.video_id ?? undefined,
+    videoUrl: row.video_url ?? undefined,
+    scheduledAt: row.scheduled_at ?? undefined,
+    error: row.error ?? undefined,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 interface YouTubeVideoRow {
@@ -367,6 +424,30 @@ export function createStoryStore(baseDir: string): StoryStore {
       updated_at TEXT NOT NULL,
       PRIMARY KEY (story_id, "order")
     );
+    CREATE TABLE IF NOT EXISTS facebook_compilations (
+      story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      id TEXT NOT NULL,
+      status TEXT NOT NULL,
+      video_id TEXT,
+      video_url TEXT,
+      scheduled_at TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (story_id, id)
+    );
+    CREATE TABLE IF NOT EXISTS facebook_videos (
+      story_id TEXT NOT NULL REFERENCES stories(id) ON DELETE CASCADE,
+      "order" INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      video_id TEXT,
+      video_url TEXT,
+      scheduled_at TEXT,
+      error TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL,
+      PRIMARY KEY (story_id, "order")
+    );
   `);
 
   // DBs created before the new columns exist must still open (real user data),
@@ -527,6 +608,35 @@ export function createStoryStore(baseDir: string): StoryStore {
       created_at = excluded.created_at,
       updated_at = excluded.updated_at
   `);
+  const selectFacebookVideos = db.prepare(`SELECT * FROM facebook_videos WHERE story_id = ? ORDER BY "order"`);
+  const selectFacebookVideo = db.prepare(`SELECT * FROM facebook_videos WHERE story_id = ? AND "order" = ?`);
+  const upsertFacebookVideo = db.prepare(`
+    INSERT INTO facebook_videos
+      (story_id, "order", status, video_id, video_url, scheduled_at, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(story_id, "order") DO UPDATE SET
+      status = excluded.status,
+      video_id = excluded.video_id,
+      video_url = excluded.video_url,
+      scheduled_at = excluded.scheduled_at,
+      error = excluded.error,
+      updated_at = excluded.updated_at
+  `);
+  const selectFacebookCompilations = db.prepare(`SELECT * FROM facebook_compilations WHERE story_id = ? ORDER BY id`);
+  const selectFacebookCompilation = db.prepare(`SELECT * FROM facebook_compilations WHERE story_id = ? AND id = ?`);
+  const upsertFacebookCompilation = db.prepare(`
+    INSERT INTO facebook_compilations
+      (story_id, id, status, video_id, video_url, scheduled_at, error, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(story_id, id) DO UPDATE SET
+      status = excluded.status,
+      video_id = excluded.video_id,
+      video_url = excluded.video_url,
+      scheduled_at = excluded.scheduled_at,
+      error = excluded.error,
+      updated_at = excluded.updated_at
+  `);
+  const deleteFacebookVideo = db.prepare(`DELETE FROM facebook_videos WHERE story_id = ? AND "order" = ?`);
   const deleteYouTubeVideo = db.prepare(`DELETE FROM youtube_videos WHERE story_id = ? AND "order" = ?`);
   const selectCompilations = db.prepare(`SELECT * FROM youtube_compilations WHERE story_id = ? ORDER BY from_order, part`);
   const selectCompilation = db.prepare(`SELECT * FROM youtube_compilations WHERE story_id = ? AND id = ?`);
@@ -923,6 +1033,69 @@ export function createStoryStore(baseDir: string): StoryStore {
     async removeYouTubeVideo(id: string, order: number): Promise<boolean> {
       if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return false;
       return Number(deleteYouTubeVideo.run(id, order).changes) > 0;
+    },
+
+    async listFacebookVideos(id: string): Promise<FacebookVideoRecord[]> {
+      if (!STORY_ID_RE.test(id)) return [];
+      return (selectFacebookVideos.all(id) as unknown as FacebookVideoRow[]).map(toFacebookVideo);
+    },
+
+    async getFacebookVideo(id: string, order: number): Promise<FacebookVideoRecord | undefined> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return undefined;
+      const row = selectFacebookVideo.get(id, order) as unknown as FacebookVideoRow | undefined;
+      return row ? toFacebookVideo(row) : undefined;
+    },
+
+    async saveFacebookVideo(record: FacebookVideoRecord & { storyId: string }): Promise<void> {
+      if (!STORY_ID_RE.test(record.storyId)) {
+        throw new Error(t("Invalid story ID: {id}", { id: record.storyId }));
+      }
+      const now = new Date().toISOString();
+      upsertFacebookVideo.run(
+        record.storyId,
+        record.order,
+        record.status,
+        record.videoId ?? null,
+        record.videoUrl ?? null,
+        record.scheduledAt ?? null,
+        record.error ?? null,
+        record.createdAt ?? now,
+        now
+      );
+    },
+
+    async listFacebookCompilations(id: string): Promise<FacebookCompilationRecord[]> {
+      if (!STORY_ID_RE.test(id)) return [];
+      return (selectFacebookCompilations.all(id) as unknown as FacebookCompilationRow[]).map(toFacebookCompilation);
+    },
+
+    async getFacebookCompilation(id: string, compilationId: string): Promise<FacebookCompilationRecord | undefined> {
+      if (!STORY_ID_RE.test(id)) return undefined;
+      const row = selectFacebookCompilation.get(id, compilationId) as unknown as FacebookCompilationRow | undefined;
+      return row ? toFacebookCompilation(row) : undefined;
+    },
+
+    async saveFacebookCompilation(record: FacebookCompilationRecord & { storyId: string }): Promise<void> {
+      if (!STORY_ID_RE.test(record.storyId)) {
+        throw new Error(t("Invalid story ID: {id}", { id: record.storyId }));
+      }
+      const now = new Date().toISOString();
+      upsertFacebookCompilation.run(
+        record.storyId,
+        record.id,
+        record.status,
+        record.videoId ?? null,
+        record.videoUrl ?? null,
+        record.scheduledAt ?? null,
+        record.error ?? null,
+        record.createdAt ?? now,
+        now
+      );
+    },
+
+    async removeFacebookVideo(id: string, order: number): Promise<boolean> {
+      if (!STORY_ID_RE.test(id) || !Number.isInteger(order)) return false;
+      return Number(deleteFacebookVideo.run(id, order).changes) > 0;
     },
 
     async listCompilations(id: string): Promise<YouTubeCompilationRecord[]> {

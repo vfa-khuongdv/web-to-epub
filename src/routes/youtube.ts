@@ -37,6 +37,13 @@ import {
   YouTubeEvent,
   YouTubePhase,
 } from "../services/youtube/jobs";
+import { loadAccount as loadFacebookAccount } from "../services/facebook/account";
+import {
+  readyFacebookCompilations,
+  readyFacebookOrders,
+  uploadFacebookCompilations,
+  uploadFacebookVideos,
+} from "../services/facebook/jobs";
 import { playlistTitle, sanitizeYouTubeText } from "../services/youtube/meta";
 import { writeStoryIntro } from "../services/youtube/summarize";
 import { chapterParts } from "../services/tts/chapterText";
@@ -284,18 +291,18 @@ youtubeRouter.get("/stories/:id/youtube", async (req, res) => {
   });
 });
 
-interface ChapterOrders {
+export interface ChapterOrders {
   orders?: unknown;
 }
 
-function ordersFrom(body: ChapterOrders, allowed: Set<number>): number[] {
+export function ordersFrom(body: ChapterOrders, allowed: Set<number>): number[] {
   if (!Array.isArray(body.orders)) return [];
   return [...new Set(body.orders)]
     .filter((order): order is number => Number.isInteger(order) && allowed.has(order as number))
     .sort((a, b) => a - b);
 }
 
-function startRun(library: Library, storyId: string, phase: YouTubePhase, total: number) {
+export function startRun(library: Library, storyId: string, phase: YouTubePhase, total: number) {
   const abort = new AbortController();
   const run = { phase, done: 0, total, startedAt: Date.now(), abort };
   library.runningYouTube.set(storyId, run);
@@ -305,7 +312,7 @@ function startRun(library: Library, storyId: string, phase: YouTubePhase, total:
   return run;
 }
 
-function watchRun(
+export function watchRun(
   library: Library,
   storyId: string,
   phase: YouTubePhase,
@@ -344,7 +351,43 @@ function watchRun(
     });
 }
 
-function runEventSink(
+interface JobResult {
+  done: number;
+  failed: number;
+  message?: string;
+}
+
+/**
+ * One publish run for both destinations: when the YouTube job is over (and was not
+ * stopped) the same run goes on with the Facebook Page, so the person confirms once and the
+ * story's single job slot stays taken until both are done. The summary keeps the YouTube
+ * failures and the Facebook count.
+ */
+export function thenFacebook(
+  library: Library,
+  storyId: string,
+  run: { phase: YouTubePhase; done: number; total: number; order?: number; percent?: number; abort: AbortController },
+  first: Promise<JobResult>,
+  second: { total: number; start: () => Promise<JobResult> }
+): Promise<JobResult> {
+  return first.then(async (result) => {
+    if (run.abort.signal.aborted) return result;
+    run.phase = "facebook";
+    run.done = 0;
+    run.total = second.total;
+    run.order = undefined;
+    run.percent = undefined;
+    publishYouTube(library, storyId, { type: "youtube-running", phase: "facebook", done: 0, total: second.total });
+    const next = await second.start();
+    return {
+      done: next.done,
+      failed: result.failed + next.failed,
+      message: [result.message, next.message].filter(Boolean).join(" ") || undefined,
+    };
+  });
+}
+
+export function runEventSink(
   library: Library,
   storyId: string,
   run: { done: number; total: number; order?: number; percent?: number; etaMs?: number },
@@ -365,7 +408,7 @@ function runEventSink(
   };
 }
 
-function guardJob(req: Parameters<typeof libraryFor>[0], res: Parameters<typeof libraryFor>[1]) {
+export function guardJob(req: Parameters<typeof libraryFor>[0], res: Parameters<typeof libraryFor>[1]) {
   const library = libraryFor(req, res);
   if (!library || !validYouTube(library, res)) return null;
   return library;
@@ -785,7 +828,7 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     return;
   }
   const config = loadYouTubeConfig();
-  const body = (req.body ?? {}) as { ids?: unknown; createPlaylist?: unknown; withPlaylist?: unknown };
+  const body = (req.body ?? {}) as { ids?: unknown; createPlaylist?: unknown; withPlaylist?: unknown; facebook?: unknown };
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : undefined;
   const ready = (await library.stories.listCompilations(story.id)).filter(
     (record) =>
@@ -824,6 +867,16 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     }
   }
 
+  // Also post these parts to the Facebook Page when the YouTube upload is over.
+  const facebookAccount = Array.isArray(body.facebook) ? await loadFacebookAccount() : undefined;
+  if (Array.isArray(body.facebook) && !facebookAccount) {
+    res.status(409).json({ message: t("Not signed in to Facebook — connect the Page in Settings → Facebook") });
+    return;
+  }
+  const facebookIds = Array.isArray(body.facebook)
+    ? (await readyFacebookCompilations(library, story.id)).map((part) => part.id).filter((id) => (body.facebook as unknown[]).includes(id))
+    : [];
+
   const run = startRun(library, story.id, "compilation", ready.length);
   res.status(202).json({ started: true, total: ready.length });
   const job = uploadCompilations({
@@ -837,7 +890,27 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
     signal: run.abort.signal,
     onEvent: runEventSink(library, story.id, run, "compilation"),
   });
-  watchRun(library, story.id, "compilation", run, job);
+  watchRun(
+    library,
+    story.id,
+    "compilation",
+    run,
+    facebookAccount && facebookIds.length > 0
+      ? thenFacebook(library, story.id, run, job, {
+          total: facebookIds.length,
+          start: () =>
+            uploadFacebookCompilations({
+              library,
+              story,
+              ids: facebookIds,
+              account: facebookAccount,
+              channel: config.channel,
+              signal: run.abort.signal,
+              onEvent: runEventSink(library, story.id, run, "facebook"),
+            }),
+        })
+      : job
+  );
 });
 
 // Drop a part's record and its rendered file (the YouTube video, if any, stays).
@@ -965,7 +1038,7 @@ youtubeRouter.post("/stories/:id/youtube/upload", async (req, res) => {
     return;
   }
   const config = loadYouTubeConfig();
-  const body = (req.body ?? {}) as ChapterOrders & { createPlaylist?: unknown };
+  const body = (req.body ?? {}) as ChapterOrders & { createPlaylist?: unknown; facebook?: unknown };
   const videos = await library.stories.listYouTubeVideos(story.id);
   const ready = new Set(
     videos.filter((video) => video.status === "rendered" || video.status === "error").map((video) => video.order)
@@ -976,6 +1049,14 @@ youtubeRouter.post("/stories/:id/youtube/upload", async (req, res) => {
     return;
   }
   const createPlaylist = body.createPlaylist === true;
+  // Also post to the Facebook Page when this run is over: the chapters named in `facebook`.
+  const facebookAccount = Array.isArray(body.facebook) ? await loadFacebookAccount() : undefined;
+  if (Array.isArray(body.facebook) && !facebookAccount) {
+    res.status(409).json({ message: t("Not signed in to Facebook — connect the Page in Settings → Facebook") });
+    return;
+  }
+  const facebookReady = new Set(await readyFacebookOrders(library, story.id));
+  const facebookOrders = Array.isArray(body.facebook) ? ordersFrom({ orders: body.facebook }, facebookReady) : [];
   let token: string;
   try {
     token = await accessToken(account);
@@ -1012,7 +1093,27 @@ youtubeRouter.post("/stories/:id/youtube/upload", async (req, res) => {
     signal: run.abort.signal,
     onEvent: runEventSink(library, story.id, run, "upload"),
   });
-  watchRun(library, story.id, "upload", run, job);
+  watchRun(
+    library,
+    story.id,
+    "upload",
+    run,
+    facebookAccount && facebookOrders.length > 0
+      ? thenFacebook(library, story.id, run, job, {
+          total: facebookOrders.length,
+          start: () =>
+            uploadFacebookVideos({
+              library,
+              story,
+              orders: facebookOrders,
+              account: facebookAccount,
+              channel: config.channel,
+              signal: run.abort.signal,
+              onEvent: runEventSink(library, story.id, run, "facebook"),
+            }),
+        })
+      : job
+  );
 });
 
 youtubeRouter.post("/stories/:id/youtube/stop", (req, res) => {

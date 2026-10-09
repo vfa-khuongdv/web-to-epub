@@ -109,12 +109,14 @@ export async function renderYouTube(
 export async function uploadYouTube(
   storyId: string,
   orders?: number[],
-  createPlaylist?: boolean
+  createPlaylist?: boolean,
+  // Chapters to post to the Facebook Page when the YouTube upload is over (one publish run).
+  facebook?: number[]
 ): Promise<{ total: number }> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/upload`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ orders, createPlaylist: createPlaylist === true }),
+    body: JSON.stringify({ orders, createPlaylist: createPlaylist === true, facebook }),
   });
   if (!res.ok) {
     const data = (await res.json().catch(() => null)) as { message?: string; code?: string } | null;
@@ -190,6 +192,8 @@ export interface UploadCompilationOptions {
   createPlaylist?: boolean;
   // False when the person chose to upload without any playlist at all.
   withPlaylist?: boolean;
+  // Parts to post to the Facebook Page when the YouTube upload is over.
+  facebook?: string[];
 }
 
 export async function uploadYouTubeCompilation(
@@ -203,6 +207,7 @@ export async function uploadYouTubeCompilation(
       ids: options.ids,
       createPlaylist: options.createPlaylist === true,
       withPlaylist: options.withPlaylist !== false,
+      facebook: options.facebook,
     }),
   });
   if (!res.ok) {

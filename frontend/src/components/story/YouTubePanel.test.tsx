@@ -4,7 +4,7 @@ import { cleanup, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { renderEn } from "../../test/renderEn";
-import { YouTubeState } from "../../types";
+import { FacebookStoryState, YouTubeState } from "../../types";
 
 const api = vi.hoisted(() => ({
   fetchMusicTracks: vi.fn(async () => ({
@@ -17,6 +17,18 @@ const api = vi.hoisted(() => ({
   prepareYouTube: vi.fn(async () => ({ total: 1 })),
   renderYouTube: vi.fn(async () => ({ total: 1 })),
   uploadYouTube: vi.fn(async () => ({ total: 1 })),
+  // The Page is not connected unless a test says so.
+  fetchFacebookStory: vi.fn(
+    async (): Promise<FacebookStoryState> => ({
+      connected: false,
+      videos: [],
+      ready: [],
+      compilations: [],
+      readyCompilations: [],
+    })
+  ),
+  uploadFacebook: vi.fn(async () => ({ total: 1 })),
+  uploadFacebookCompilation: vi.fn(async () => ({ total: 1 })),
   stopYouTube: vi.fn(async () => {}),
   saveYouTubeChapter: vi.fn(async () => ({})),
   saveYouTubeCompilation: vi.fn(async () => {}),
@@ -151,15 +163,15 @@ describe("YouTubePanel", () => {
   it("asks for the playlist confirmation before uploading", async () => {
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
-    const upload = screen.getByRole("button", { name: "Upload (1)" });
+    const upload = screen.getByRole("button", { name: "Publish (1)" });
     await waitFor(() => expect(upload).toBeEnabled());
     await userEvent.click(upload);
-    const confirm = screen.getByRole("button", { name: "Upload now" });
+    const confirm = screen.getByRole("button", { name: "Publish now" });
     expect(confirm).toBeDisabled();
     await userEvent.click(screen.getByRole("checkbox", { name: /Create the playlist/ }));
     expect(confirm).toBeEnabled();
     await userEvent.click(confirm);
-    await waitFor(() => expect(api.uploadYouTube).toHaveBeenCalledWith("s1", [1], true));
+    await waitFor(() => expect(api.uploadYouTube).toHaveBeenCalledWith("s1", [1], true, undefined));
   });
 
   it("marks chapters already on YouTube when the panel opens", async () => {
@@ -412,11 +424,11 @@ describe("YouTubePanel", () => {
       },
     });
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
-    await userEvent.click(screen.getByRole("button", { name: "Upload compilation (1)" }));
-    const dialog = screen.getByRole("dialog", { name: "Upload compilation" });
+    await userEvent.click(screen.getByRole("button", { name: "Publish compilation (1)" }));
+    const dialog = screen.getByRole("dialog", { name: "Publish compilation" });
     // Off means: no playlist created, nothing added — the upload button stays usable.
     await userEvent.click(within(dialog).getByRole("checkbox", { name: /Add the videos to the playlist/ }));
-    await userEvent.click(within(dialog).getByRole("button", { name: "Upload now" }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
     await waitFor(() =>
       expect(api.uploadYouTubeCompilation).toHaveBeenCalledWith("s1", {
         ids: ["c1"],
@@ -506,5 +518,68 @@ describe("YouTubePanel", () => {
     });
     renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
     expect(screen.getByRole("checkbox", { name: "Choose chapter 1" })).toBeDisabled();
+  });
+
+  describe("with a Facebook Page connected", () => {
+    const connected: FacebookStoryState = {
+      connected: true,
+      pageName: "Truyện FM",
+      videos: [],
+      ready: [1],
+      compilations: [],
+      readyCompilations: [],
+    };
+
+    it("shows both destinations and lets one publish run go to both", async () => {
+      api.fetchFacebookStory.mockResolvedValue(connected);
+      hook.value = hookValue({ state: { ...state, playlist: { ...state.playlist, exists: true } } });
+      renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+      const publish = await screen.findByRole("button", { name: "Publish (1)" });
+      await userEvent.click(publish);
+      const dialog = screen.getByRole("dialog", { name: "Publish videos" });
+      expect(within(dialog).getByRole("checkbox", { name: "Publish to YouTube" })).toBeChecked();
+      expect(within(dialog).getByRole("checkbox", { name: "Publish to Facebook" })).toBeChecked();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(api.uploadYouTube).toHaveBeenCalledWith("s1", [1], undefined, [1]));
+      expect(api.uploadFacebook).not.toHaveBeenCalled();
+    });
+
+    it("posts to Facebook alone when YouTube is unticked", async () => {
+      api.fetchFacebookStory.mockResolvedValue(connected);
+      hook.value = hookValue({ state: { ...state, playlist: { ...state.playlist, exists: true } } });
+      renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Publish (1)" }));
+      const dialog = screen.getByRole("dialog", { name: "Publish videos" });
+      await userEvent.click(within(dialog).getByRole("checkbox", { name: "Publish to YouTube" }));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(api.uploadFacebook).toHaveBeenCalledWith("s1", [1]));
+      expect(api.uploadYouTube).not.toHaveBeenCalled();
+    });
+
+    it("publishes a rendered chapter that is already on YouTube to Facebook only", async () => {
+      api.fetchFacebookStory.mockResolvedValue(connected);
+      hook.value = hookValue({
+        state: {
+          ...state,
+          chapters: [
+            {
+              order: 1,
+              title: "Chương 1",
+              hasAudio: true,
+              audioChanged: false,
+              record: { order: 1, status: "uploaded", videoId: "v", videoUrl: "https://youtu.be/v", createdAt: "", updatedAt: "" },
+            },
+          ],
+        },
+      });
+      renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(await screen.findByRole("button", { name: "Publish (1)" }));
+      const dialog = screen.getByRole("dialog", { name: "Publish videos" });
+      expect(within(dialog).queryByRole("checkbox", { name: "Publish to YouTube" })).not.toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(api.uploadFacebook).toHaveBeenCalledWith("s1", [1]));
+    });
   });
 });

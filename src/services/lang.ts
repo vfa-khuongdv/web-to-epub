@@ -313,6 +313,23 @@ const vi: Record<string, string> = {
   "YouTube did not open an upload session": "YouTube không mở được phiên tải lên",
   "YouTube ended the upload without a video id": "YouTube kết thúc tải lên mà không có video id",
   "Upload stopped": "Đã dừng tải lên",
+  "The Facebook token is no longer valid — paste a new Page token in Settings → Facebook":
+    "Token Facebook không còn hợp lệ — hãy dán token Page mới trong Cài đặt → Facebook",
+  "Facebook refused the Page": "Facebook từ chối Page này",
+  "Facebook refused the upload": "Facebook từ chối tải video lên",
+  "Facebook did not open an upload session": "Facebook không mở được phiên tải lên",
+  "Facebook did not finish the upload": "Facebook không hoàn tất việc tải lên",
+  "Facebook's limit is reached. Try again in a while.": "Facebook đã chạm giới hạn. Hãy thử lại sau ít lâu.",
+  "{count} video(s) were left unpublished: Facebook only schedules 10 minutes to 30 days ahead":
+    "{count} video được để ở trạng thái chưa đăng: Facebook chỉ hẹn giờ từ 10 phút đến 30 ngày tới",
+  "Enter the Page id (digits) and a Page access token": "Nhập ID của Page (chỉ gồm số) và token truy cập Page",
+  "Could not connect Facebook": "Không kết nối được Facebook",
+  "Not signed in to Facebook — connect the Page in Settings → Facebook":
+    "Chưa kết nối Facebook — hãy kết nối Page trong Cài đặt → Facebook",
+  "No videos are ready to post": "Chưa có video nào sẵn sàng để đăng",
+  "Invalid chapter number": "Số chương không hợp lệ",
+  "Facebook takes videos up to 4 hours and 10 GB — {label} is longer. Make the parts shorter.":
+    "Facebook chỉ nhận video tối đa 4 giờ và 10 GB — {label} dài hơn. Hãy chia phần ngắn hơn.",
   "Stopped": "Đã dừng",
   "The agent could not write a summary for chapter {order}": "Agent không viết được tóm tắt cho chương {order}",
   "ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube.":

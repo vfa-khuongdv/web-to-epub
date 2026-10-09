@@ -31,7 +31,7 @@ import { findFfmpeg, renderVideo } from "./video";
  * only fills drafts, render only writes files, and upload runs only when the route was
  * called with the person's confirmation (the route enforces the playlist confirmation).
  */
-export type YouTubePhase = "prepare" | "render" | "upload" | "compilation";
+export type YouTubePhase = "prepare" | "render" | "upload" | "compilation" | "facebook";
 
 export type YouTubeEvent =
   | { type: "youtube-progress"; phase: YouTubePhase; order?: number; done: number; total: number; percent?: number }

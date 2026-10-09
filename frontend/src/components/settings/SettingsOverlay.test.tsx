@@ -21,6 +21,7 @@ vi.mock("./YouTubeSettings", () => ({
   default: () => <div>youtube-section</div>,
   YOUTUBE_CONNECTED: "youtube-connected",
 }));
+vi.mock("./FacebookSettings", () => ({ default: () => <div>facebook-section</div> }));
 vi.mock("./AgentSettings", () => ({
   default: ({ onSaved, onError }: { onSaved: () => void; onError: (m: string) => void }) => (
     <div>
