@@ -8,6 +8,7 @@ import { resolveVideoPath, YouTubeEvent } from "../youtube/jobs";
 import { videoTitle } from "../youtube/meta";
 import { FacebookAccount } from "./account";
 import { fetchVideoLink, isRateLimit, uploadVideo, usableSchedule } from "./api";
+import { prepareForFacebook } from "./normalize";
 import { FacebookCompilationRecord, FacebookVideoRecord } from "./types";
 
 export interface FacebookUploadInput {
@@ -71,27 +72,31 @@ export async function uploadFacebookVideos(
       await save(order, { status: "uploading", error: undefined }, existing);
       const scheduled = usableSchedule(youtube!.publishAt);
       if (youtube!.publishAt && !scheduled) unscheduled++;
-      const uploaded = await uploadVideo(
-        account.token,
-        {
-          pageId: account.pageId,
-          filePath: file,
-          title: youtube!.title ?? videoTitle(story.title, order, input.channel),
-          description: youtube!.description ?? "",
-          scheduledPublishTime: scheduled,
-          publishNow: !youtube!.publishAt,
-        },
-        (sent, size) =>
-          onEvent({
-            type: "youtube-progress",
-            phase: "facebook",
-            order,
-            done,
-            total,
-            percent: size > 0 ? Math.round((sent / size) * 100) : 0,
-          }),
-        signal
-      );
+      const progress = (order: number, percent: number) =>
+        onEvent({ type: "youtube-progress", phase: "facebook", order, done, total, percent: Math.round(percent) });
+      // Facebook wants its own encoding (see normalize.ts): a copy is made when the file lacks it.
+      const prepared = await prepareForFacebook({ file, signal, onProgress: (fraction) => progress(order, fraction * 50) });
+      let uploaded;
+      try {
+        uploaded = await uploadVideo(
+          account.token,
+          {
+            pageId: account.pageId,
+            filePath: prepared.path,
+            title: youtube!.title ?? videoTitle(story.title, order, input.channel),
+            description: youtube!.description ?? "",
+            scheduledPublishTime: scheduled,
+            publishNow: !youtube!.publishAt,
+          },
+          (sent, size) => {
+            const fraction = size > 0 ? sent / size : 0;
+            progress(order, prepared.converted ? 50 + fraction * 50 : fraction * 100);
+          },
+          signal
+        );
+      } finally {
+        await prepared.cleanup();
+      }
       await save(
         order,
         {
@@ -127,8 +132,8 @@ export async function uploadFacebookVideos(
   return { done, failed, message };
 }
 
-// Facebook's own limits for a Page video: 4 hours and 10 GB. A compilation part may run
-// up to 11 hours for YouTube, so a longer one is refused here instead of failing at the end.
+// Facebook's own limits for a Page video: 4 hours and 10 GB. Facebook compilation parts are
+// cut to fit, so this only catches a single chapter longer than that, before uploading.
 export const FACEBOOK_MAX_SECONDS = 4 * 3600;
 export const FACEBOOK_MAX_BYTES = 10 * 1024 ** 3;
 
@@ -147,7 +152,7 @@ export async function uploadFacebookCompilations(
 ): Promise<{ done: number; failed: number; message?: string }> {
   const { library, story, account, signal, onEvent } = input;
   const channelTitle = compilationPlaylistTitle(story.title, input.channel);
-  const parts = (await library.stories.listCompilations(story.id)).filter(
+  const parts = (await library.stories.listCompilations(story.id, "facebook")).filter(
     (part) => (!input.ids || input.ids.includes(part.id)) && part.videoPath && part.status !== "rendering"
   );
   const total = parts.length;
@@ -194,27 +199,31 @@ export async function uploadFacebookCompilations(
       await save(part.id, { status: "uploading", error: undefined }, existing);
       const scheduled = usableSchedule(part.publishAt);
       if (part.publishAt && !scheduled) unscheduled++;
-      const uploaded = await uploadVideo(
-        account.token,
-        {
-          pageId: account.pageId,
-          filePath: file,
-          title: part.title ?? compilationLabel(channelTitle, part.part, part.parts, part.fromOrder, part.toOrder),
-          description: part.description ?? "",
-          scheduledPublishTime: scheduled,
-          publishNow: !part.publishAt,
-        },
-        (sent, size) =>
-          onEvent({
-            type: "youtube-progress",
-            phase: "facebook",
-            order: part.part,
-            done,
-            total,
-            percent: size > 0 ? Math.round((sent / size) * 100) : 0,
-          }),
-        signal
-      );
+      const progress = (percent: number) =>
+        onEvent({ type: "youtube-progress", phase: "facebook", order: part.part, done, total, percent: Math.round(percent) });
+      // Facebook wants its own encoding (see normalize.ts): a copy is made when the file lacks it.
+      const prepared = await prepareForFacebook({ file, signal, onProgress: (fraction) => progress(fraction * 50) });
+      let uploaded;
+      try {
+        uploaded = await uploadVideo(
+          account.token,
+          {
+            pageId: account.pageId,
+            filePath: prepared.path,
+            title: part.title ?? compilationLabel(channelTitle, part.part, part.parts, part.fromOrder, part.toOrder),
+            description: part.description ?? "",
+            scheduledPublishTime: scheduled,
+            publishNow: !part.publishAt,
+          },
+          (sent, size) => {
+            const fraction = size > 0 ? sent / size : 0;
+            progress(prepared.converted ? 50 + fraction * 50 : fraction * 100);
+          },
+          signal
+        );
+      } finally {
+        await prepared.cleanup();
+      }
       await save(
         part.id,
         {
@@ -269,7 +278,7 @@ export async function readyFacebookOrders(library: Library, storyId: string): Pr
     .map((v) => v.order);
 }
 
-/** Compilation parts with a rendered video that is not on the Page yet. */
+/** Facebook compilation parts (cut to 4 h) with a rendered video that is not on the Page yet. */
 export async function readyFacebookCompilations(
   library: Library,
   storyId: string
@@ -277,7 +286,7 @@ export async function readyFacebookCompilations(
   const posted = new Set(
     (await library.stories.listFacebookCompilations(storyId)).filter((v) => v.status === "uploaded").map((v) => v.id)
   );
-  return (await library.stories.listCompilations(storyId))
+  return (await library.stories.listCompilations(storyId, "facebook"))
     .filter((part) => part.videoPath && part.status !== "rendering" && !posted.has(part.id))
     .map((part) => ({ id: part.id, label: part.label }));
 }

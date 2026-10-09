@@ -34,6 +34,7 @@ import { AgentDocumentPageError, articleViaAgent, createAgentTocAdapter, hasAgen
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";
+import { removeBible } from "../services/illustrated/bible";
 import { youtubeVideoDir } from "../services/youtube/jobs";
 import { StoredStory } from "../types";
 import { Library, libraryFor } from "./library";
@@ -718,5 +719,7 @@ storiesRouter.delete("/stories/:id", async (req, res) => {
   await removeStoryAudio(library.dataDir, req.params.id);
   // The story's records cascade in SQLite; the rendered MP4s are files and need removing.
   await fs.promises.rm(youtubeVideoDir(library.dataDir, req.params.id), { recursive: true, force: true });
+  // The drawn characters and the planned scenes of its illustrated videos.
+  await removeBible(library.dataDir, req.params.id);
   res.json({ ok: true });
 });

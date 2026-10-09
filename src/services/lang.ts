@@ -372,6 +372,15 @@ const vi: Record<string, string> = {
   "Story is being rewritten or published, cannot delete":
     "Truyện đang được viết lại hoặc đang đăng YouTube, không thể xoá",
   "{field} must be text": "{field} phải là chuỗi",
+  "The agent could not draw the characters: {problem}": "Agent không vẽ được nhân vật: {problem}",
+  "The agent could not plan the scenes: {problem}": "Agent không lên được kế hoạch cảnh: {problem}",
+  "Chapter {order} has no text to illustrate": "Chương {order} không có chữ để minh hoạ",
+  "Illustrated videos need the agent (Settings → Agent crawler) to plan the scenes": "Video minh hoạ cần agent (Cài đặt → Agent crawler) để lên kế hoạch cảnh",
+  "Could not run HyperFrames: {message}": "Không chạy được HyperFrames: {message}",
+  "HyperFrames failed: {message}": "HyperFrames lỗi: {message}",
+  "This story has no downloaded chapters to read yet": "Truyện này chưa có chương nào đã tải để đọc",
+  "Draw the story's characters first (Publish → Video style)": "Hãy vẽ nhân vật của truyện trước (Đăng → Kiểu video)",
+  "Chapter {order}": "Chương {order}",
 };
 
 let current: Lang = DEFAULT_LANG;

@@ -95,7 +95,8 @@ export async function prepareYouTube(storyId: string, input: PrepareYouTubeInput
 export async function renderYouTube(
   storyId: string,
   orders?: number[],
-  music?: { musicId?: string; musicVolume?: number }
+  // `style: "illustrated"` draws scenes with the story's characters instead of the still cover.
+  music?: { musicId?: string; musicVolume?: number; style?: "illustrated" }
 ): Promise<{ total: number }> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/render`, {
     method: "POST",
@@ -140,6 +141,10 @@ export interface RenderCompilationInput {
   musicId?: string;
   musicVolume?: number;
   publishAt?: Record<number, string>;
+  // Facebook parts are cut to 4 h (YouTube's to 11 h); "illustrated" draws slides with the
+  // story's characters instead of the still cover.
+  platform?: "facebook";
+  style?: "illustrated";
 }
 
 // Writes the compilation's story intro with the agent (agent setting required).
@@ -166,11 +171,15 @@ export async function applyYouTubeIntro(storyId: string, intro: string): Promise
 }
 
 // Plans the compilation: parts and hours, plus chapters still missing narration audio.
-export async function planYouTubeCompilation(storyId: string, orders: number[]): Promise<YouTubeCompilationPlan> {
+export async function planYouTubeCompilation(
+  storyId: string,
+  orders: number[],
+  platform?: "facebook"
+): Promise<YouTubeCompilationPlan> {
   const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/plan`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ orders }),
+    body: JSON.stringify({ orders, ...(platform ? { platform } : {}) }),
   });
   if (!res.ok) throw new Error(await readJsonError(res, tr("Could not plan the compilation")));
   return (await res.json()) as YouTubeCompilationPlan;

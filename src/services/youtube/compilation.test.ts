@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  FACEBOOK_PART_SECONDS,
+  MAX_PART_SECONDS,
   compilationLabel,
+  compilationVideoPath,
+  maxPartSeconds,
   compilationMeta,
   compilationPlaylistTitle,
   planCompilationParts,
@@ -100,5 +104,23 @@ describe("compilation metadata", () => {
   it("leaves the intro out when it is empty", () => {
     const meta = compilationMeta({ ...base, intro: "  ", label: "Trọn bộ (Chương 1-2)" });
     expect(meta.description).not.toContain("📖");
+  });
+});
+
+describe("compilation platforms", () => {
+  it("cuts Facebook parts to fit 4 hours and YouTube's to 11", () => {
+    expect(maxPartSeconds("youtube")).toBe(MAX_PART_SECONDS);
+    expect(maxPartSeconds("facebook")).toBe(FACEBOOK_PART_SECONDS);
+    expect(FACEBOOK_PART_SECONDS).toBeLessThan(4 * 3600);
+    // Ten one-hour chapters: three per Facebook part, all of them in one YouTube part.
+    const seconds = new Map(Array.from({ length: 10 }, (_, i) => [i + 1, 3600] as [number, number]));
+    const orders = [...seconds.keys()];
+    expect(planCompilationParts(orders, seconds, maxPartSeconds("facebook")).map((part) => part.length)).toEqual([3, 3, 3, 1]);
+    expect(planCompilationParts(orders, seconds, maxPartSeconds("youtube"))).toHaveLength(1);
+  });
+
+  it("writes Facebook parts to their own files", () => {
+    expect(compilationVideoPath("s", 1, 20)).toBe("youtube/s/compilation-1-20.mp4");
+    expect(compilationVideoPath("s", 1, 20, "facebook")).toBe("youtube/s/facebook-compilation-1-20.mp4");
   });
 });

@@ -20,9 +20,13 @@ import {
 } from "./api";
 import { YouTubeConfig } from "./config";
 import { hashtagFromTitle, sanitizeYouTubeText } from "./meta";
-import { YouTubeCompilationRecord } from "./types";
+import { CompilationPlatform, YouTubeCompilationRecord } from "./types";
 import { findFfmpeg, renderVideo, runFfmpeg } from "./video";
 import { YouTubeEvent } from "./jobs";
+import { renderIllustratedCompilation } from "../illustrated/compilation";
+import { AgentModel } from "../agent/agentConfig";
+import { Bible } from "../illustrated/types";
+import { readAudioMeta } from "../tts/audioCache";
 
 /**
  * The story's compilation: several narrated chapters joined into one long video, split so
@@ -31,6 +35,13 @@ import { YouTubeEvent } from "./jobs";
  * render makes the video; the description carries a timestamped table of contents.
  */
 export const MAX_PART_SECONDS = 11 * 3600;
+// Facebook takes a Page video up to 4 hours; the margin keeps a part clear of the limit
+// after the audio is joined and re-encoded.
+export const FACEBOOK_PART_SECONDS = 4 * 3600 - 300;
+
+export function maxPartSeconds(platform: CompilationPlatform): number {
+  return platform === "facebook" ? FACEBOOK_PART_SECONDS : MAX_PART_SECONDS;
+}
 
 // Greedy split in chapter order: a part takes the next chapter while it still fits.
 export function planCompilationParts(
@@ -166,8 +177,9 @@ export function withIntro(description: string, intro: string): string {
   return lines.join("\n");
 }
 
-export function compilationVideoPath(storyId: string, from: number, to: number): string {
-  return ["youtube", storyId, `compilation-${from}-${to}.mp4`].join("/");
+// Facebook parts are cut differently from YouTube's, so they get their own files.
+export function compilationVideoPath(storyId: string, from: number, to: number, platform: CompilationPlatform = "youtube"): string {
+  return ["youtube", storyId, `${platform === "facebook" ? "facebook-" : ""}compilation-${from}-${to}.mp4`].join("/");
 }
 
 export function resolveCompilationPath(dataDir: string, storyId: string, record: YouTubeCompilationRecord): string | undefined {
@@ -192,7 +204,12 @@ export interface CompilationPlan {
   missing: number[];
 }
 
-export async function planCompilation(library: Library, storyId: string, orders: number[]): Promise<CompilationPlan> {
+export async function planCompilation(
+  library: Library,
+  storyId: string,
+  orders: number[],
+  platform: CompilationPlatform = "youtube"
+): Promise<CompilationPlan> {
   const seconds = new Map<number, number>();
   const missing: number[] = [];
   for (const order of orders) {
@@ -200,7 +217,7 @@ export async function planCompilation(library: Library, storyId: string, orders:
     if (!audio) missing.push(order);
     else seconds.set(order, audio.seconds);
   }
-  const parts = planCompilationParts(orders, seconds).map((group, index) => ({
+  const parts = planCompilationParts(orders, seconds, maxPartSeconds(platform)).map((group, index) => ({
     part: index + 1,
     from: group[0],
     to: group[group.length - 1],
@@ -243,6 +260,11 @@ export interface CompilationRenderInput {
   intro?: string;
   labelWord?: string;
   music?: { id?: string; volume?: number };
+  // Which platform the parts are cut for (YouTube up to 11 h, Facebook up to 4 h).
+  platform?: CompilationPlatform;
+  // Draw the parts as illustrated slides (one or two scenes per chapter) instead of the
+  // still cover; `agent` plans the scenes of a chapter that has no saved storyboard.
+  illustrated?: { bible: Bible; agent?: AgentModel };
   // By part number (1-based), like the upload schedule of the single chapters.
   publishAt?: Record<number, string>;
   signal: AbortSignal;
@@ -255,10 +277,11 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
   if (!command) {
     throw new Error(t("ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube."));
   }
+  const platform = input.platform ?? "youtube";
   const cover = library.covers.find(story.id);
-  if (!cover) throw new Error(t("This story has no cover image yet — add one before making videos"));
+  if (!cover && !input.illustrated) throw new Error(t("This story has no cover image yet — add one before making videos"));
 
-  const plan = await planCompilation(library, story.id, input.orders);
+  const plan = await planCompilation(library, story.id, input.orders, platform);
   if (plan.missing.length > 0) {
     throw new Error(
       t("Chapter {order} has no audio yet — narrate it first", { order: plan.missing[0] })
@@ -266,7 +289,7 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
   }
   const storyRecord = await library.stories.getYouTubeStory(story.id);
   const labelWord = input.labelWord?.trim() || "Trọn bộ";
-  const existing = await library.stories.listCompilations(story.id);
+  const existing = await library.stories.listCompilations(story.id, platform);
   const total = plan.parts.length;
   const startedAt = Date.now();
   let done = 0;
@@ -290,7 +313,7 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
     const partSeconds = [...seconds.values()].reduce((sum, value) => sum + value, 0);
     const workDir = await fs.mkdtemp(path.join(os.tmpdir(), "yt-compilation-"));
     const audioPath = path.join(workDir, "all.mp3");
-    const outPath = path.join(library.dataDir, "youtube", story.id, `compilation-${part.from}-${part.to}.mp4`);
+    const outPath = path.join(library.dataDir, compilationVideoPath(story.id, part.from, part.to, platform));
     const track = input.music?.id ? await backgroundMusic.get(input.music.id) : undefined;
     if (input.music?.id && !track) {
       const message = t("Background music track not found");
@@ -303,6 +326,7 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
         label,
         fromOrder: part.from,
         toOrder: part.to,
+        platform,
         status: "error",
         error: message,
         createdAt: previous?.createdAt ?? new Date().toISOString(),
@@ -322,6 +346,7 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
         label,
         fromOrder: part.from,
         toOrder: part.to,
+        platform,
         status: "rendering",
         error: undefined,
         createdAt: previous?.createdAt ?? new Date().toISOString(),
@@ -342,25 +367,52 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
             percent: Math.round(fraction * 50),
           }),
       });
-      await renderVideo({
-        command,
-        coverPath: cover.filePath,
-        audioPath,
-        outPath,
-        seconds: partSeconds,
-        musicPath: track ? backgroundMusic.filePath(track) : undefined,
-        musicVolume: input.music?.volume,
-        signal,
-        onProgress: (fraction) =>
-          onEvent({
-            type: "youtube-progress",
-            phase: "compilation",
-            order: part.part,
-            done,
-            total,
-            percent: 50 + Math.round(fraction * 50),
-          }),
-      });
+      const onVideoProgress = (fraction: number) =>
+        onEvent({
+          type: "youtube-progress",
+          phase: "compilation",
+          order: part.part,
+          done,
+          total,
+          percent: 50 + Math.round(fraction * 50),
+        });
+      if (input.illustrated) {
+        const chapters = [];
+        for (const order of part.orders) {
+          const chapter = await library.stories.getChapter(story.id, order);
+          const audioMeta = await readAudioMeta(library.dataDir, story.id, order);
+          if (!chapter || !audioMeta) throw new Error(t("Chapter {order} has no audio yet — narrate it first", { order }));
+          chapters.push({ order, title: chapter.title, blocks: chapter.blocks ?? [], seconds: audioMeta.seconds, timings: audioMeta.timings });
+        }
+        await renderIllustratedCompilation({
+          dataDir: library.dataDir,
+          storyId: story.id,
+          storyTitle: story.title,
+          bible: input.illustrated.bible,
+          chapters,
+          agent: input.illustrated.agent,
+          command,
+          audioPath,
+          seconds: partSeconds,
+          outPath,
+          musicPath: track ? backgroundMusic.filePath(track) : undefined,
+          musicVolume: input.music?.volume,
+          signal,
+          onProgress: onVideoProgress,
+        });
+      } else {
+        await renderVideo({
+          command,
+          coverPath: cover!.filePath,
+          audioPath,
+          outPath,
+          seconds: partSeconds,
+          musicPath: track ? backgroundMusic.filePath(track) : undefined,
+          musicVolume: input.music?.volume,
+          signal,
+          onProgress: onVideoProgress,
+        });
+      }
       const meta = compilationMeta({
         storyTitle: story.title,
         channel: input.config.channel,
@@ -381,12 +433,13 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
         label,
         fromOrder: part.from,
         toOrder: part.to,
+        platform,
         status: "rendered",
         title: meta.title,
         description: meta.description,
         tags: meta.tags,
         publishAt: input.publishAt?.[part.part] ?? previous?.publishAt,
-        videoPath: compilationVideoPath(story.id, part.from, part.to),
+        videoPath: compilationVideoPath(story.id, part.from, part.to, platform),
         videoSeconds: partSeconds,
         videoId: previous?.videoId,
         videoUrl: previous?.videoUrl,
@@ -453,7 +506,7 @@ export async function uploadCompilations(
     items = await listPlaylistItems(token, playlist.id);
   }
 
-  const all = (await library.stories.listCompilations(story.id)).filter(
+  const all = (await library.stories.listCompilations(story.id, "youtube")).filter(
     (record) => !input.ids || input.ids.includes(record.id)
   );
   const plan = all.filter((record) => record.status === "rendered" || record.status === "error" || record.status === "uploading");

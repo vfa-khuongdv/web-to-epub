@@ -36,6 +36,7 @@ const base: YouTubeState = {
   chapters: [{ order: 1, title: "Chương 1", hasAudio: true, audioChanged: false }],
   compilationPlaylist: "Truyện – Trọn bộ | Truyện FM",
   compilations: [],
+  facebookCompilations: [],
   running: null,
 };
 

@@ -274,6 +274,8 @@ export interface YouTubeState {
   // The playlist compilations are uploaded to, and the parts made so far.
   compilationPlaylist: string;
   compilations: YouTubeCompilation[];
+  // Parts cut to Facebook's 4 h limit (the ones above are cut to YouTube's 11 h).
+  facebookCompilations: YouTubeCompilation[];
   running: YouTubeRun | null;
 }
 
@@ -288,6 +290,7 @@ export interface YouTubeCompilation {
   fromOrder: number;
   toOrder: number;
   status: YouTubeCompilationStatus;
+  platform?: "youtube" | "facebook";
   title?: string;
   description?: string;
   tags?: string;
@@ -353,4 +356,19 @@ export interface FacebookStoryState {
   // The joined "full" video(s) of the story, posted as a whole.
   compilations: { id: string; status: "uploading" | "uploaded" | "error"; videoUrl?: string; error?: string }[];
   readyCompilations: { id: string; label: string }[];
+}
+
+export interface IllustratedCharacter {
+  id: string;
+  name: string;
+  description: string;
+  // Sanitized SVG written by the server's allowlist, drawn around the character's feet at (0,0).
+  body: string;
+  headY: number;
+  faces: Record<"neutral" | "smile" | "sad" | "surprised" | "laugh", string>;
+}
+
+export interface IllustratedState {
+  bible: { style: string; characters: IllustratedCharacter[] } | null;
+  agentAvailable: boolean;
 }

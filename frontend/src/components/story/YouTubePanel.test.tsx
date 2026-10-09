@@ -14,6 +14,10 @@ const api = vi.hoisted(() => ({
     ],
     defaultId: null,
   })),
+  // The story has no drawn characters unless a test says so.
+  fetchIllustrated: vi.fn(async () => ({ bible: null as unknown, agentAvailable: true })),
+  drawCharacters: vi.fn(),
+  removeCharacters: vi.fn(),
   prepareYouTube: vi.fn(async () => ({ total: 1 })),
   renderYouTube: vi.fn(async () => ({ total: 1 })),
   uploadYouTube: vi.fn(async () => ({ total: 1 })),
@@ -86,6 +90,7 @@ const state: YouTubeState = {
   ],
   compilationPlaylist: "Truyện – Trọn bộ | Truyện FM",
   compilations: [],
+  facebookCompilations: [],
   running: null,
 };
 
@@ -273,6 +278,48 @@ describe("YouTubePanel", () => {
     await waitFor(() => expect(api.planYouTubeCompilation).toHaveBeenCalledWith("s1", [1]));
     expect(await screen.findByText("Plan: 1 chapters · 2.0 hours · 1 parts")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Make compilation (1 parts)" })).toBeEnabled();
+  });
+
+  it("cuts the compilation for Facebook when that target is chosen", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Compilation for" }), "facebook");
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    await waitFor(() => expect(api.planYouTubeCompilation).toHaveBeenLastCalledWith("s1", [1], "facebook"));
+    await userEvent.click(await screen.findByRole("button", { name: "Make compilation (1 parts)" }));
+    await waitFor(() =>
+      expect(api.renderYouTubeCompilation).toHaveBeenLastCalledWith("s1", expect.objectContaining({ orders: [1], platform: "facebook" }))
+    );
+    expect((api.renderYouTubeCompilation.mock.calls.at(-1) as unknown[] | undefined)?.[1]).not.toHaveProperty("style");
+    vi.unstubAllGlobals();
+  });
+
+  it("makes the compilation from illustrated slides only once the characters are drawn", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Video style" }), "illustrated");
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    const make = await screen.findByRole("button", { name: "Make compilation (1 parts)" });
+    expect(make).toBeDisabled();
+    cleanup();
+
+    api.fetchIllustrated.mockResolvedValueOnce({
+      bible: { style: "flat", characters: [] },
+      agentAvailable: true,
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Video style" }), "illustrated");
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    const ready = await screen.findByRole("button", { name: "Make compilation (1 parts)" });
+    await waitFor(() => expect(ready).toBeEnabled());
+    await userEvent.click(ready);
+    await waitFor(() =>
+      expect(api.renderYouTubeCompilation).toHaveBeenLastCalledWith("s1", expect.objectContaining({ style: "illustrated" }))
+    );
+    vi.unstubAllGlobals();
   });
 
   it("fills the progress bar with the running part's own progress", () => {

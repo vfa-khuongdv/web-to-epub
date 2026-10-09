@@ -24,6 +24,8 @@ import { YouTubeConfig } from "./config";
 import { descriptionFor, playlistTitle, tagsFor, videoTitle } from "./meta";
 import { summarizeChapter } from "./summarize";
 import { YouTubeStoryRecord, YouTubeVideoRecord } from "./types";
+import { renderIllustratedChapter } from "../illustrated/chapter";
+import { Bible } from "../illustrated/types";
 import { findFfmpeg, renderVideo } from "./video";
 
 /**
@@ -288,6 +290,9 @@ export interface RenderInput {
   // The music chosen in the panel for this run, applied to every chapter (and stored on
   // it) — so picking a track and pressing "Make videos" is enough, no re-prepare needed.
   music?: { id?: string; volume?: number };
+  // Draw the chapter as scenes with the story's characters instead of one still cover.
+  // `agent` plans the scenes of a chapter that has no saved storyboard.
+  illustrated?: { bible: Bible; agent?: AgentModel };
   signal: AbortSignal;
   onEvent: (event: YouTubeEvent) => void;
 }
@@ -299,7 +304,7 @@ export async function renderYouTubeVideos(input: RenderInput): Promise<{ done: n
     throw new Error(t("ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube."));
   }
   const cover = library.covers.find(story.id);
-  if (!cover) throw new Error(t("This story has no cover image yet — add one before making videos"));
+  if (!cover && !input.illustrated) throw new Error(t("This story has no cover image yet — add one before making videos"));
 
   const total = input.orders.length;
   const startedAt = Date.now();
@@ -337,18 +342,45 @@ export async function renderYouTubeVideos(input: RenderInput): Promise<{ done: n
       musicVolume,
     });
     try {
-      await renderVideo({
-        command,
-        coverPath: cover.filePath,
-        audioPath: audio.filePath,
-        outPath: youtubeVideoPath(library.dataDir, story.id, order),
-        seconds: meta.seconds,
-        musicPath: track ? backgroundMusic.filePath(track) : undefined,
-        musicVolume,
-        signal,
-        onProgress: (fraction) =>
-          onEvent({ type: "youtube-progress", phase: "render", order, done, total, percent: Math.round(fraction * 100) }),
-      });
+      const onProgress = (fraction: number) =>
+        onEvent({ type: "youtube-progress", phase: "render", order, done, total, percent: Math.round(fraction * 100) });
+      const outPath = youtubeVideoPath(library.dataDir, story.id, order);
+      const musicPath = track ? backgroundMusic.filePath(track) : undefined;
+      if (input.illustrated) {
+        const chapter = await library.stories.getChapter(story.id, order);
+        if (!chapter) throw new Error(t("Chapter {order} has no text to illustrate", { order }));
+        await renderIllustratedChapter({
+          dataDir: library.dataDir,
+          storyId: story.id,
+          storyTitle: story.title,
+          order,
+          chapterTitle: chapter.title,
+          blocks: chapter.blocks ?? [],
+          bible: input.illustrated.bible,
+          agent: input.illustrated.agent,
+          command,
+          audioPath: audio.filePath,
+          seconds: meta.seconds,
+          timings: meta.timings,
+          outPath,
+          musicPath,
+          musicVolume,
+          signal,
+          onProgress,
+        });
+      } else {
+        await renderVideo({
+          command,
+          coverPath: cover!.filePath,
+          audioPath: audio.filePath,
+          outPath,
+          seconds: meta.seconds,
+          musicPath,
+          musicVolume,
+          signal,
+          onProgress,
+        });
+      }
       await saveVideo(library, story.id, rendering, {
         status: "rendered",
         videoPath: relativeVideoPath(story.id, order),

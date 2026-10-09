@@ -130,6 +130,7 @@ describe("a story's size on disk, and deleting it", () => {
     // And the records cascade with the story.
     const store = (await import("../services/storyStore")).storyStore;
     expect(await store.getYouTubeVideo(id, 1)).toBeUndefined();
-    expect(await store.listCompilations(id)).toEqual([]);
+    expect(await store.listCompilations(id, "youtube")).toEqual([]);
+    expect(await store.listCompilations(id, "facebook")).toEqual([]);
   });
 });

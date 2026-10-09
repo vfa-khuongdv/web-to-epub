@@ -29,6 +29,7 @@ import { useFacebookStory } from "../../hooks/useFacebookStory";
 import { useYouTube } from "../../hooks/useYouTube";
 import { YOUTUBE_CONNECTED } from "../settings/YouTubeSettings";
 import PublishDestinations, { Destination } from "./PublishDestinations";
+import { VideoStyle, VideoStyleValue } from "./VideoStyle";
 import { Icon } from "../ui/Icon";
 import { ProgressBar } from "../ui/ProgressBar";
 import { ChipState, StatusChip } from "../ui/StatusChip";
@@ -62,6 +63,8 @@ export default function YouTubePanel({
   const [translator, setTranslator] = useState("");
   const [genreTags, setGenreTags] = useState("");
   const [musicId, setMusicId] = useState("");
+  const [videoStyle, setVideoStyle] = useState<VideoStyleValue>("cover");
+  const [charactersReady, setCharactersReady] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0.15);
   const [defaultId, setDefaultId] = useState<string | null>(null);
   const [musicDefaultApplied, setMusicDefaultApplied] = useState(false);
@@ -82,6 +85,8 @@ export default function YouTubePanel({
   // the renderer agree on the split.
   const [compilationIntro, setCompilationIntro] = useState("");
   const [compilationLabelWord, setCompilationLabelWord] = useState("Trọn bộ");
+  // Who the parts are cut for: YouTube takes up to 11 h per video, Facebook up to 4 h.
+  const [compilationTarget, setCompilationTarget] = useState<"youtube" | "facebook">("youtube");
   const [compilationPlan, setCompilationPlan] = useState<YouTubeCompilationPlan | null>(null);
   const [compilationUploadOpen, setCompilationUploadOpen] = useState(false);
   const [compilationCreatePlaylist, setCompilationCreatePlaylist] = useState(false);
@@ -298,7 +303,7 @@ export default function YouTubePanel({
       return;
     }
     void run(async () => {
-      await renderYouTube(story.id, renderOrders, { musicId, musicVolume });
+      await renderYouTube(story.id, renderOrders, { musicId, musicVolume, ...(videoStyle === "illustrated" ? { style: "illustrated" as const } : {}) });
     });
   }
 
@@ -322,6 +327,7 @@ export default function YouTubePanel({
     (record) => record.status === "rendered" || record.status === "error" || record.status === "uploading"
   );
   const youtubeParts = state?.connected ? readyCompilations : [];
+  const allCompilations = [...(state?.compilations ?? []), ...(state?.facebookCompilations ?? [])];
   const facebookPartById = new Map((facebook?.compilations ?? []).map((part) => [part.id, part]));
   const compilationPublishCount = new Set([...youtubeParts.map((part) => part.id), ...facebookParts.map((part) => part.id)]).size;
   const compilationPublishParts = (state?.compilations ?? []).filter(
@@ -369,7 +375,7 @@ export default function YouTubePanel({
   async function viewCompilationPlan() {
     if (selectedOrders.length === 0) return;
     await run(async () => {
-      const plan = await planYouTubeCompilation(story.id, selectedOrders);
+      const plan = await planYouTubeCompilation(story.id, selectedOrders, ...(compilationTarget === "facebook" ? (["facebook"] as const) : []));
       setCompilationPlan(plan);
       if (plan.missing.length > 0) {
         setMessage(t("Narrate these chapters first: {orders}", { orders: plan.missing.join(", ") }));
@@ -409,6 +415,8 @@ export default function YouTubePanel({
         musicId,
         musicVolume,
         publishAt,
+        ...(compilationTarget === "facebook" ? { platform: "facebook" as const } : {}),
+        ...(videoStyle === "illustrated" ? { style: "illustrated" as const } : {}),
       });
       setCompilationPlan(null);
     });
@@ -453,7 +461,11 @@ export default function YouTubePanel({
   }
 
   async function removeCompilation(id: string, label: string) {
-    if (!window.confirm(t("Remove {label} and its rendered video? The YouTube video stays.", { label }))) return;
+    const onFacebook = (state?.facebookCompilations ?? []).some((record) => record.id === id);
+    const confirmation = onFacebook
+      ? t("Remove {label} and its rendered video? The Facebook video stays.", { label })
+      : t("Remove {label} and its rendered video? The YouTube video stays.", { label });
+    if (!window.confirm(confirmation)) return;
     await run(async () => {
       await deleteYouTubeCompilation(story.id, id);
       await refresh();
@@ -684,6 +696,13 @@ export default function YouTubePanel({
                     />
                   </div>
                 </div>
+                <VideoStyle
+                  storyId={story.id}
+                  value={videoStyle}
+                  onChange={setVideoStyle}
+                  disabled={busy || running !== null}
+                  onReady={setCharactersReady}
+                />
                 <div className="field sm:col-span-2">
                   <span className="label">{t("Schedule")}</span>
                   <div className="flex flex-wrap items-center gap-2 text-[12px]">
@@ -732,7 +751,7 @@ export default function YouTubePanel({
                   <Icon name="sparkles" size={13} />
                   {t("Fill upload info ({count})", { count: selectedOrders.length })}
                 </button>
-                <button type="button" className="btn" disabled={busy || running !== null || renderOrders.length === 0} onClick={makeVideos}>
+                <button type="button" className="btn" disabled={busy || running !== null || renderOrders.length === 0 || (videoStyle === "illustrated" && !charactersReady)} onClick={makeVideos}>
                   <Icon name="youtube" size={13} />
                   {t("Make videos ({count})", { count: renderOrders.length })}
                 </button>
@@ -901,13 +920,31 @@ export default function YouTubePanel({
                     <option value="Trọn bộ">Trọn bộ</option>
                     <option value="Tuyển tập">Tuyển tập</option>
                   </select>
+                  <select
+                    className="input w-56"
+                    aria-label={t("Compilation for")}
+                    value={compilationTarget}
+                    onChange={(event) => {
+                      setCompilationTarget(event.target.value as "youtube" | "facebook");
+                      setCompilationPlan(null);
+                    }}
+                  >
+                    <option value="youtube">{t("YouTube (parts up to 11 h)")}</option>
+                    <option value="facebook">{t("Facebook (parts up to 4 h)")}</option>
+                  </select>
                   <button type="button" className="btn btn-tiny" disabled={busy || selectedOrders.length === 0} onClick={() => void viewCompilationPlan()}>
                     {t("View plan")}
                   </button>
                   <button
                     type="button"
                     className="btn btn-tiny"
-                    disabled={busy || running !== null || !compilationPlan || compilationPlan.missing.length > 0}
+                    disabled={
+                      busy ||
+                      running !== null ||
+                      !compilationPlan ||
+                      compilationPlan.missing.length > 0 ||
+                      (videoStyle === "illustrated" && !charactersReady)
+                    }
                     onClick={makeCompilation}
                   >
                     <Icon name="youtube" size={12} />
@@ -926,14 +963,15 @@ export default function YouTubePanel({
                 <p className="text-[11px] leading-snug text-ink-3">
                   {t("The playlist for compilations: {name}", { name: state.compilationPlaylist })}
                 </p>
-                {state.compilations.length > 0 && (
+                {allCompilations.length > 0 && (
                   <ul className="flex flex-col gap-1 text-[12px]">
-                    {state.compilations.map((record) => {
+                    {allCompilations.map((record) => {
                       const chip = statusChip(record, t);
                       return (
                         <li key={record.id} className="flex items-center gap-2 border-b border-rule pb-1 last:border-b-0">
                           {chip && <StatusChip state={chip.state} label={chip.label} />}
                           <span className="min-w-0 flex-1 truncate">{record.label}</span>
+                          {record.platform === "facebook" && <span className="text-ink-3">{t("Facebook")}</span>}
                           <span className="text-ink-3">{record.videoSeconds ? `${Math.round(record.videoSeconds / 3600)} h` : ""}</span>
                           {record.error && <span className="min-w-0 flex-1 truncate text-error">{record.error}</span>}
                           {record.videoUrl && (

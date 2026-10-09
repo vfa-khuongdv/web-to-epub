@@ -2,8 +2,10 @@ import crypto from "crypto";
 import fs from "fs/promises";
 import { spawn } from "child_process";
 import { createRouter } from "./asyncRouter";
-import { activeAgent } from "../services/agent/agentConfig";
+import { activeAgent, AgentModel } from "../services/agent/agentConfig";
 import { backgroundMusic } from "../services/backgroundMusic";
+import { loadBible } from "../services/illustrated/bible";
+import { Bible } from "../services/illustrated/types";
 import { t } from "../services/lang";
 import {
   accessToken,
@@ -279,12 +281,14 @@ youtubeRouter.get("/stories/:id/youtube", async (req, res) => {
   }
   const config = loadYouTubeConfig();
   const state = await youTubeState(library, story, config);
-  const compilations = await library.stories.listCompilations(story.id);
+  const compilations = await library.stories.listCompilations(story.id, "youtube");
+  const facebookCompilations = await library.stories.listCompilations(story.id, "facebook");
   const run = library.runningYouTube.get(story.id);
   res.json({
     ...state,
     compilationPlaylist: compilationChannelPlaylist(story.title, config.channel),
     compilations,
+    facebookCompilations,
     running: run
       ? { phase: run.phase, done: run.done, total: run.total, etaMs: run.etaMs, order: run.order, percent: run.percent }
       : null,
@@ -408,6 +412,29 @@ export function runEventSink(
   };
 }
 
+// "illustrated" draws scenes with the story's characters instead of the still cover. Returns
+// the bible and agent to use, undefined for the cover, or null after answering 409 (the
+// characters are not drawn yet).
+async function illustratedFrom(
+  library: Library,
+  storyId: string,
+  style: unknown,
+  res: Parameters<typeof libraryFor>[1]
+): Promise<{ bible: Bible; agent?: AgentModel } | undefined | null> {
+  if (style !== "illustrated") return undefined;
+  const bible = await loadBible(library.dataDir, storyId);
+  if (!bible) {
+    res.status(409).json({ message: t("Draw the story's characters first (Publish → Video style)") });
+    return null;
+  }
+  return { bible, agent: activeAgent() };
+}
+
+// Which platform a compilation is cut for: YouTube parts run up to 11 h, Facebook's up to 4 h.
+function platformFrom(body: { platform?: unknown }): "youtube" | "facebook" {
+  return body.platform === "facebook" ? "facebook" : "youtube";
+}
+
 export function guardJob(req: Parameters<typeof libraryFor>[0], res: Parameters<typeof libraryFor>[1]) {
   const library = libraryFor(req, res);
   if (!library || !validYouTube(library, res)) return null;
@@ -512,11 +539,13 @@ youtubeRouter.post("/stories/:id/youtube/render", async (req, res) => {
     });
     return;
   }
-  if (!library.covers.find(story.id)) {
+  const body = (req.body ?? {}) as ChapterOrders & { musicId?: unknown; musicVolume?: unknown; style?: unknown };
+  const illustrated = await illustratedFrom(library, story.id, body.style, res);
+  if (illustrated === null) return;
+  if (!illustrated && !library.covers.find(story.id)) {
     res.status(409).json({ message: t("This story has no cover image yet — add one before making videos") });
     return;
   }
-  const body = (req.body ?? {}) as ChapterOrders & { musicId?: unknown; musicVolume?: unknown };
   const videos = await library.stories.listYouTubeVideos(story.id);
   const ready = new Set(videos.filter((video) => video.status !== "uploaded").map((video) => video.order));
   const orders = Array.isArray(body.orders) ? ordersFrom(body, ready) : [...ready].sort((a, b) => a - b);
@@ -549,6 +578,7 @@ youtubeRouter.post("/stories/:id/youtube/render", async (req, res) => {
     orders,
     config,
     music,
+    illustrated,
     signal: run.abort.signal,
     onEvent: runEventSink(library, story.id, run, "render"),
   });
@@ -681,9 +711,10 @@ youtubeRouter.post("/stories/:id/youtube/compilation/description", async (req, r
     return;
   }
   const intro = body.intro.trim().slice(0, 2000);
-  const records = (await library.stories.listCompilations(story.id)).filter(
-    (record) => record.status === "rendered" || record.status === "error"
-  );
+  const records = [
+    ...(await library.stories.listCompilations(story.id, "youtube")),
+    ...(await library.stories.listCompilations(story.id, "facebook")),
+  ].filter((record) => record.status === "rendered" || record.status === "error");
   for (const record of records) {
     await library.stories.saveCompilation({
       ...record,
@@ -712,7 +743,7 @@ youtubeRouter.post("/stories/:id/youtube/compilation/plan", async (req, res) => 
     res.status(400).json({ message: t("Choose at least one chapter") });
     return;
   }
-  const plan = await planCompilation(library, story.id, orders);
+  const plan = await planCompilation(library, story.id, orders, platformFrom((req.body ?? {}) as { platform?: unknown }));
   res.json({
     totalHours: plan.totalHours,
     missing: plan.missing,
@@ -741,11 +772,9 @@ youtubeRouter.post("/stories/:id/youtube/compilation", async (req, res) => {
     });
     return;
   }
-  if (!library.covers.find(story.id)) {
-    res.status(409).json({ message: t("This story has no cover image yet — add one before making videos") });
-    return;
-  }
   const body = (req.body ?? {}) as ChapterOrders & {
+    platform?: unknown;
+    style?: unknown;
     intro?: unknown;
     labelWord?: unknown;
     musicId?: unknown;
@@ -758,7 +787,10 @@ youtubeRouter.post("/stories/:id/youtube/compilation", async (req, res) => {
     res.status(400).json({ message: t("Choose at least one chapter") });
     return;
   }
-  const plan = await planCompilation(library, story.id, orders);
+  const illustrated = await illustratedFrom(library, story.id, body.style, res);
+  if (illustrated === null) return;
+  const platform = platformFrom(body);
+  const plan = await planCompilation(library, story.id, orders, platform);
   if (plan.missing.length > 0) {
     res.status(400).json({
       message: t("Chapter {order} has no audio yet — narrate it first", { order: plan.missing[0] }),
@@ -800,6 +832,8 @@ youtubeRouter.post("/stories/:id/youtube/compilation", async (req, res) => {
     intro: typeof body.intro === "string" ? body.intro.trim().slice(0, 2000) : undefined,
     labelWord: typeof body.labelWord === "string" ? body.labelWord.trim().slice(0, 40) : undefined,
     music,
+    platform,
+    illustrated,
     publishAt,
     signal: run.abort.signal,
     onEvent: runEventSink(library, story.id, run, "compilation"),
@@ -830,7 +864,7 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
   const config = loadYouTubeConfig();
   const body = (req.body ?? {}) as { ids?: unknown; createPlaylist?: unknown; withPlaylist?: unknown; facebook?: unknown };
   const ids = Array.isArray(body.ids) ? body.ids.filter((id): id is string => typeof id === "string") : undefined;
-  const ready = (await library.stories.listCompilations(story.id)).filter(
+  const ready = (await library.stories.listCompilations(story.id, "youtube")).filter(
     (record) =>
       (ids === undefined || ids.includes(record.id)) &&
       (record.status === "rendered" || record.status === "error" || record.status === "uploading")

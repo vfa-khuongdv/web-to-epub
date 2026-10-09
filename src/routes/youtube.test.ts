@@ -194,6 +194,34 @@ describe("YouTube routes", () => {
     await vi.waitFor(() => expect(fake.render).toHaveBeenCalledTimes(1));
   });
 
+  it("renders illustrated videos only once the story's characters are drawn, and needs no cover for them", async () => {
+    await stories.saveYouTubeVideo({
+      storyId: id,
+      order: 1,
+      status: "draft",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    fake.render.mockClear();
+    const render = () =>
+      fetch(`${base}/stories/${id}/youtube/render`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orders: [1], style: "illustrated" }),
+      });
+    const { removeBible, saveBible } = await import("../services/illustrated/bible");
+    await removeBible(DATA_DIR, id);
+    expect((await render()).status).toBe(409);
+    expect(fake.render).not.toHaveBeenCalled();
+
+    await saveBible(DATA_DIR, id, { style: "flat", createdAt: "t", characters: [{ id: "a", name: "A" }] } as never);
+    expect((await render()).status).toBe(202);
+    await vi.waitFor(() => expect(fake.render).toHaveBeenCalledTimes(1));
+    const job = fake.render.mock.calls[0][0] as unknown as { illustrated?: { bible: { style: string } } };
+    expect(job.illustrated?.bible.style).toBe("flat");
+    await removeBible(DATA_DIR, id);
+  });
+
   it("passes the chosen background music to the render job", async () => {
     const { backgroundMusic } = await import("../services/backgroundMusic");
     const track = await backgroundMusic.add("Test track", Buffer.concat([Buffer.from("ID3"), Buffer.alloc(20)]));
@@ -257,6 +285,32 @@ describe("YouTube routes", () => {
     expect(job.orders).toEqual([1, 2]);
     expect(job.intro).toBe("Giới thiệu");
     expect(job.labelWord).toBe("Tuyển tập");
+  });
+
+  it("cuts a compilation for Facebook when asked, and draws it only once the characters exist", async () => {
+    fake.plan.mockClear();
+    fake.renderCompilation.mockClear();
+    const post = (url: string, body: unknown) =>
+      fetch(`${base}/stories/${id}/youtube/compilation${url}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+    await post("/plan", { orders: [1, 2], platform: "facebook" });
+    expect(fake.plan.mock.calls[0][3]).toBe("facebook");
+
+    const { removeBible, saveBible } = await import("../services/illustrated/bible");
+    await removeBible(DATA_DIR, id);
+    expect((await post("", { orders: [1, 2], platform: "facebook", style: "illustrated" })).status).toBe(409);
+    expect(fake.renderCompilation).not.toHaveBeenCalled();
+
+    await saveBible(DATA_DIR, id, { style: "flat", createdAt: "t", characters: [{ id: "a", name: "A" }] } as never);
+    expect((await post("", { orders: [1, 2], platform: "facebook", style: "illustrated" })).status).toBe(202);
+    await vi.waitFor(() => expect(fake.renderCompilation).toHaveBeenCalledTimes(1));
+    const job = fake.renderCompilation.mock.calls[0][0] as unknown as { platform: string; illustrated?: { bible: { style: string } } };
+    expect(job.platform).toBe("facebook");
+    expect(job.illustrated?.bible.style).toBe("flat");
+    await removeBible(DATA_DIR, id);
   });
 
   it("announces a job on the live channel before its first chapter ends", async () => {

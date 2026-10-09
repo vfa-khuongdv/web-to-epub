@@ -17,6 +17,7 @@ export { fetchSiteSession, importSiteSession, removeSiteSession } from "./siteSe
 export type { SiteSessionStatus } from "./siteSessions";
 export { clearAgentActivity, fetchAgentConfig, fetchAgentModels, fetchStoryAgentCrawler, rewriteStoryAgentCrawler, saveAgentConfig } from "./agent";
 export type { AgentConfig, AgentConfigPatch, AgentInfo, StoryAgentCrawler } from "./agent";
+export { fetchIllustrated, drawCharacters, removeCharacters } from "./illustrated";
 export { fetchRewriteState, startRewrite, stopRewrite, restoreRewrittenChapters } from "./rewrite";
 export {
   fetchYouTubeStatus,

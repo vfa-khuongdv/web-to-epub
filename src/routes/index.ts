@@ -18,6 +18,7 @@ import { storiesRouter } from "./stories";
 import { ttsRouter } from "./tts";
 import { vaultRouter } from "./vault";
 import { facebookRouter } from "./facebook";
+import { illustratedRouter } from "./illustrated";
 import { youtubeRouter } from "./youtube";
 
 const router = createRouter();
@@ -57,6 +58,7 @@ router.use(audioExportsRouter);
 router.use(rewriteRouter);
 router.use(youtubeRouter);
 router.use(facebookRouter);
+router.use(illustratedRouter);
 router.use(storiesRouter);
 router.use(chaptersRouter);
 router.use(highlightsRouter);

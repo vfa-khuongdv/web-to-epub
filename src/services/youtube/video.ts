@@ -14,8 +14,8 @@ import { expandHome } from "./config";
  * starts with a minimal PATH.
  */
 const COVER_HEIGHT = 900;
-const MUSIC_FADE_IN = 2;
-const MUSIC_FADE_OUT = 4;
+export const MUSIC_FADE_IN = 2;
+export const MUSIC_FADE_OUT = 4;
 
 export function isExecutable(file: string): boolean {
   try {

@@ -31,6 +31,9 @@ export interface YouTubeVideoRecord {
   updatedAt: string;
 }
 
+// Where a compilation's parts are meant to go: they are cut to that platform's length limit.
+export type CompilationPlatform = "youtube" | "facebook";
+
 export type YouTubeCompilationStatus = "rendering" | "rendered" | "uploading" | "uploaded" | "error";
 
 /**
@@ -47,6 +50,8 @@ export interface YouTubeCompilationRecord {
   fromOrder: number;
   toOrder: number;
   status: YouTubeCompilationStatus;
+  // Absent = YouTube (records made before Facebook parts existed).
+  platform?: CompilationPlatform;
   title?: string;
   description?: string;
   tags?: string;
