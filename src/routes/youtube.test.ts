@@ -62,7 +62,10 @@ vi.mock("../services/youtube/compilation", async (importOriginal) => {
   };
 });
 vi.mock("../services/agent/agentConfig", () => ({ activeAgent: () => fake.agent }));
-vi.mock("../services/youtube/summarize", () => ({ writeStoryIntro: async () => "Giới thiệu từ AI" }));
+vi.mock("../services/youtube/summarize", () => ({
+  writeStoryIntro: async () => "Giới thiệu từ AI",
+  summarizeChapter: async () => "Tóm tắt từ AI",
+}));
 
 function makeStory(id: string): StoredStory {
   return {
@@ -244,24 +247,53 @@ describe("YouTube routes", () => {
     expect(job.music).toEqual({ id: track.id, volume: 0.2 });
   });
 
-  it("writes the compilation intro with the agent", async () => {
-    const res = await fetch(`${base}/stories/${id}/youtube/compilation/intro`, {
+  it("writes a chapter's description paragraph with the agent without saving it", async () => {
+    await stories.saveYouTubeVideo({
+      storyId: id,
+      order: 1,
+      status: "rendered",
+      description: '🎧 Nghe truyện.\n\n📖 Cũ.\n\n#TruyệnFM',
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    const res = await fetch(`${base}/stories/${id}/youtube/describe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orders: [1] }),
+      body: JSON.stringify({ order: 1, description: "🎧 Nghe truyện.\n\n📖 Đang sửa.\n\n#TruyệnFM" }),
     });
     expect(res.status).toBe(200);
-    expect(await res.json()).toEqual({ intro: "Giới thiệu từ AI" });
+    expect(await res.json()).toEqual({ description: "🎧 Nghe truyện.\n\n📖 Tóm tắt từ AI\n\n#TruyệnFM" });
+    expect((await stories.getYouTubeVideo(id, 1))?.description).toContain("📖 Cũ.");
   });
 
-  it("refuses to write the intro when the agent is off", async () => {
+  it("refuses to write a description when the agent is off", async () => {
     fake.agent = undefined;
-    const res = await fetch(`${base}/stories/${id}/youtube/compilation/intro`, {
+    const res = await fetch(`${base}/stories/${id}/youtube/describe`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ orders: [1] }),
+      body: JSON.stringify({ order: 1 }),
     });
     expect(res.status).toBe(409);
+  });
+
+  it("deletes only the file of a published chapter video", async () => {
+    const record = {
+      storyId: id,
+      order: 1,
+      status: "rendered" as const,
+      videoPath: `youtube/${id}/1.mp4`,
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    };
+    await stories.saveYouTubeVideo(record);
+    const unpublished = await fetch(`${base}/stories/${id}/youtube/1/video`, { method: "DELETE" });
+    expect(unpublished.status).toBe(409);
+    await stories.saveYouTubeVideo({ ...record, status: "uploaded", videoId: "v1" });
+    const res = await fetch(`${base}/stories/${id}/youtube/1/video`, { method: "DELETE" });
+    expect(res.status).toBe(200);
+    const kept = await stories.getYouTubeVideo(id, 1);
+    expect(kept?.status).toBe("uploaded");
+    expect(kept?.videoPath).toBeUndefined();
   });
 
   it("plans and starts a full-story compilation", async () => {
@@ -466,55 +498,6 @@ describe("YouTube routes", () => {
       body: JSON.stringify({ publishAt: "2026-11-21T18:00:00+07:00" }),
     });
     expect(refused.status).toBe(409);
-  });
-
-  it("puts the intro into rendered parts' descriptions, not uploaded ones", async () => {
-    await stories.saveCompilation({
-      id: "c12",
-      storyId: id,
-      part: 1,
-      parts: 1,
-      label: "Truyện – Trọn bộ (Chương 1-1)",
-      fromOrder: 1,
-      toOrder: 1,
-      status: "rendered",
-      description: '🎧 Nghe truyện audio "Truyện".\n\n⏱️ Mục lục:\n0:00 Chương 1\n\n#TruyệnFM',
-      createdAt: "2026-10-01T00:00:00.000Z",
-      updatedAt: "2026-10-01T00:00:00.000Z",
-    });
-    await stories.saveCompilation({
-      id: "c13",
-      storyId: id,
-      part: 2,
-      parts: 2,
-      label: "Truyện – Trọn bộ (Chương 2-2)",
-      fromOrder: 2,
-      toOrder: 2,
-      status: "uploaded",
-      videoId: "v3",
-      description: '🎧 Nghe truyện audio "Truyện".\n\n#TruyệnFM',
-      createdAt: "2026-10-01T00:00:00.000Z",
-      updatedAt: "2026-10-01T00:00:00.000Z",
-    });
-    const res = await fetch(`${base}/stories/${id}/youtube/compilation/description`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intro: "Mở đầu." }),
-    });
-    expect(res.status).toBe(200);
-    // Other tests leave rendered parts behind; what matters is which records changed.
-    expect(((await res.json()) as { updated: number }).updated).toBeGreaterThanOrEqual(1);
-    expect((await stories.getCompilation(id, "c12"))?.description).toBe(
-      '🎧 Nghe truyện audio "Truyện".\n\n📖 Mở đầu.\n\n⏱️ Mục lục:\n0:00 Chương 1\n\n#TruyệnFM'
-    );
-    expect((await stories.getCompilation(id, "c13"))?.description).toBe('🎧 Nghe truyện audio "Truyện".\n\n#TruyệnFM');
-
-    const empty = await fetch(`${base}/stories/${id}/youtube/compilation/description`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ intro: "   " }),
-    });
-    expect(empty.status).toBe(400);
   });
 
   it("reports the compilation playlist and parts in the panel state", async () => {

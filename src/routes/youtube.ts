@@ -1,5 +1,6 @@
 import crypto from "crypto";
 import fs from "fs/promises";
+import path from "path";
 import { spawn } from "child_process";
 import { createRouter } from "./asyncRouter";
 import { activeAgent, AgentModel } from "../services/agent/agentConfig";
@@ -47,7 +48,7 @@ import {
   uploadFacebookVideos,
 } from "../services/facebook/jobs";
 import { playlistTitle, sanitizeYouTubeText } from "../services/youtube/meta";
-import { writeStoryIntro } from "../services/youtube/summarize";
+import { summarizeChapter, writeStoryIntro } from "../services/youtube/summarize";
 import { chapterParts } from "../services/tts/chapterText";
 import { findFfmpeg } from "../services/youtube/video";
 import { isPrivateLibrary, Library, libraryFor } from "./library";
@@ -675,9 +676,38 @@ youtubeRouter.post("/stories/:id/youtube/sync", async (req, res) => {
   }
 });
 
-// Writes the compilation's story intro with the agent, from the first selected chapters
-// (the person can edit it before making the videos).
-youtubeRouter.post("/stories/:id/youtube/compilation/intro", async (req, res) => {
+// Opens the story's video folder in the system file manager (the server runs on the
+// person's own machine; inside Docker there is no file manager and this answers 501).
+youtubeRouter.post("/stories/:id/youtube/open-folder", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const dir = path.resolve(library.dataDir, "youtube", story.id);
+  await fs.mkdir(dir, { recursive: true });
+  const command = process.platform === "darwin" ? "open" : process.platform === "win32" ? "explorer" : "xdg-open";
+  const opened = await new Promise<boolean>((resolve) => {
+    const child = spawn(command, [dir], { stdio: "ignore", detached: true });
+    child.once("error", () => resolve(false));
+    child.once("spawn", () => {
+      child.unref();
+      resolve(true);
+    });
+  });
+  if (!opened) {
+    res.status(501).json({ message: t("This computer cannot open the folder: {path}", { path: dir }) });
+    return;
+  }
+  res.json({ path: dir });
+});
+
+// The agent writes the opening 📖 paragraph of one video's description (a chapter's summary,
+// or the story intro for a compilation part) and the whole description comes back with it
+// put in. Nothing is saved: the person reads it in the info form and saves it there.
+youtubeRouter.post("/stories/:id/youtube/describe", async (req, res) => {
   const library = guardJob(req, res);
   if (!library) return;
   const story = await library.stories.getOutline(req.params.id);
@@ -690,9 +720,33 @@ youtubeRouter.post("/stories/:id/youtube/compilation/intro", async (req, res) =>
     res.status(409).json({ message: t("The agent crawler is off or its agent is not installed (Settings → Agent crawler)") });
     return;
   }
-  const body = (req.body ?? {}) as ChapterOrders;
-  const allowed = new Set(story.chapters.filter((chapter) => chapter.status === "done").map((chapter) => chapter.order));
-  const orders = ordersFrom(body, allowed);
+  const body = (req.body ?? {}) as { order?: unknown; compilationId?: unknown; description?: unknown };
+  const current = typeof body.description === "string" ? body.description : undefined;
+  const done = new Set(story.chapters.filter((chapter) => chapter.status === "done").map((chapter) => chapter.order));
+  let orders: number[];
+  let compilation = false;
+  let fallback: string | undefined;
+  if (typeof body.compilationId === "string") {
+    const record = await library.stories.getCompilation(story.id, body.compilationId);
+    if (!record) {
+      res.status(404).json({ message: t("No video for this chapter yet") });
+      return;
+    }
+    compilation = true;
+    fallback = record.description;
+    orders = [...done].filter((order) => order >= record.fromOrder && order <= record.toOrder).sort((a, b) => a - b);
+  } else if (typeof body.order === "number" && Number.isInteger(body.order)) {
+    const record = await library.stories.getYouTubeVideo(story.id, body.order);
+    if (!record) {
+      res.status(404).json({ message: t("No upload info for this chapter yet") });
+      return;
+    }
+    fallback = record.description;
+    orders = done.has(body.order) ? [body.order] : [];
+  } else {
+    res.status(400).json({ message: t("Choose at least one chapter") });
+    return;
+  }
   if (orders.length === 0) {
     res.status(400).json({ message: t("Choose at least one chapter") });
     return;
@@ -700,56 +754,22 @@ youtubeRouter.post("/stories/:id/youtube/compilation/intro", async (req, res) =>
   try {
     const text: string[] = [];
     let words = 0;
-    // The start of the story is enough for a 2–3 sentence intro; cap it so the prompt stays small.
-    for (const order of orders.slice(0, 3)) {
+    // The start is enough for a 2–3 sentence paragraph; cap it so the prompt stays small.
+    for (const order of orders.slice(0, compilation ? 3 : 1)) {
       const chapter = await library.stories.getChapter(story.id, order);
       if (!chapter?.blocks) continue;
       text.push(chapterParts(chapter.title, chapter.blocks).join(" "));
       words += text[text.length - 1].split(/\s+/).length;
       if (words >= 2500) break;
     }
-    const intro = await writeStoryIntro(agent, { storyTitle: story.title, text: text.join("\n\n") });
-    res.json({ intro });
+    const joined = text.join("\n\n");
+    const intro = compilation
+      ? await writeStoryIntro(agent, { storyTitle: story.title, text: joined })
+      : await summarizeChapter(agent, { storyTitle: story.title, order: orders[0], text: joined });
+    res.json({ description: withIntro(current ?? fallback ?? "", intro) });
   } catch (err) {
     res.status(502).json({ message: err instanceof Error ? err.message : t("The agent could not write the intro") });
   }
-});
-
-// Puts the current intro into the descriptions of the parts already rendered — the videos
-// may have been made before the intro was written. Only the 📖 line changes; contents,
-// credits and hashtags stay as the render wrote them, and uploaded parts are left alone
-// (their description lives on YouTube).
-youtubeRouter.post("/stories/:id/youtube/compilation/description", async (req, res) => {
-  const library = guardJob(req, res);
-  if (!library) return;
-  const story = await library.stories.getOutline(req.params.id);
-  if (!story) {
-    res.status(404).json({ message: t("Story not found") });
-    return;
-  }
-  if (library.runningYouTube.has(story.id)) {
-    res.status(409).json({ message: t("A YouTube job is already running for this story") });
-    return;
-  }
-  const body = (req.body ?? {}) as { intro?: unknown };
-  if (typeof body.intro !== "string" || !body.intro.trim()) {
-    res.status(400).json({ message: t("The intro cannot be empty") });
-    return;
-  }
-  const intro = body.intro.trim().slice(0, 2000);
-  const records = [
-    ...(await library.stories.listCompilations(story.id, "youtube")),
-    ...(await library.stories.listCompilations(story.id, "facebook")),
-  ].filter((record) => record.status === "rendered" || record.status === "error");
-  for (const record of records) {
-    await library.stories.saveCompilation({
-      ...record,
-      storyId: story.id,
-      description: withIntro(record.description ?? "", intro),
-      updatedAt: new Date().toISOString(),
-    });
-  }
-  res.json({ updated: records.length });
 });
 
 // Plans the story's compilation: how many parts the chosen chapters make, and any
@@ -974,6 +994,35 @@ youtubeRouter.post("/stories/:id/youtube/compilation/upload", async (req, res) =
 });
 
 // Drop a part's record and its rendered file (the YouTube video, if any, stays).
+// Same for a compilation part: the MP4 goes, the record stays.
+youtubeRouter.delete("/stories/:id/youtube/compilation/:compilationId/video", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  if (library.runningYouTube.has(story.id)) {
+    res.status(409).json({ message: t("A YouTube job is already running for this story") });
+    return;
+  }
+  const record = await library.stories.getCompilation(story.id, req.params.compilationId);
+  if (!record) {
+    res.status(404).json({ message: t("No video for this chapter yet") });
+    return;
+  }
+  const facebook = await library.stories.getFacebookCompilation(story.id, record.id);
+  if (record.status !== "uploaded" && facebook?.status !== "uploaded") {
+    res.status(409).json({ message: t("Publish this video first — only a published video's file can be deleted") });
+    return;
+  }
+  const file = resolveCompilationPath(library.dataDir, story.id, record);
+  if (file) await fs.rm(file, { force: true });
+  await library.stories.saveCompilation({ ...record, storyId: story.id, videoPath: undefined, updatedAt: new Date().toISOString() });
+  res.json({ ok: true });
+});
+
 youtubeRouter.delete("/stories/:id/youtube/compilation/:compilationId", async (req, res) => {
   const library = guardJob(req, res);
   if (!library) return;
@@ -1289,6 +1338,41 @@ youtubeRouter.get("/stories/:id/youtube/:order/video", async (req, res) => {
   }
   res.type("video/mp4");
   res.sendFile(file);
+});
+
+// Frees disk space once a chapter's video is published: only the MP4 goes, the record (link,
+// title, status) stays. Refused until the video is on YouTube or the Facebook Page.
+youtubeRouter.delete("/stories/:id/youtube/:order/video", async (req, res) => {
+  const library = guardJob(req, res);
+  if (!library) return;
+  const story = await library.stories.getOutline(req.params.id);
+  if (!story) {
+    res.status(404).json({ message: t("Story not found") });
+    return;
+  }
+  const order = Number(req.params.order);
+  if (!Number.isInteger(order)) {
+    res.status(400).json({ message: t("Invalid chapter order") });
+    return;
+  }
+  if (library.runningYouTube.has(story.id)) {
+    res.status(409).json({ message: t("A YouTube job is already running for this story") });
+    return;
+  }
+  const record = await library.stories.getYouTubeVideo(story.id, order);
+  if (!record) {
+    res.status(404).json({ message: t("No upload info for this chapter yet") });
+    return;
+  }
+  const facebook = await library.stories.getFacebookVideo(story.id, order);
+  if (record.status !== "uploaded" && facebook?.status !== "uploaded") {
+    res.status(409).json({ message: t("Publish this video first — only a published video's file can be deleted") });
+    return;
+  }
+  const file = resolveVideoPath(library.dataDir, story.id, record);
+  if (file) await fs.rm(file, { force: true });
+  await library.stories.saveYouTubeVideo({ ...record, storyId: story.id, videoPath: undefined, updatedAt: new Date().toISOString() });
+  res.json({ ok: true });
 });
 
 // Drop a chapter's draft record and its rendered file. Videos already on YouTube are not

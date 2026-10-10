@@ -147,27 +147,37 @@ export interface RenderCompilationInput {
   style?: "illustrated";
 }
 
-// Writes the compilation's story intro with the agent (agent setting required).
-export async function writeYouTubeIntro(storyId: string, orders: number[]): Promise<{ intro: string }> {
-  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/intro`, {
+// The agent writes the opening paragraph of one video's description (a chapter by `order`,
+// a compilation part by `compilationId`); the whole description comes back, nothing saved.
+export async function describeYouTubeVideo(
+  storyId: string,
+  target: { order: number } | { compilationId: string },
+  description: string
+): Promise<string> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/describe`, {
     method: "POST",
     headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ orders }),
+    body: JSON.stringify({ ...target, description }),
   });
-  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not write the intro")));
-  return (await res.json()) as { intro: string };
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not write the description")));
+  return ((await res.json()) as { description: string }).description;
 }
 
-// Puts an intro into the descriptions of the parts already rendered (the 📖 line only);
-// returns how many parts changed.
-export async function applyYouTubeIntro(storyId: string, intro: string): Promise<{ updated: number }> {
-  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/compilation/description`, {
+// Opens the story's video folder in the computer's file manager.
+export async function openYouTubeFolder(storyId: string): Promise<void> {
+  const res = await apiFetch(`/api/stories/${encodeURIComponent(storyId)}/youtube/open-folder`, {
     method: "POST",
-    headers: langHeaders({ "Content-Type": "application/json" }),
-    body: JSON.stringify({ intro }),
+    headers: langHeaders(),
   });
-  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not update the parts' descriptions")));
-  return (await res.json()) as { updated: number };
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not open the folder")));
+}
+
+// Deletes only the MP4 of a published chapter / compilation part; its record stays.
+export async function deleteYouTubeVideoFile(storyId: string, target: { order: number } | { compilationId: string }): Promise<void> {
+  const base = `/api/stories/${encodeURIComponent(storyId)}/youtube`;
+  const url = "order" in target ? `${base}/${target.order}/video` : `${base}/compilation/${encodeURIComponent(target.compilationId)}/video`;
+  const res = await apiFetch(url, { method: "DELETE", headers: langHeaders() });
+  if (!res.ok) throw new Error(await readJsonError(res, tr("Could not delete the video file")));
 }
 
 // Plans the compilation: parts and hours, plus chapters still missing narration audio.

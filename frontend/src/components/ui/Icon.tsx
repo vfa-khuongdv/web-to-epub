@@ -9,6 +9,7 @@ import {
   Clock,
   Copy,
   Download,
+  FolderOpen,
   ExternalLink,
   FileText,
   Headphones,
@@ -56,6 +57,7 @@ export type IconName =
   | "clock"
   | "x"
   | "trash"
+  | "folder"
   | "edit"
   | "chapter"
   | "dot"
@@ -101,6 +103,7 @@ const icons: Record<IconName, LucideIcon> = {
   clock: Clock,
   x: X,
   trash: Trash2,
+  folder: FolderOpen,
   edit: Pencil,
   chapter: FileText,
   dot: Circle,

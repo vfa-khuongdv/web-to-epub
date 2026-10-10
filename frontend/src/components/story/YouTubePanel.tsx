@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  applyYouTubeIntro,
   deleteYouTubeChapter,
+  deleteYouTubeVideoFile,
+  describeYouTubeVideo,
+  openYouTubeFolder,
   fetchMusicTracks,
   prepareYouTube,
   renderYouTube,
@@ -17,7 +19,6 @@ import {
   uploadFacebookCompilation,
   uploadYouTube,
   uploadYouTubeCompilation,
-  writeYouTubeIntro,
   youTubeCompilationVideoUrl,
   youTubeVideoUrl,
 } from "../../lib/api";
@@ -83,7 +84,6 @@ export default function YouTubePanel({
   const synced = useRef(false);
   // Full-story video (compilation): the plan is fetched from the server so the panel and
   // the renderer agree on the split.
-  const [compilationIntro, setCompilationIntro] = useState("");
   const [compilationLabelWord, setCompilationLabelWord] = useState("Trọn bộ");
   // Who the parts are cut for: YouTube takes up to 11 h per video, Facebook up to 4 h.
   const [compilationTarget, setCompilationTarget] = useState<"youtube" | "facebook">("youtube");
@@ -95,8 +95,6 @@ export default function YouTubePanel({
   const [compilationDialogError, setCompilationDialogError] = useState<string | null>(null);
   const [compilationPreview, setCompilationPreview] = useState<YouTubeCompilation | null>(null);
   const [compilationInfo, setCompilationInfo] = useState<YouTubeCompilation | null>(null);
-  const [writingIntro, setWritingIntro] = useState(false);
-  const [applyingIntro, setApplyingIntro] = useState(false);
 
   useEffect(() => {
     fetchMusicTracks()
@@ -336,42 +334,6 @@ export default function YouTubePanel({
       (toFacebook && facebookParts.some((part) => part.id === record.id))
   );
 
-  async function writeIntro() {
-    if (selectedOrders.length === 0 || writingIntro) return;
-    setWritingIntro(true);
-    setActionError(null);
-    try {
-      const { intro } = await writeYouTubeIntro(story.id, selectedOrders);
-      setCompilationIntro(intro);
-      // Videos rendered earlier keep the description they were made with, so put the new
-      // intro into them right away — that is what the person just asked for.
-      if (reschedulableParts.length > 0) {
-        const { updated } = await applyYouTubeIntro(story.id, intro);
-        if (updated > 0) setMessage(t("Updated the description of {count} rendered parts.", { count: updated }));
-        await refresh();
-      }
-    } catch (err) {
-      setActionError((err as Error).message);
-    } finally {
-      setWritingIntro(false);
-    }
-  }
-
-  async function applyIntro() {
-    if (!compilationIntro.trim() || applyingIntro) return;
-    setApplyingIntro(true);
-    setActionError(null);
-    try {
-      const { updated } = await applyYouTubeIntro(story.id, compilationIntro);
-      setMessage(t("Updated the description of {count} rendered parts.", { count: updated }));
-      await refresh();
-    } catch (err) {
-      setActionError((err as Error).message);
-    } finally {
-      setApplyingIntro(false);
-    }
-  }
-
   async function viewCompilationPlan() {
     if (selectedOrders.length === 0) return;
     await run(async () => {
@@ -410,7 +372,6 @@ export default function YouTubePanel({
       );
       await renderYouTubeCompilation(story.id, {
         orders: selectedOrders,
-        intro: compilationIntro,
         labelWord: compilationLabelWord,
         musicId,
         musicVolume,
@@ -468,6 +429,23 @@ export default function YouTubePanel({
     if (!window.confirm(confirmation)) return;
     await run(async () => {
       await deleteYouTubeCompilation(story.id, id);
+      await refresh();
+    });
+  }
+
+  async function openFolder() {
+    setActionError(null);
+    try {
+      await openYouTubeFolder(story.id);
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
+  }
+
+  async function deleteCompilationFile(id: string) {
+    if (!window.confirm(t("Delete this video file from this computer? The published video and its info stay."))) return;
+    await run(async () => {
+      await deleteYouTubeVideoFile(story.id, { compilationId: id });
       await refresh();
     });
   }
@@ -621,6 +599,10 @@ export default function YouTubePanel({
           {t("Close")}
         </button>
         <b className="text-sm">{t("Publish")}</b>
+        <button type="button" className="btn btn-quiet btn-tiny" onClick={() => void openFolder()}>
+          <Icon name="folder" size={12} />
+          {t("Open video folder")}
+        </button>
         <span className="ml-auto truncate text-xs text-ink-3">{story.title}</span>
       </header>
 
@@ -849,6 +831,7 @@ export default function YouTubePanel({
                         storyId={story.id}
                         chapter={chapter}
                         facebook={facebookByOrder.get(chapter.order)}
+                        agentReady={state.agentReady}
                         selected={selected.has(chapter.order)}
                         onToggle={() => toggle(chapter.order)}
                         onSaved={() => void refresh()}
@@ -866,47 +849,6 @@ export default function YouTubePanel({
                   <p className="mt-0.5 text-[12px] leading-snug text-ink-3">
                     {t(
                       "Joins the selected chapters into one long video per part (under 11 hours), with a timestamped table of contents in the description."
-                    )}
-                  </p>
-                </div>
-                <div className="field">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="label">{t("Story intro (2–3 sentences)")}</span>
-                    {state.agentReady && (
-                      <button
-                        type="button"
-                        className="btn btn-quiet btn-tiny"
-                        disabled={busy || writingIntro || selectedOrders.length === 0}
-                        onClick={() => void writeIntro()}
-                      >
-                        <Icon name="sparkles" size={12} className={writingIntro ? "animate-pulse" : undefined} />
-                        {writingIntro ? t("Writing…") : t("Write intro with AI")}
-                      </button>
-                    )}
-                    {reschedulableParts.length > 0 && (
-                      <button
-                        type="button"
-                        className="btn btn-quiet btn-tiny"
-                        disabled={busy || applyingIntro || !compilationIntro.trim()}
-                        title={t("Put this intro into the 📖 line of the parts already rendered")}
-                        onClick={() => void applyIntro()}
-                      >
-                        <Icon name="check" size={12} className={applyingIntro ? "animate-pulse" : undefined} />
-                        {applyingIntro
-                          ? t("Updating…")
-                          : t("Update the parts' descriptions ({count})", { count: reschedulableParts.length })}
-                      </button>
-                    )}
-                  </div>
-                  <textarea
-                    className="input min-h-20"
-                    value={compilationIntro}
-                    maxLength={2000}
-                    onChange={(event) => setCompilationIntro(event.target.value)}
-                  />
-                  <p className="mt-0.5 text-[11px] leading-snug text-ink-3">
-                    {t(
-                      "The rest of the description — the timestamped contents, credits and hashtags — is added when the video is made; then open a rendered part's info to see or edit it."
                     )}
                   </p>
                 </div>
@@ -1024,6 +966,16 @@ export default function YouTubePanel({
                               onClick={() => setCompilationPreview(record)}
                             >
                               <Icon name="play" size={12} />
+                            </button>
+                          )}
+                          {record.videoPath && (record.status === "uploaded" || facebookPartById.get(record.id)?.status === "uploaded") && (
+                            <button
+                              type="button"
+                              className="btn btn-quiet btn-tiny"
+                              disabled={busy || running !== null}
+                              onClick={() => void deleteCompilationFile(record.id)}
+                            >
+                              {t("Delete video file")}
                             </button>
                           )}
                           {record.status !== "uploading" && (
@@ -1165,6 +1117,7 @@ export default function YouTubePanel({
         <CompilationInfoDialog
           storyId={story.id}
           record={compilationInfo}
+          agentReady={state?.agentReady ?? false}
           onClose={() => setCompilationInfo(null)}
           onSaved={() => {
             setCompilationInfo(null);
@@ -1276,6 +1229,7 @@ function ChapterRow({
   storyId,
   chapter,
   facebook,
+  agentReady,
   selected,
   onToggle,
   onSaved,
@@ -1284,6 +1238,7 @@ function ChapterRow({
   storyId: string;
   chapter: YouTubeChapterState;
   facebook?: FacebookVideoRecord;
+  agentReady: boolean;
   selected: boolean;
   onToggle: () => void;
   onSaved: () => void;
@@ -1297,8 +1252,10 @@ function ChapterRow({
   const [tags, setTags] = useState(record?.tags ?? "");
   const [publishAt, setPublishAt] = useState(localInputValue(record?.publishAt));
   const [saving, setSaving] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const uploaded = record?.status === "uploaded";
+  const published = uploaded || facebook?.status === "uploaded";
   // Making the video is one state, each place it is published to is its own.
   const madeStatus = record && (record.status === "uploading" || record.status === "uploaded") ? { status: "rendered" } : record;
   const videoChip = statusChip(madeStatus, t);
@@ -1322,6 +1279,32 @@ function ChapterRow({
         tags,
         publishAt: publishAt ? isoFromLocalInput(publishAt) ?? null : null,
       });
+      onSaved();
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function writeDescription() {
+    setWriting(true);
+    setSaveError(null);
+    try {
+      setDescription(await describeYouTubeVideo(storyId, { order: chapter.order }, description));
+    } catch (err) {
+      setSaveError((err as Error).message);
+    } finally {
+      setWriting(false);
+    }
+  }
+
+  async function deleteFile() {
+    if (!window.confirm(t("Delete this video file from this computer? The published video and its info stay."))) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      await deleteYouTubeVideoFile(storyId, { order: chapter.order });
       onSaved();
     } catch (err) {
       setSaveError((err as Error).message);
@@ -1413,10 +1396,26 @@ function ChapterRow({
                   <span className="label">{t("Title")}</span>
                   <input className="input" value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
                 </label>
-                <label className="field">
-                  <span className="label">{t("Description")}</span>
-                  <textarea className="input min-h-40" value={description} maxLength={5000} onChange={(event) => setDescription(event.target.value)} />
-                </label>
+                <div className="field">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label className="label" htmlFor={`description-${chapter.order}`}>
+                      {t("Description")}
+                    </label>
+                    {agentReady && (
+                      <button type="button" className="btn btn-quiet btn-tiny" disabled={writing || saving || disabled} onClick={() => void writeDescription()}>
+                        <Icon name="sparkles" size={12} className={writing ? "animate-pulse" : undefined} />
+                        {writing ? t("Writing…") : t("Write description with AI")}
+                      </button>
+                    )}
+                  </div>
+                  <textarea
+                    id={`description-${chapter.order}`}
+                    className="input min-h-40"
+                    value={description}
+                    maxLength={5000}
+                    onChange={(event) => setDescription(event.target.value)}
+                  />
+                </div>
                 <label className="field">
                   <span className="label">{t("Tags (comma separated)")}</span>
                   <input className="input" value={tags} maxLength={500} onChange={(event) => setTags(event.target.value)} />
@@ -1429,6 +1428,12 @@ function ChapterRow({
                   <button type="button" className="btn btn-primary btn-tiny" disabled={saving || disabled} onClick={() => void save()}>
                     {saving ? t("Saving…") : t("Save this chapter's info")}
                   </button>
+                  {record.videoPath && published && (
+                    <button type="button" className="btn btn-tiny" disabled={saving || disabled} onClick={() => void deleteFile()}>
+                      <Icon name="trash" size={12} />
+                      {t("Delete video file")}
+                    </button>
+                  )}
                   {record.videoPath && (
                     <video controls preload="metadata" className="max-h-56 w-full max-w-md rounded-tool" src={youTubeVideoUrl(storyId, chapter.order)} />
                   )}
@@ -1468,11 +1473,13 @@ function ChapterRow({
 function CompilationInfoDialog({
   storyId,
   record,
+  agentReady,
   onClose,
   onSaved,
 }: {
   storyId: string;
   record: YouTubeCompilation;
+  agentReady: boolean;
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1482,7 +1489,20 @@ function CompilationInfoDialog({
   const [tags, setTags] = useState(record.tags ?? "");
   const [publishAt, setPublishAt] = useState(localInputValue(record.publishAt));
   const [saving, setSaving] = useState(false);
+  const [writing, setWriting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function writeDescription() {
+    setWriting(true);
+    setError(null);
+    try {
+      setDescription(await describeYouTubeVideo(storyId, { compilationId: record.id }, description));
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setWriting(false);
+    }
+  }
 
   async function save() {
     setSaving(true);
@@ -1526,15 +1546,26 @@ function CompilationInfoDialog({
           <span className="label">{t("Title")}</span>
           <input className="input" value={title} maxLength={100} onChange={(event) => setTitle(event.target.value)} />
         </label>
-        <label className="field">
-          <span className="label">{t("Description")}</span>
+        <div className="field">
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="label" htmlFor="compilation-description">
+              {t("Description")}
+            </label>
+            {agentReady && (
+              <button type="button" className="btn btn-quiet btn-tiny" disabled={writing || saving} onClick={() => void writeDescription()}>
+                <Icon name="sparkles" size={12} className={writing ? "animate-pulse" : undefined} />
+                {writing ? t("Writing…") : t("Write description with AI")}
+              </button>
+            )}
+          </div>
           <textarea
+            id="compilation-description"
             className="input min-h-40"
             value={description}
             maxLength={5000}
             onChange={(event) => setDescription(event.target.value)}
           />
-        </label>
+        </div>
         <label className="field">
           <span className="label">{t("Tags (comma separated)")}</span>
           <input className="input" value={tags} maxLength={500} onChange={(event) => setTags(event.target.value)} />
