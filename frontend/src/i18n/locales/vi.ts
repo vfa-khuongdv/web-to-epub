@@ -882,4 +882,5 @@ export const vi: Record<string, string> = {
   "Write description with AI": "Nhờ AI viết mô tả",
   "Delete video file": "Xoá file video",
   "Delete this video file from this computer? The published video and its info stay.": "Xoá file video này khỏi máy? Video đã đăng và thông tin của nó vẫn giữ nguyên.",
+  "Turn on the agent in Settings → Agent crawler to use this": "Bật agent trong Cài đặt → Agent crawler để dùng",
 };

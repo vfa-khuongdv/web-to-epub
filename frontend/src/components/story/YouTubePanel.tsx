@@ -1401,12 +1401,16 @@ function ChapterRow({
                     <label className="label" htmlFor={`description-${chapter.order}`}>
                       {t("Description")}
                     </label>
-                    {agentReady && (
-                      <button type="button" className="btn btn-quiet btn-tiny" disabled={writing || saving || disabled} onClick={() => void writeDescription()}>
-                        <Icon name="sparkles" size={12} className={writing ? "animate-pulse" : undefined} />
-                        {writing ? t("Writing…") : t("Write description with AI")}
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      className="btn btn-quiet btn-tiny"
+                      disabled={!agentReady || writing || saving || disabled}
+                      title={agentReady ? undefined : t("Turn on the agent in Settings → Agent crawler to use this")}
+                      onClick={() => void writeDescription()}
+                    >
+                      <Icon name="sparkles" size={12} className={writing ? "animate-pulse" : undefined} />
+                      {writing ? t("Writing…") : t("Write description with AI")}
+                    </button>
                   </div>
                   <textarea
                     id={`description-${chapter.order}`}
@@ -1551,12 +1555,16 @@ function CompilationInfoDialog({
             <label className="label" htmlFor="compilation-description">
               {t("Description")}
             </label>
-            {agentReady && (
-              <button type="button" className="btn btn-quiet btn-tiny" disabled={writing || saving} onClick={() => void writeDescription()}>
-                <Icon name="sparkles" size={12} className={writing ? "animate-pulse" : undefined} />
-                {writing ? t("Writing…") : t("Write description with AI")}
-              </button>
-            )}
+            <button
+              type="button"
+              className="btn btn-quiet btn-tiny"
+              disabled={!agentReady || writing || saving}
+              title={agentReady ? undefined : t("Turn on the agent in Settings → Agent crawler to use this")}
+              onClick={() => void writeDescription()}
+            >
+              <Icon name="sparkles" size={12} className={writing ? "animate-pulse" : undefined} />
+              {writing ? t("Writing…") : t("Write description with AI")}
+            </button>
           </div>
           <textarea
             id="compilation-description"

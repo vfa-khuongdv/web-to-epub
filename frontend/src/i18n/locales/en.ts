@@ -880,4 +880,5 @@ export const en: Record<string, string> = {
   "Write description with AI": "Write description with AI",
   "Delete video file": "Delete video file",
   "Delete this video file from this computer? The published video and its info stay.": "Delete this video file from this computer? The published video and its info stay.",
+  "Turn on the agent in Settings → Agent crawler to use this": "Turn on the agent in Settings → Agent crawler to use this",
 };
