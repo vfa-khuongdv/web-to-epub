@@ -32,7 +32,7 @@ describe("YouTube metadata", () => {
     expect(full).toContain("✍️ Tác giả: Tác giả");
     expect(full).not.toContain("🌐 Dịch:");
     expect(full).toContain("⏰ Cập nhật mỗi tối lúc 18:00.");
-    expect(full).toContain("#TruyệnFM #A #TruyệnAudio #NgheTruyện");
+    expect(full).toContain("#TruyệnFM #A #TácGiả #TruyệnAudio #NgheTruyện");
 
     const bare = descriptionFor({ storyTitle: "A", order: 1, channel: "Truyện FM" });
     expect(bare).not.toContain("📖");
@@ -63,6 +63,17 @@ describe("YouTube metadata", () => {
 
   it("turns the story title into a hashtag", () => {
     expect(hashtagFromTitle("nữ phụ hằng ngày cầu ly hôn")).toBe("NữPhụHằngNgàyCầuLyHôn");
+  });
+
+  it("keeps the author and punctuation out of hashtags and tags", () => {
+    const title = "Hoàng Tử Bé – Antoine De Saint-Exupéry";
+    expect(hashtagFromTitle("Anh, Em! (Tập 2)")).toBe("AnhEmTập2");
+    const description = descriptionFor({ storyTitle: title, order: 1, channel: "K" });
+    expect(description).toContain("#K #HoàngTửBé #AntoineDeSaintExupéry #TruyệnAudio");
+    // The author field wins over the title's suffix, and a repeat is not listed twice.
+    expect(descriptionFor({ storyTitle: title, order: 1, channel: "K", author: "Antoine De Saint-Exupéry" })).toContain("#HoàngTửBé #AntoineDeSaintExupéry #TruyệnAudio");
+    expect(descriptionFor({ storyTitle: "A", order: 1, channel: "K", author: "A" })).toContain("#K #A #TruyệnAudio");
+    expect(tagsFor({ storyTitle: title, order: 1, channel: "K" })).toContain("Hoàng Tử Bé chương 1");
   });
 });
 

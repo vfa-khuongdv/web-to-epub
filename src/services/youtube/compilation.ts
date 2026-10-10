@@ -19,7 +19,7 @@ import {
   uploadVideo,
 } from "./api";
 import { YouTubeConfig } from "./config";
-import { channelCall, hashtagFromTitle, sanitizeYouTubeText } from "./meta";
+import { channelCall, hashtagFromTitle, sanitizeYouTubeText, storyHashtags, titleOnly } from "./meta";
 import { CompilationPlatform, YouTubeCompilationRecord } from "./types";
 import { findFfmpeg, renderVideo, runFfmpeg } from "./video";
 import { YouTubeEvent } from "./jobs";
@@ -128,19 +128,20 @@ export function compilationMeta(input: CompilationMetaInput): {
     "",
     [
       hashtagFromTitle(input.channel) && `#${hashtagFromTitle(input.channel)}`,
-      `#${hashtagFromTitle(input.storyTitle)}`,
+      ...storyHashtags(input.storyTitle, input.author),
       "#TruyệnAudio",
       "#NgheTruyện",
     ]
       .filter(Boolean)
       .join(" ")
   );
+  const story = titleOnly(input.storyTitle);
   const tags = [
-    input.storyTitle,
+    story,
     "truyện audio",
     "nghe truyện",
     input.channel,
-    `${input.storyTitle} ${input.labelWord.toLowerCase()}`,
+    `${story} ${input.labelWord.toLowerCase()}`,
   ];
   if (input.genreTags?.trim()) tags.push(...input.genreTags.split(",").map((tag) => tag.trim()).filter(Boolean));
   tags.push("nghe truyện đêm khuya", "nghe truyện ngủ");

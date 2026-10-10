@@ -9,9 +9,30 @@ export function sanitizeYouTubeText(text: string): string {
   return text.replace(/[<>]/g, "");
 }
 
+// A story saved as "Hoàng Tử Bé – Antoine De Saint-Exupéry" carries its author after a dash:
+// the title alone is what tags and hashtags name.
+export function titleOnly(storyTitle: string): string {
+  return storyTitle.split(/\s[–—-]\s/)[0].trim() || storyTitle.trim();
+}
+
+// The author named after the dash in the title, when there is one.
+export function titleAuthor(storyTitle: string): string | undefined {
+  const rest = storyTitle.split(/\s[–—-]\s/).slice(1).join(" ").trim();
+  return rest || undefined;
+}
+
+// The story's hashtag and its author's, each on its own: "#TênTruyện #TácGiả". The author
+// comes from the story's author field, else from the title's own "– Tác giả" suffix.
+export function storyHashtags(storyTitle: string, author?: string): string[] {
+  const tags = [hashtagFromTitle(titleOnly(storyTitle)), hashtagFromTitle(author?.trim() || titleAuthor(storyTitle) || "")];
+  return [...new Set(tags.filter(Boolean))].map((tag) => `#${tag}`);
+}
+
+// A hashtag is letters and digits only: punctuation (a dash, a comma, "!") ends the tag on
+// YouTube and Facebook, so it is dropped and the words around it are joined.
 export function hashtagFromTitle(storyTitle: string): string {
   return storyTitle
-    .split(/\s+/)
+    .split(/[^\p{L}\p{N}]+/u)
     .filter(Boolean)
     .map((word) => word[0].toLocaleUpperCase("vi") + word.slice(1))
     .join("");
@@ -83,7 +104,7 @@ export function descriptionFor(input: DescriptionInput): string {
   lines.push(
     channelCall(`${input.storyTitle}#${input.order}`, input.channel),
     "",
-    [channelHashtag && `#${channelHashtag}`, `#${hashtagFromTitle(input.storyTitle)}`, "#TruyệnAudio", "#NgheTruyện"]
+    [channelHashtag && `#${channelHashtag}`, ...storyHashtags(input.storyTitle, input.author), "#TruyệnAudio", "#NgheTruyện"]
       .filter(Boolean)
       .join(" ")
   );
@@ -99,12 +120,13 @@ export interface TagsInput {
 
 // The skill's tag list; YouTube caps the whole field at 500 characters.
 export function tagsFor(input: TagsInput): string[] {
+  const story = titleOnly(input.storyTitle);
   const tags = [
-    input.storyTitle,
+    story,
     "truyện audio",
     "nghe truyện",
     input.channel,
-    `${input.storyTitle} chương ${input.order}`,
+    `${story} chương ${input.order}`,
   ];
   if (input.genreTags?.trim()) {
     tags.push(...input.genreTags.split(",").map((tag) => tag.trim()).filter(Boolean));

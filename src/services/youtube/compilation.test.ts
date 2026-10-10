@@ -96,7 +96,7 @@ describe("compilation metadata", () => {
     expect(meta.description).toContain("✍️ Tác giả: Tác giả");
     expect(meta.description).toContain("kênh Kênh Khác");
     expect(meta.description).not.toContain("giải trí");
-    expect(meta.description).toContain("#KênhKhác #Truyện #TruyệnAudio #NgheTruyện");
+    expect(meta.description).toContain("#KênhKhác #Truyện #TácGiả #TruyệnAudio #NgheTruyện");
     expect(meta.tags).toContain("Truyện trọn bộ");
     expect(meta.tags).toContain("nghe truyện ngủ");
     expect(meta.playlistTitle).toBe("Truyện – Trọn bộ | Kênh Khác");
