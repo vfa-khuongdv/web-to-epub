@@ -877,4 +877,10 @@ export const vi: Record<string, string> = {
   "YouTube (parts up to 11 h)": "YouTube (mỗi phần tối đa 11 giờ)",
   "Facebook (parts up to 4 h)": "Facebook (mỗi phần tối đa 4 giờ)",
   "Remove {label} and its rendered video? The Facebook video stays.": "Xoá {label} và video đã tạo? Video trên Facebook vẫn còn.",
+  "Channel introduction": "Giới thiệu kênh",
+  "Before a story's first chapter, one sentence introduces the channel. It is read only the first time that chapter is narrated; chapters already narrated are not changed.": "Trước chương đầu của truyện có một câu giới thiệu kênh. Câu này chỉ được đọc khi chương đó được đọc lần đầu; các chương đã có audio sẽ không thay đổi.",
+  "Read a channel introduction before chapter 1": "Đọc câu giới thiệu kênh trước chương 1",
+  "Introduction sentence": "Câu giới thiệu",
+  "Use {channel} for the channel name (Settings → YouTube) and {title} for the story. Empty uses the default wording.": "Dùng {channel} cho tên kênh (Cài đặt → YouTube) và {title} cho tên truyện. Để trống sẽ dùng câu mặc định.",
+  "Welcome to the {channel} channel. Now, let's listen to the story {title}.": "Chào mừng các bạn đến với kênh {channel}. Sau đây, mời các bạn cùng nghe truyện {title}.",
 };

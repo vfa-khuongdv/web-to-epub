@@ -49,6 +49,8 @@ const settings: AppSettings = {
   defaultAuthor: "",
   ttsVariant: "turbo",
   ttsVoice: "",
+  narrationIntro: true,
+  narrationIntroText: "",
 };
 const app: AppInfo = { version: "1.7.0", dataDir: "/data/lib", storyCount: 4, chapterCount: 99, privateConfigured: false };
 

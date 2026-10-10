@@ -93,6 +93,8 @@ describe("narration routes", () => {
   });
 
   beforeEach(async () => {
+    // The channel introduction has its own test below; the others read the chapter text only.
+    (await import("../services/settingsStore")).settingsStore.update({ narrationIntro: false });
     fake.installed = true;
     fake.gate = undefined;
     await fs.rm(path.join(DATA_DIR, "audio"), { recursive: true, force: true });
@@ -304,6 +306,16 @@ describe("narration routes", () => {
     // The title is not read; the one paragraph (block 0); the fake gives 3 s and no timings.
     expect(parts.map((p: { block: number }) => p.block)).toEqual([0]);
     expect(parts[0].end).toBeLessThanOrEqual(3);
+  });
+
+  it("reads the channel introduction ahead of the first chapter when it is on, and puts it in the timeline", async () => {
+    const { settingsStore } = await import("../services/settingsStore");
+    settingsStore.update({ narrationIntro: true, narrationIntroText: "Kênh {channel} mời nghe {title}." });
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+    const { parts } = await (await fetch(`${base}/stories/${viId}/chapters/1/narration`)).json();
+    expect(parts.map((p: { block: number }) => p.block)).toEqual([-1, 0]);
+    settingsStore.update({ narrationIntro: false, narrationIntroText: "" });
   });
 
   it("deletes a story's audio, but not while it is being narrated", async () => {

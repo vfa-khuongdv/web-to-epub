@@ -25,8 +25,18 @@ export interface LoadedModel {
   sampleRate: number;
 }
 
+// Silence the worker puts before the first word of every chapter, so the listener has a moment
+// to settle before the voice starts. Every part's timing includes it.
+export const LEAD_SECONDS = 1.5;
+
+// Extra silence after the channel introduction, on top of the usual pause between parts, so the
+// chapter does not start the instant the introduction ends.
+export const INTRO_PAUSE_SECONDS = 1.2;
+
 export interface SynthRequest {
   parts: string[];
+  // Seconds of silence added after the first part (the introduction); the worker's own pause stays.
+  afterFirst?: number;
   voice: string;
   // A custom voice's reference clip (see customVoices.ts); the worker enrolls it once.
   refAudio?: string;
@@ -210,12 +220,12 @@ export function startTtsWorker(
         }
       });
     },
-    synth({ parts, voice, refAudio, refText, refPrompt, out, onProgress, signal }) {
+    synth({ parts, afterFirst, voice, refAudio, refText, refPrompt, out, onProgress, signal }) {
       if (signal?.aborted) return Promise.reject(new NarrationCancelled());
       const id = randomUUID();
       let onAbort: (() => void) | undefined;
       const promise = request<{ seconds: number; timings: [number, number][] }>(
-        { cmd: "synth", id, parts, voice, refAudio, refText, refPrompt, out },
+        { cmd: "synth", id, parts, voice, refAudio, refText, refPrompt, out, lead: LEAD_SECONDS, afterFirst },
         (message, resolve, reject) => {
           if (message.id !== id) return;
           if (message.type === "progress") onProgress?.(message.part ?? 0, message.parts ?? parts.length);

@@ -382,6 +382,8 @@ const vi: Record<string, string> = {
   "This story has no downloaded chapters to read yet": "Truyện này chưa có chương nào đã tải để đọc",
   "Draw the story's characters first (Publish → Video style)": "Hãy vẽ nhân vật của truyện trước (Đăng → Kiểu video)",
   "Chapter {order}": "Chương {order}",
+  "narrationIntro must be true or false": "narrationIntro phải là true hoặc false",
+  "The intro sentence is too long": "Câu giới thiệu quá dài",
 };
 
 let current: Lang = DEFAULT_LANG;

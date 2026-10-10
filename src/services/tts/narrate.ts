@@ -12,7 +12,7 @@ import {
 import { chapterParts, chapterPartsWithBlocks } from "./chapterText";
 import { customVoices } from "./customVoices";
 import { TtsRuntime } from "./runtime";
-import { NarrationCancelled, TtsVariant } from "./workerClient";
+import { INTRO_PAUSE_SECONDS, NarrationCancelled, TtsVariant } from "./workerClient";
 
 // Narration is offered for Vietnamese books only (VieNeu reads nothing else). A story
 // saved before the language field existed reads as Vietnamese, as it does in the UI.
@@ -49,7 +49,7 @@ export async function freshChapterAudio(
   storyId: string,
   order: number,
   settings: NarrationSettings
-): Promise<{ filePath: string; seconds: number; timings?: [number, number][]; title: string; chapter: StoredChapter } | undefined> {
+): Promise<{ filePath: string; seconds: number; timings?: [number, number][]; intro?: string; title: string; chapter: StoredChapter } | undefined> {
   const chapter = await stories.getChapter(storyId, order);
   if (!chapter || !readable(chapter)) return undefined;
   const audio = await readChapterAudio(dataDir, storyId, order);
@@ -81,6 +81,8 @@ export async function chapterNarrationTimeline(
   const audio = await freshChapterAudio(stories, dataDir, storyId, order, settings);
   if (!audio) return undefined;
   const parts = chapterPartsWithBlocks(audio.chapter.title, audio.chapter.blocks ?? []);
+  // The introduction has no block of its own: -1 highlights nothing while it plays.
+  if (audio.intro) parts.unshift({ text: audio.intro, block: -1 });
   if (audio.timings && audio.timings.length === parts.length) {
     return parts.map((part, i) => ({ block: part.block, start: audio.timings![i][0], end: audio.timings![i][1] }));
   }
@@ -141,6 +143,9 @@ export interface NarrateJob {
   onEvent: (event: NarrateEvent) => void;
   // Narrate the chapters again even when they have audio ("Regenerate audio").
   regenerate?: boolean;
+  // The sentence read before the story's first chapter (given the story's title), or nothing
+  // when the introduction is off. Only the first chapter of the story gets it.
+  intro?: (storyTitle: string) => string | undefined;
 }
 
 // The plan: readable chapters (optionally the requested ones), in TOC order.
@@ -165,6 +170,8 @@ export async function chaptersToNarrate(stories: StoryStore, storyId: string, or
  */
 export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<{ done: number; failed: number }> {
   await ensureStoryAudioDir(job.dataDir, job.storyId);
+  const outline = job.intro ? await job.stories.getOutline(job.storyId) : undefined;
+  const firstOrder = outline ? Math.min(...outline.chapters.map((chapter) => chapter.order)) : undefined;
   let done = 0;
   let failed = 0;
   const total = plan.length;
@@ -173,7 +180,9 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
     if (job.signal.aborted) break;
     const chapter = await job.stories.getChapter(job.storyId, order);
     const settings = job.settings();
-    const parts = chapter ? chapterParts(chapter.title, chapter.blocks ?? []) : [];
+    const text = chapter ? chapterParts(chapter.title, chapter.blocks ?? []) : [];
+    const intro = text.length > 0 && order === firstOrder && outline ? job.intro?.(outline.title) : undefined;
+    const parts = intro ? [intro, ...text] : text;
     if (!chapter || parts.length === 0) {
       // Nothing to read (e.g. an images-only chapter): not an error, not audio either.
       job.onEvent({ type: "narrate-chapter-done", order, seconds: 0, skipped: true, done, total });
@@ -196,6 +205,7 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
       const { seconds, timings } = await job.runtime.withModel(settings.variant, (worker) =>
         worker.synth({
           parts,
+          afterFirst: intro ? INTRO_PAUSE_SECONDS : undefined,
           ...voice,
           out,
           signal: job.signal,
@@ -209,6 +219,7 @@ export async function narrateChapters(job: NarrateJob, plan: number[]): Promise<
         voice: narrationVoice(settings),
         engineVersion: engineVersion(settings.variant),
         timings,
+        intro,
       });
       done++;
       job.onEvent({ type: "narrate-chapter-done", order, seconds, skipped: false, done, total });

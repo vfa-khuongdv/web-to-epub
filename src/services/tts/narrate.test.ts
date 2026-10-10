@@ -17,7 +17,7 @@ import {
   narrateChapters,
   narrationStates,
 } from "./narrate";
-import { NarrationCancelled, SynthRequest, TtsWorker } from "./workerClient";
+import { INTRO_PAUSE_SECONDS, NarrationCancelled, SynthRequest, TtsWorker } from "./workerClient";
 
 const STORY_ID = storyId("https://example.com/truyen/");
 
@@ -180,6 +180,44 @@ describe("narration job", () => {
       { block: 0, start: 0, end: 1.2 },
     ]);
     expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 3, settings)).toBeUndefined();
+  });
+
+  it("reads a channel introduction before the story's first chapter only, and records it with the audio", async () => {
+    const runtime = fakeRuntime();
+    runtime.timings = [[0, 1], [1.5, 3]];
+    const titles: string[] = [];
+    await narrateChapters(
+      {
+        ...job(runtime),
+        intro: (title) => {
+          titles.push(title);
+          return `Chào kênh, truyện ${title}.`;
+        },
+      },
+      [1, 5]
+    );
+    // Chapter 1 starts with the sentence, chapter 5 (not the first) is read as it is.
+    expect(runtime.calls.map((c) => c.request.parts)).toEqual([["Chào kênh, truyện Truyện.", "Một."], ["Năm."]]);
+    expect(titles).toEqual(["Truyện"]);
+    // Only the chapter with the introduction asks for the longer breath after it.
+    expect(runtime.calls.map((c) => c.request.afterFirst)).toEqual([INTRO_PAUSE_SECONDS, undefined]);
+    const { readAudioMeta } = await import("./audioCache");
+    expect((await readAudioMeta(dir, STORY_ID, 1))?.intro).toBe("Chào kênh, truyện Truyện.");
+    expect((await readAudioMeta(dir, STORY_ID, 5))?.intro).toBeUndefined();
+
+    // The reader's timeline gets a part for the sentence that highlights no block.
+    expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings)).toEqual([
+      { block: -1, start: 0, end: 1 },
+      { block: 0, start: 1.5, end: 3 },
+    ]);
+  });
+
+  it("reads no introduction when it is off", async () => {
+    const runtime = fakeRuntime();
+    await narrateChapters({ ...job(runtime), intro: () => undefined }, [1]);
+    expect(runtime.calls[0].request.parts).toEqual(["Một."]);
+    const { readAudioMeta } = await import("./audioCache");
+    expect((await readAudioMeta(dir, STORY_ID, 1))?.intro).toBeUndefined();
   });
 
   it("reads the voice per chapter, so a change applies from the next chapter", async () => {

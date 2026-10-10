@@ -32,6 +32,8 @@ export interface IllustratedChapterInput {
   audioPath: string;
   seconds: number;
   timings?: [number, number][];
+  // The channel introduction the narration starts with (AudioMeta.intro): one more part ahead of the text.
+  intro?: string;
   outPath: string;
   musicPath?: string;
   musicVolume?: number;
@@ -44,6 +46,7 @@ export interface IllustratedChapterInput {
 
 export async function renderIllustratedChapter(input: IllustratedChapterInput): Promise<void> {
   const parts = chapterParts(input.chapterTitle, input.blocks);
+  if (input.intro && parts.length > 0) parts.unshift(input.intro);
   if (parts.length === 0) throw new Error(t("Chapter {order} has no text to illustrate", { order: input.order }));
   const windows = partWindows(parts, input.seconds, input.timings);
   const key = storyboardKey(input.bible, parts);

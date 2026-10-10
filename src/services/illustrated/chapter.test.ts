@@ -89,6 +89,44 @@ describe("renderIllustratedChapter", () => {
     await fs.rm(dataDir, { recursive: true, force: true });
   });
 
+  it("counts the channel introduction as the first narrated part, so captions and timings line up", async () => {
+    const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ill-"));
+    const prompts: string[] = [];
+    const agent = {
+      complete: async (prompt: string) => (
+        prompts.push(prompt),
+        JSON.stringify({ scenes: [{ from: 0, to: 1, place: "field", time: "day", cast: [] }] })
+      ),
+    };
+    let scene = "";
+    await renderIllustratedChapter({
+      dataDir,
+      storyId: "s",
+      storyTitle: "T",
+      order: 1,
+      chapterTitle: "C",
+      blocks: [{ type: "paragraph", text: "Câu một." }] as never,
+      bible,
+      agent,
+      intro: "Chào mừng đến kênh.",
+      command: "ffmpeg",
+      audioPath: "a",
+      seconds: 10,
+      // One timing per narrated part: the sentence, then the paragraph.
+      timings: [[0, 3], [3.5, 9]],
+      outPath: path.join(dataDir, "o.mp4"),
+      renderVideo: async (r: { projectDir: string; outPath: string }) => {
+        scene = await fs.readFile(path.join(r.projectDir, "compositions", "scene-0.html"), "utf8");
+        await fs.writeFile(r.outPath, "v");
+      },
+      run: async (_c: string, args: string[]) => void (await fs.writeFile(args[args.length - 1], "m")),
+    });
+    expect(prompts[0]).toContain("[0] (0s) Chào mừng đến kênh.");
+    expect(prompts[0]).toContain("[1] (4s) Câu một.");
+    expect(scene).toContain("Chào mừng đến kênh.");
+    await fs.rm(dataDir, { recursive: true, force: true });
+  });
+
   it("refuses to plan a chapter without an agent when nothing was saved", async () => {
     const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "ill-"));
     await expect(

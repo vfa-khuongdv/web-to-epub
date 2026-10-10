@@ -875,4 +875,10 @@ export const en: Record<string, string> = {
   "YouTube (parts up to 11 h)": "YouTube (parts up to 11 h)",
   "Facebook (parts up to 4 h)": "Facebook (parts up to 4 h)",
   "Remove {label} and its rendered video? The Facebook video stays.": "Remove {label} and its rendered video? The Facebook video stays.",
+  "Channel introduction": "Channel introduction",
+  "Before a story's first chapter, one sentence introduces the channel. It is read only the first time that chapter is narrated; chapters already narrated are not changed.": "Before a story's first chapter, one sentence introduces the channel. It is read only the first time that chapter is narrated; chapters already narrated are not changed.",
+  "Read a channel introduction before chapter 1": "Read a channel introduction before chapter 1",
+  "Introduction sentence": "Introduction sentence",
+  "Use {channel} for the channel name (Settings → YouTube) and {title} for the story. Empty uses the default wording.": "Use {channel} for the channel name (Settings → YouTube) and {title} for the story. Empty uses the default wording.",
+  "Welcome to the {channel} channel. Now, let's listen to the story {title}.": "Welcome to the {channel} channel. Now, let's listen to the story {title}.",
 };

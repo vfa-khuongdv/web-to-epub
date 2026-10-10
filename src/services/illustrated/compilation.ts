@@ -30,6 +30,8 @@ export interface ChapterInput {
   blocks: ContentBlock[];
   seconds: number;
   timings?: [number, number][];
+  // The channel introduction the chapter's narration starts with, when it has one.
+  intro?: string;
 }
 
 export interface Slide {
@@ -172,6 +174,7 @@ export interface IllustratedCompilationInput {
 
 async function scenesOf(input: IllustratedCompilationInput, chapter: ChapterInput): Promise<TimedScene[]> {
   const parts = chapterParts(chapter.title, chapter.blocks);
+  if (chapter.intro && parts.length > 0) parts.unshift(chapter.intro);
   if (parts.length === 0) throw new Error(t("Chapter {order} has no text to illustrate", { order: chapter.order }));
   const windows = partWindows(parts, chapter.seconds, chapter.timings);
   const key = storyboardKey(input.bible, parts);

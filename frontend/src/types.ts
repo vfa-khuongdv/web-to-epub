@@ -108,6 +108,10 @@ export interface AppSettings {
   // other engine, which only reads with a custom voice). Preset voice; "" = model default.
   ttsVariant: TtsVariant;
   ttsVoice: string;
+  // A sentence introducing the channel is read before a story's first chapter; the text may
+  // use {channel} and {title}, empty = the built-in wording.
+  narrationIntro: boolean;
+  narrationIntroText: string;
 }
 
 export type TtsVariant = "turbo" | "nano" | "omnivoice";

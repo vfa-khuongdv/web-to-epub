@@ -27,12 +27,16 @@ export interface AudioMeta {
   engine?: string;
   // [start, end] in seconds of each part, in chapterParts order (absent on older audio).
   timings?: [number, number][];
+  // The channel introduction read before the chapter's text (a story's first chapter): one
+  // more part ahead of chapterParts, so `timings` has an entry for it too.
+  intro?: string;
 }
 
 export interface CachedAudio {
   filePath: string;
   seconds: number;
   timings?: [number, number][];
+  intro?: string;
 }
 
 export function storyAudioDir(dataDir: string, storyId: string): string {
@@ -62,7 +66,7 @@ export async function readChapterAudio(dataDir: string, storyId: string, order: 
   } catch {
     return undefined;
   }
-  return { filePath, seconds: meta.seconds ?? 0, timings: meta.timings };
+  return { filePath, seconds: meta.seconds ?? 0, timings: meta.timings, intro: meta.intro };
 }
 
 // The meta alone, for callers that need what the file reads (`text`) rather than only
@@ -83,7 +87,7 @@ export async function writeAudioMeta(
   storyId: string,
   order: number,
   parts: string[],
-  info: { seconds: number; voice: NarrationVoice; engineVersion: string; timings?: [number, number][] }
+  info: { seconds: number; voice: NarrationVoice; engineVersion: string; timings?: [number, number][]; intro?: string }
 ): Promise<void> {
   const meta: AudioMeta = {
     text: textKey(parts),
@@ -92,6 +96,7 @@ export async function writeAudioMeta(
     voice: info.voice.voice,
     engine: info.engineVersion,
     timings: info.timings,
+    ...(info.intro ? { intro: info.intro } : {}),
   };
   await fs.writeFile(metaPath(dataDir, storyId, order), JSON.stringify(meta));
 }
