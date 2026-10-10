@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, fetchStorySize, refreshStoryToc, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../../lib/api";
+import { chapterAudioUrl, deleteChapter, fetchChapterContent, fetchStory, fetchStorySize, refreshStoryToc, restoreRewrittenChapters, saveChapterEdit, saveChapterSpellChecked, saveChapterTitle, saveChapterUrl, saveStoryMeta, setStoryWatch, startStoryCrawl, stopStoryCrawl } from "../../lib/api";
 import { blocksToHtml } from "../../lib/reader/blocksToHtml";
 import { formatBytes } from "../../lib/format/formatBytes";
 import { formatEta } from "../../lib/format/formatEta";
@@ -12,6 +12,8 @@ import { ChapterState, toChapterState } from "../../lib/library/chapterState";
 import { CrawlJobState, liveCounts, NoticeInput } from "../../hooks/useCrawlJob";
 import { useStoryNarration } from "../../hooks/useStoryNarration";
 import NarrationPanel, { playerMusic } from "../narration/NarrationPanel";
+import YouTubePanel from "./YouTubePanel";
+import { useRewrite } from "../../hooks/useRewrite";
 import { exportProgressLabel, useEpubExport } from "../../hooks/useEpubExport";
 import { useVault } from "../../vault";
 import { vaultQuery } from "../../vault/token";
@@ -85,7 +87,87 @@ export default function StoryDetail({
     playChapter,
     resumeListen,
   } = useStoryNarration(story, bookTitle, coverUrl);
+  // Rewriting changes chapter text, so a finished run refetches the edited chapters.
+  const rewrite = useRewrite(story.id, narratable, { onFinished: (orders) => void refreshStory(orders) });
+
+  // A failed rewrite has no panel to report into: show it in the story's error banner.
+  useEffect(() => {
+    const message = rewrite.error ?? rewrite.outcome?.lastError;
+    if (message) setError(message);
+  }, [rewrite.error, rewrite.outcome]);
+
+
+  function toggleSelected(order: number, selected: boolean) {
+    setSelectedOrders((current) => {
+      const next = new Set(current);
+      if (selected) next.add(order);
+      else next.delete(order);
+      return next;
+    });
+  }
+
+  // The header box ticks every chapter card on the page (pending rows have nothing to do).
+  function toggleSelectVisible(selected: boolean) {
+    setSelectedOrders((current) => {
+      const next = new Set(current);
+      for (const chapter of visibleChapters) {
+        if (chapter.status === "pending") continue;
+        if (selected) next.add(chapter.order);
+        else next.delete(chapter.order);
+      }
+      return next;
+    });
+  }
+
+  async function handleBatchSpellChecked() {
+    setError(null);
+    try {
+      for (const order of selectedList) await saveChapterSpellChecked(story.id, order, true);
+      await refreshStory(selectedList);
+      setSelectedOrders(new Set());
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleBatchDelete() {
+    if (!window.confirm(t("Delete {count} chapters? Their narration audio is removed too.", { count: selectedList.length }))) {
+      return;
+    }
+    setError(null);
+    try {
+      for (const order of selectedList) await deleteChapter(story.id, order);
+      setSelectedOrders(new Set());
+      await refreshStory();
+      await onStoryChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  function handleBatchRecrawl() {
+    if (!window.confirm(t("Re-crawl {count} chapters? Their saved content will be overwritten.", { count: selectedList.length }))) {
+      return;
+    }
+    handleCrawl(selectedList);
+    setSelectedOrders(new Set());
+  }
+
+  async function handleRestoreRewrite(order: number) {
+    setError(null);
+    try {
+      await restoreRewrittenChapters(story.id, [order]);
+      await refreshStory([order]);
+      await rewrite.refresh();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
   const [includeNarration, setIncludeNarration] = useState(false);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
+  // Chapters ticked in the table for the batch actions above it.
+  const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
+  const selectedList = [...selectedOrders].sort((a, b) => a - b);
   // A book imported from a file has no TOC to crawl, check or watch; those controls
   // and the source link would all point at an epub: URL that no site can answer.
   const imported = story.site === IMPORTED_SITE;
@@ -131,6 +213,11 @@ export default function StoryDetail({
 
   // Look up via Map instead of find() in loop: find() turns each table render
   // into O(n²) — with 2468 chapters, millions of comparisons.
+  // A different story starts with nothing ticked.
+  useEffect(() => {
+    setSelectedOrders(new Set());
+  }, [story.id]);
+
   const stateByOrder = new Map(chapters.map((c) => [c.order, c]));
 
   // Exactly what the book will contain, with the titles currently in the editor —
@@ -155,6 +242,7 @@ export default function StoryDetail({
     (currentChapterPage - 1) * CHAPTERS_PER_PAGE,
     currentChapterPage * CHAPTERS_PER_PAGE
   );
+  const selectableVisible = visibleChapters.filter((chapter) => chapter.status !== "pending").map((chapter) => chapter.order);
 
   // Open story listens on realtime channel: crawl started by this or another
   // session both update the chapter table directly.
@@ -513,6 +601,12 @@ export default function StoryDetail({
               {isExporting ? t("Exporting…") : t("Export EPUB")}
             </button>
             {narratable && narratedCount > 0 && (
+              <button type="button" className="btn" title={t("Make videos from the narrated chapters and publish them to YouTube and Facebook")} onClick={() => setYoutubeOpen(true)}>
+                <Icon name="upload" size={14} />
+                {t("Publish")}
+              </button>
+            )}
+            {narratable && narratedCount > 0 && (
               <label
                 className="flex items-center gap-1.5 text-xs text-ink-2"
                 title={t("Kindle does not play audio in EPUB books; Apple Books and Thorium do.")}
@@ -586,10 +680,70 @@ export default function StoryDetail({
         </div>
       </div>
 
+      {selectedList.length > 0 && (
+        <div className="banner flex flex-wrap items-center gap-2" role="status">
+          <b>{t("{count} chapters selected", { count: selectedList.length })}</b>
+          {narratable && rewrite.state?.ready && (
+            <button
+              type="button"
+              className="btn btn-tiny"
+              disabled={!!rewrite.state.running}
+              onClick={() => {
+                void rewrite.start(selectedList);
+                setSelectedOrders(new Set());
+              }}
+            >
+              <Icon name="sparkles" size={12} />
+              {t("Rewrite {count} chapters", { count: selectedList.length })}
+            </button>
+          )}
+          {narratable && narration.state && (
+            <button
+              type="button"
+              className="btn btn-tiny"
+              disabled={!!narration.state.running}
+              onClick={() => {
+                void narration.start(selectedList);
+                setSelectedOrders(new Set());
+              }}
+            >
+              <Icon name="narration" size={12} />
+              {t("Create audio for {count} chapters", { count: selectedList.length })}
+            </button>
+          )}
+          {!imported && (
+            <button type="button" className="btn btn-tiny" disabled={job.running} onClick={handleBatchRecrawl}>
+              <Icon name="retry" size={12} />
+              {t("Re-crawl {count} chapters", { count: selectedList.length })}
+            </button>
+          )}
+          <button type="button" className="btn btn-tiny" disabled={job.running} onClick={() => void handleBatchSpellChecked()}>
+            <Icon name="spellcheck" size={12} />
+            {t("Mark {count} chapters as spelling-fixed", { count: selectedList.length })}
+          </button>
+          <button type="button" className="btn btn-tiny btn-danger" disabled={job.running} onClick={() => void handleBatchDelete()}>
+            <Icon name="trash" size={12} />
+            {t("Delete {count} chapters", { count: selectedList.length })}
+          </button>
+          <button type="button" className="btn btn-quiet btn-tiny" onClick={() => setSelectedOrders(new Set())}>
+            {t("Clear selection")}
+          </button>
+        </div>
+      )}
+
       <div className="pane-body flex-none overflow-visible">
         <table className="tbl">
           <thead>
             <tr>
+              <th className="w-8">
+                <input
+                  type="checkbox"
+                  className="size-3.5 accent-select"
+                  aria-label={t("Select all chapters")}
+                  checked={selectableVisible.length > 0 && selectableVisible.every((order) => selectedOrders.has(order))}
+                  onChange={(event) => toggleSelectVisible(event.target.checked)}
+                />
+              </th>
               <th className="num w-11">#</th>
               <th>{t("Chapter")}</th>
               <th className="w-32">{t("Status")}</th>
@@ -647,6 +801,16 @@ export default function StoryDetail({
                   regenerating={narration.state?.running?.order === c.order}
                   spellChecked={c.spellChecked}
                   onToggleSpellChecked={() => handleToggleSpellChecked(c.order, !c.spellChecked)}
+                  selected={selectedOrders.has(c.order)}
+                  onSelectChange={(selected) => toggleSelected(c.order, selected)}
+                  rewritten={rewrite.state?.chapters[c.order]?.rewritten}
+                  onRewrite={rewrite.state?.ready ? () => void rewrite.start([c.order]) : undefined}
+                  rewriting={rewrite.state?.running?.order === c.order}
+                  rewriteDisabled={!!rewrite.state?.running}
+                  onRestoreRewrite={
+                    rewrite.state?.chapters[c.order]?.rewritten ? () => void handleRestoreRewrite(c.order) : undefined
+                  }
+                  restoreRewriteDisabled={!!rewrite.state?.running}
                   onBodyChange={(html) => bodies.current.set(c.id, html)}
                   loadBody={async () => blocksToHtml((await fetchChapterContent(story.id, c.order)).blocks ?? [])}
                   onSave={async (title, contentHtml) => {
@@ -694,6 +858,15 @@ export default function StoryDetail({
       </div>
 
       </div>
+
+      {youtubeOpen && (
+        <YouTubePanel
+          story={story}
+          onClose={() => setYoutubeOpen(false)}
+          onOpenSettings={onOpenSettings}
+          playerMusic={{ track: player.musicTrack, enabled: player.musicEnabled }}
+        />
+      )}
 
       {reading && (
         <ReaderOverlay

@@ -64,10 +64,10 @@ describe("AgentCrawlerPanel", () => {
     expect(await screen.findByRole("status")).toHaveTextContent("agent gave up");
   });
 
-  it("cannot rewrite while the agent crawler is off, and says why", async () => {
+  it("hides the rewrite action while the agent crawler is off, and says why", async () => {
     fetchMock.mockResolvedValue({ available: true, ready: false });
     renderEn(<AgentCrawlerPanel storyId="s1" />);
-    expect(await screen.findByRole("button", { name: "Rewrite the crawler with the agent" })).toBeDisabled();
-    expect(screen.getByText("Turn the agent crawler on in Settings first.")).toBeInTheDocument();
+    expect(await screen.findByText("Turn the agent crawler on in Settings first.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rewrite the crawler with the agent" })).toBeNull();
   });
 });

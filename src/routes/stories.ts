@@ -34,6 +34,8 @@ import { AgentDocumentPageError, articleViaAgent, createAgentTocAdapter, hasAgen
 import { TocAdapter } from "../services/toc/types";
 import { t } from "../services/lang";
 import { removeStoryAudio } from "../services/tts/audioCache";
+import { removeBible } from "../services/illustrated/bible";
+import { youtubeVideoDir } from "../services/youtube/jobs";
 import { StoredStory } from "../types";
 import { Library, libraryFor } from "./library";
 
@@ -703,6 +705,10 @@ storiesRouter.delete("/stories/:id", async (req, res) => {
     res.status(409).json({ message: t("Story is being narrated, cannot delete") });
     return;
   }
+  if (library.runningRewrites.has(req.params.id) || library.runningYouTube.has(req.params.id)) {
+    res.status(409).json({ message: t("Story is being rewritten or published, cannot delete") });
+    return;
+  }
   const removed = await library.stories.remove(req.params.id);
   if (!removed) {
     res.status(404).json({ message: t("Story not found") });
@@ -711,5 +717,9 @@ storiesRouter.delete("/stories/:id", async (req, res) => {
   await library.covers.remove(req.params.id);
   await library.epubMedia.remove(req.params.id);
   await removeStoryAudio(library.dataDir, req.params.id);
+  // The story's records cascade in SQLite; the rendered MP4s are files and need removing.
+  await fs.promises.rm(youtubeVideoDir(library.dataDir, req.params.id), { recursive: true, force: true });
+  // The drawn characters and the planned scenes of its illustrated videos.
+  await removeBible(library.dataDir, req.params.id);
   res.json({ ok: true });
 });

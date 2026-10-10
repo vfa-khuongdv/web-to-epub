@@ -47,20 +47,19 @@ export function splitLongText(text: string, maxChars: number = MAX_PART_CHARS): 
 export interface ChapterPart {
   text: string;
   // Which content block the part reads, as its index in the chapter's blocks — which is
-  // also its element index in the chapter HTML (one element per block, blocksToHtml) —
-  // or -1 for the chapter title. A long paragraph gives several parts with one block.
+  // also its element index in the chapter HTML (one element per block, blocksToHtml).
+  // A long paragraph gives several parts with one block.
   block: number;
 }
 
 /**
- * The text a chapter is narrated from, as the parts sent to the model: the chapter title
- * first, then headings and paragraphs in order. Images and media have nothing to read.
- * A heading equal to the title (sites often repeat it) is not read twice.
+ * The text a chapter is narrated from, as the parts sent to the model: headings and paragraphs
+ * in order. The title is not read. Images and media have nothing to read.
+ * A heading equal to the title (sites often repeat it) is skipped too.
  */
 export function chapterPartsWithBlocks(title: string, blocks: ContentBlock[]): ChapterPart[] {
   const parts: ChapterPart[] = [];
   const cleanTitle = title.replace(/\s+/g, " ").trim();
-  if (cleanTitle) parts.push(...splitLongText(cleanTitle).map((text) => ({ text, block: -1 })));
   blocks.forEach((block, index) => {
     if (block.type !== "heading" && block.type !== "paragraph" && block.type !== "html") return;
     const text = plainText(block.text ?? "");

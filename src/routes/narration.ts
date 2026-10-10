@@ -12,6 +12,8 @@ import {
   narrationStates,
 } from "../services/tts/narrate";
 import { customVoices } from "../services/tts/customVoices";
+import { introSentence } from "../services/tts/intro";
+import { loadYouTubeConfig } from "../services/youtube/config";
 import { runtimeFor, ttsEngines } from "../services/tts/runtime";
 import { Library, NarrationRun, libraryFor } from "./library";
 import { writeSse } from "./live";
@@ -34,6 +36,12 @@ function publishNarration(library: Library, storyId: string, event: NarrationLiv
 const narrationSettings = () => {
   const { ttsVariant, ttsVoice } = settingsStore.get();
   return { variant: ttsVariant, voice: ttsVoice };
+};
+
+// The sentence that introduces the channel before a story's first chapter, or nothing when it is off.
+const channelIntro = (storyTitle: string): string | undefined => {
+  const { narrationIntro, narrationIntroText } = settingsStore.get();
+  return narrationIntro ? introSentence(narrationIntroText, { channel: loadYouTubeConfig().channel, title: storyTitle }) : undefined;
 };
 
 // Shared channel for the open library: every running job on connect, then all events
@@ -159,6 +167,7 @@ narrationRouter.post("/stories/:id/narrate", async (req, res) => {
         dataDir: library.dataDir,
         storyId: id,
         settings: narrationSettings,
+        intro: channelIntro,
         runtime: ttsEngines,
         signal: abort.signal,
         regenerate: body.regenerate === true,

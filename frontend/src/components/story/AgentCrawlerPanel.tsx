@@ -46,22 +46,27 @@ export default function AgentCrawlerPanel({ storyId, onRewritten }: { storyId: s
           "This site is crawled with code the agent wrote once and the app reuses. If chapters are missing, wrong or failing, ask the agent to write it again."
         )}
       </p>
-      <input
-        className="input"
-        aria-label={t("What is wrong? (optional)")}
-        placeholder={t("What is wrong? (optional) e.g. only 50 of about 1900 chapters")}
-        maxLength={500}
-        value={note}
-        disabled={busy}
-        onChange={(event) => setNote(event.target.value)}
-      />
-      <div className="flex flex-wrap items-center gap-2">
-        <button type="button" className="btn btn-tiny self-start" disabled={busy || !info.ready} onClick={() => void rewrite()}>
-          <Icon name="sparkles" size={13} />
-          {busy ? t("Rewriting…") : t("Rewrite the crawler with the agent")}
-        </button>
-        {!info.ready && <span className="text-[12px] text-ink-3">{t("Turn the agent crawler on in Settings first.")}</span>}
-      </div>
+      {info.ready ? (
+        <>
+          <input
+            className="input"
+            aria-label={t("What is wrong? (optional)")}
+            placeholder={t("What is wrong? (optional) e.g. only 50 of about 1900 chapters")}
+            maxLength={500}
+            value={note}
+            disabled={busy}
+            onChange={(event) => setNote(event.target.value)}
+          />
+          <div className="flex flex-wrap items-center gap-2">
+            <button type="button" className="btn btn-tiny self-start" disabled={busy} onClick={() => void rewrite()}>
+              <Icon name="sparkles" size={13} />
+              {busy ? t("Rewriting…") : t("Rewrite the crawler with the agent")}
+            </button>
+          </div>
+        </>
+      ) : (
+        <span className="text-[12px] text-ink-3">{t("Turn the agent crawler on in Settings first.")}</span>
+      )}
       {outcome && (
         <p role="status" className={`text-[12px] leading-snug ${outcome.ok ? "text-ink-2" : "text-error"}`}>
           {outcome.text}

@@ -9,6 +9,7 @@ import {
   settingsStore,
 } from "../services/settingsStore";
 import { TTS_VARIANTS, TtsVariant } from "../services/tts/workerClient";
+import { MAX_INTRO_CHARS } from "../services/tts/intro";
 import { vault } from "../services/vault";
 import { libraryFor } from "./library";
 
@@ -75,6 +76,22 @@ settingsRouter.patch("/settings", (req, res) => {
       return;
     }
     patch.ttsVoice = body.ttsVoice;
+  }
+
+  if ("narrationIntro" in body) {
+    if (typeof body.narrationIntro !== "boolean") {
+      res.status(400).json({ message: t("narrationIntro must be true or false") });
+      return;
+    }
+    patch.narrationIntro = body.narrationIntro;
+  }
+
+  if ("narrationIntroText" in body) {
+    if (typeof body.narrationIntroText !== "string" || body.narrationIntroText.length > MAX_INTRO_CHARS) {
+      res.status(400).json({ message: t("The intro sentence is too long") });
+      return;
+    }
+    patch.narrationIntroText = body.narrationIntroText.trim();
   }
 
   res.json({ settings: settingsStore.update(patch) });

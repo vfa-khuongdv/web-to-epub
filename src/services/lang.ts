@@ -202,6 +202,7 @@ const vi: Record<string, string> = {
   "This story's audio is already being joined": "Audio của truyện này đang được ghép",
   "Every chapter needs audio before the story can be joined into one file — {count} chapters have none yet": "Mọi chương cần có audio trước khi ghép thành một file — còn {count} chương chưa có",
   "Background music track not found": "Không tìm thấy bài nhạc nền",
+  "The render was interrupted — render it again": "Lần tạo video bị gián đoạn — hãy tạo lại",
   "Could not join the audio: {message}": "Không ghép được audio: {message}",
   "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",
   "Unsupported narration variant": "Kiểu giọng đọc không hợp lệ",
@@ -291,6 +292,100 @@ const vi: Record<string, string> = {
   "This agent is not installed on this computer": "Agent này chưa được cài trên máy",
   "model must be text": "model phải là chuỗi",
   "enabled must be true or false": "enabled phải là true hoặc false",
+
+  // Chapter rewrite for narration
+  "The agent could not rewrite this chapter: {reason}": "Agent không viết lại được chương này: {reason}",
+  "Only Vietnamese stories can be rewritten for narration": "Chỉ truyện tiếng Việt mới viết lại để đọc thành tiếng",
+  "This story's chapters are already being rewritten": "Các chương của truyện này đang được viết lại",
+  "No chapters to rewrite": "Không có chương nào để viết lại",
+  "No rewrite is running for this story": "Truyện này không có tiến trình viết lại nào đang chạy",
+
+  // YouTube publishing
+  "Could not read the OAuth client file: {path}": "Không đọc được file OAuth client: {path}",
+  "That file is not a Google OAuth client JSON": "File đó không phải JSON OAuth client của Google",
+  "Google refused the sign-in: {reason}": "Google từ chối đăng nhập: {reason}",
+  "Not signed in to YouTube — connect the account in Settings → YouTube":
+    "Chưa đăng nhập YouTube — hãy kết nối tài khoản trong Cài đặt → YouTube",
+  "YouTube publishing is not available in private mode": "Không đăng YouTube được khi đang ở chế độ ẩn danh",
+  "YouTube request failed (HTTP {status})": "Yêu cầu tới YouTube thất bại (HTTP {status})",
+  "YouTube request failed": "Yêu cầu tới YouTube thất bại",
+  "YouTube did not return the new playlist": "YouTube không trả về danh sách phát mới",
+  "YouTube refused the upload": "YouTube từ chối tải video lên",
+  "YouTube did not open an upload session": "YouTube không mở được phiên tải lên",
+  "YouTube ended the upload without a video id": "YouTube kết thúc tải lên mà không có video id",
+  "Upload stopped": "Đã dừng tải lên",
+  "The Facebook token is no longer valid — paste a new Page token in Settings → Facebook":
+    "Token Facebook không còn hợp lệ — hãy dán token Page mới trong Cài đặt → Facebook",
+  "Facebook refused the Page": "Facebook từ chối Page này",
+  "Facebook refused the upload": "Facebook từ chối tải video lên",
+  "Facebook did not open an upload session": "Facebook không mở được phiên tải lên",
+  "Facebook did not finish the upload": "Facebook không hoàn tất việc tải lên",
+  "Facebook's limit is reached. Try again in a while.": "Facebook đã chạm giới hạn. Hãy thử lại sau ít lâu.",
+  "{count} video(s) were left unpublished: Facebook only schedules 10 minutes to 30 days ahead":
+    "{count} video được để ở trạng thái chưa đăng: Facebook chỉ hẹn giờ từ 10 phút đến 30 ngày tới",
+  "Enter the Page id (digits) and a Page access token": "Nhập ID của Page (chỉ gồm số) và token truy cập Page",
+  "Could not connect Facebook": "Không kết nối được Facebook",
+  "Not signed in to Facebook — connect the Page in Settings → Facebook":
+    "Chưa kết nối Facebook — hãy kết nối Page trong Cài đặt → Facebook",
+  "No videos are ready to post": "Chưa có video nào sẵn sàng để đăng",
+  "Invalid chapter number": "Số chương không hợp lệ",
+  "Facebook takes videos up to 4 hours and 10 GB — {label} is longer. Make the parts shorter.":
+    "Facebook chỉ nhận video tối đa 4 giờ và 10 GB — {label} dài hơn. Hãy chia phần ngắn hơn.",
+  "Stopped": "Đã dừng",
+  "The agent could not write a summary for chapter {order}": "Agent không viết được tóm tắt cho chương {order}",
+  "ffmpeg was not found. Install it (for example: brew install ffmpeg) or set its path in Settings → YouTube.":
+    "Không tìm thấy ffmpeg. Hãy cài đặt (ví dụ: brew install ffmpeg) hoặc đặt đường dẫn trong Cài đặt → YouTube.",
+  "Could not run ffmpeg: {message}": "Không chạy được ffmpeg: {message}",
+  "ffmpeg failed: {message}": "ffmpeg báo lỗi: {message}",
+  "The playlist \"{name}\" does not exist yet": "Danh sách phát \"{name}\" chưa tồn tại",
+  "Chapter {order} has no audio yet — narrate it first": "Chương {order} chưa có audio — hãy tạo giọng đọc trước",
+  "This story has no cover image yet — add one before making videos":
+    "Truyện chưa có ảnh bìa — hãy thêm bìa trước khi tạo video",
+  "Chapter {order} has no video yet — make the videos first": "Chương {order} chưa có video — hãy tạo video trước",
+  "The video file for chapter {order} is missing — make the videos again":
+    "File video của chương {order} bị thiếu — hãy tạo lại video",
+  "YouTube's daily limit is reached. Try again after midnight Pacific time (about 14:00–15:00 Vietnam time).":
+    "Đã hết hạn mức trong ngày của YouTube. Hãy thử lại sau 0h giờ Thái Bình Dương (khoảng 14h–15h giờ Việt Nam).",
+  "musicId must be text": "musicId phải là chuỗi",
+  "musicVolume must be a number between 0 and 4": "musicVolume phải là số từ 0 đến 4",
+  "syntheticMedia must be true or false": "syntheticMedia phải là true hoặc false",
+  "Sign-in failed or expired. Open Settings → YouTube and try again.":
+    "Đăng nhập thất bại hoặc đã hết hạn. Mở Cài đặt → YouTube và thử lại.",
+  "YouTube connected: {channel}. You can close this tab.": "Đã kết nối YouTube: {channel}. Bạn có thể đóng tab này.",
+  "Could not connect YouTube": "Không kết nối được YouTube",
+  "A YouTube job is already running for this story": "Truyện này đang có tiến trình YouTube chạy",
+  "Choose at least one chapter": "Hãy chọn ít nhất một chương",
+  "No chapters are ready to render": "Không có chương nào sẵn sàng để tạo video",
+  "No videos are ready to upload": "Không có video nào sẵn sàng để tải lên",
+  "No YouTube job is running for this story": "Truyện này không có tiến trình YouTube nào đang chạy",
+  "No upload info for this chapter yet": "Chương này chưa có thông tin đăng tải",
+  "The title cannot be empty": "Tiêu đề không được để trống",
+  "description must be text": "description phải là chuỗi",
+  "tags must be text": "tags phải là chuỗi",
+  "publishAt must be an ISO 8601 time": "publishAt phải là thời gian ISO 8601",
+  "No video for this chapter yet": "Chương này chưa có video",
+  "This chapter is already on YouTube; delete the video in YouTube Studio first":
+    "Chương này đã ở trên YouTube; hãy xoá video trong YouTube Studio trước",
+  "The YouTube job failed": "Tiến trình YouTube thất bại",
+  "The agent could not write the intro": "Agent không viết được đoạn giới thiệu",
+  "This part is already on YouTube — its publish time cannot be changed here": "Phần này đã đăng lên YouTube — không đổi được giờ đăng ở đây",
+  "This computer cannot open the folder: {path}": "Máy này không mở được thư mục: {path}",
+  "Publish this video first — only a published video's file can be deleted":
+    "Hãy đăng video này trước — chỉ xoá được file của video đã đăng",
+  "Story is being rewritten or published, cannot delete":
+    "Truyện đang được viết lại hoặc đang đăng YouTube, không thể xoá",
+  "{field} must be text": "{field} phải là chuỗi",
+  "The agent could not draw the characters: {problem}": "Agent không vẽ được nhân vật: {problem}",
+  "The agent could not plan the scenes: {problem}": "Agent không lên được kế hoạch cảnh: {problem}",
+  "Chapter {order} has no text to illustrate": "Chương {order} không có chữ để minh hoạ",
+  "Illustrated videos need the agent (Settings → Agent crawler) to plan the scenes": "Video minh hoạ cần agent (Cài đặt → Agent crawler) để lên kế hoạch cảnh",
+  "Could not run HyperFrames: {message}": "Không chạy được HyperFrames: {message}",
+  "HyperFrames failed: {message}": "HyperFrames lỗi: {message}",
+  "This story has no downloaded chapters to read yet": "Truyện này chưa có chương nào đã tải để đọc",
+  "Draw the story's characters first (Publish → Video style)": "Hãy vẽ nhân vật của truyện trước (Đăng → Kiểu video)",
+  "Chapter {order}": "Chương {order}",
+  "narrationIntro must be true or false": "narrationIntro phải là true hoặc false",
+  "The intro sentence is too long": "Câu giới thiệu quá dài",
 };
 
 let current: Lang = DEFAULT_LANG;

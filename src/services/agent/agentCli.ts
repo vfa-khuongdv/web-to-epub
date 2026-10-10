@@ -64,7 +64,8 @@ function run(file: string, args: string[], cwd: string, stdin: string, env?: Nod
       shim ? ["/d", "/s", "/c", `"${[file, ...args].map(winQuote).join(" ")}"`] : args,
       { cwd, timeout: TIMEOUT_MS, windowsVerbatimArguments: shim, maxBuffer: 4 * 1024 * 1024, env: { ...process.env, ...env } },
       (err, stdout, stderr) => {
-        if (err) reject(new Error(`AI agent failed: ${(stderr || err.message).trim().slice(-300)}`));
+        // Claude Code prints its own errors (not signed in, model unavailable, too old) on stdout, so that is read too.
+        if (err) reject(new Error(`AI agent failed: ${(stderr || stdout || err.message).trim().slice(-300)}`));
         else resolve(stdout);
       }
     );

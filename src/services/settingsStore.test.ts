@@ -60,6 +60,10 @@ describe("settingsStore", () => {
     expect(reopened.get().defaultAuthor).toBe("");
   });
 
+  it("reads the channel introduction as on, with the built-in wording, until it is changed", () => {
+    expect(settings.get()).toMatchObject({ narrationIntro: true, narrationIntroText: "" });
+  });
+
   it("survives a restart", () => {
     settings.update({
       autoScanOnOpen: false,
@@ -67,6 +71,8 @@ describe("settingsStore", () => {
       defaultAuthor: "Ẩn danh",
       ttsVariant: "nano",
       ttsVoice: "Adam",
+      narrationIntro: false,
+      narrationIntroText: "Chào {channel}",
     });
     expect(createSettingsStore(dir).get()).toEqual({
       autoScanOnOpen: false,
@@ -74,6 +80,8 @@ describe("settingsStore", () => {
       defaultAuthor: "Ẩn danh",
       ttsVariant: "nano",
       ttsVoice: "Adam",
+      narrationIntro: false,
+      narrationIntroText: "Chào {channel}",
     });
   });
 

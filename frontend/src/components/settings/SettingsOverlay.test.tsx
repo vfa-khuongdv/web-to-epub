@@ -17,6 +17,11 @@ vi.mock("../../lib/api", () => ({
 // The three feature sections have their own tests; here they only need to be present.
 vi.mock("../narration/NarrationSettings", () => ({ default: () => <div>narration-section</div> }));
 vi.mock("../narration/MusicPicker", () => ({ MusicSettings: () => <div>music-section</div> }));
+vi.mock("./YouTubeSettings", () => ({
+  default: () => <div>youtube-section</div>,
+  YOUTUBE_CONNECTED: "youtube-connected",
+}));
+vi.mock("./FacebookSettings", () => ({ default: () => <div>facebook-section</div> }));
 vi.mock("./AgentSettings", () => ({
   default: ({ onSaved, onError }: { onSaved: () => void; onError: (m: string) => void }) => (
     <div>
@@ -44,6 +49,8 @@ const settings: AppSettings = {
   defaultAuthor: "",
   ttsVariant: "turbo",
   ttsVoice: "",
+  narrationIntro: true,
+  narrationIntroText: "",
 };
 const app: AppInfo = { version: "1.7.0", dataDir: "/data/lib", storyCount: 4, chapterCount: 99, privateConfigured: false };
 
