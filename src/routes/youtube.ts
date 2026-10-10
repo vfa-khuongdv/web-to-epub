@@ -271,6 +271,31 @@ youtubeRouter.get("/youtube/live", (req, res) => {
 
 // ---- per story --------------------------------------------------------------
 
+// A render the process died in (crash, quit, killed ffmpeg) leaves its record at "rendering"
+// for good. With no job running for the story nothing can still be rendering, so hand those
+// records back: a chapter to "draft" (render it again), a compilation part to "error".
+async function releaseStuckRenders(library: Library, storyId: string): Promise<void> {
+  const now = new Date().toISOString();
+  for (const video of await library.stories.listYouTubeVideos(storyId)) {
+    if (video.status === "rendering") {
+      await library.stories.saveYouTubeVideo({ ...video, storyId, status: "draft", error: undefined, updatedAt: now });
+    }
+  }
+  for (const platform of ["youtube", "facebook"] as const) {
+    for (const part of await library.stories.listCompilations(storyId, platform)) {
+      if (part.status === "rendering") {
+        await library.stories.saveCompilation({
+          ...part,
+          storyId,
+          status: "error",
+          error: t("The render was interrupted — render it again"),
+          updatedAt: now,
+        });
+      }
+    }
+  }
+}
+
 youtubeRouter.get("/stories/:id/youtube", async (req, res) => {
   const library = libraryFor(req, res);
   if (!library || !validYouTube(library, res)) return;
@@ -280,6 +305,7 @@ youtubeRouter.get("/stories/:id/youtube", async (req, res) => {
     return;
   }
   const config = loadYouTubeConfig();
+  if (!library.runningYouTube.has(story.id)) await releaseStuckRenders(library, story.id);
   const state = await youTubeState(library, story, config);
   const compilations = await library.stories.listCompilations(story.id, "youtube");
   const facebookCompilations = await library.stories.listCompilations(story.id, "facebook");

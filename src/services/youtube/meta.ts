@@ -26,6 +26,38 @@ export function playlistTitle(storyTitle: string, channel: string): string {
   return sanitizeYouTubeText(`${storyTitle} – Truyện Audio Full | ${channel}`);
 }
 
+// Descriptions should not read identically from one video to the next. The wording is picked
+// from a seed (story + chapter), not at random, so the panel's preview is what gets uploaded
+// and re-preparing a chapter gives the same text.
+export function pickVariant<T>(seed: string, options: readonly T[]): T {
+  let hash = 0;
+  for (const char of seed) hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
+  return options[hash % options.length];
+}
+
+const CHAPTER_OPENINGS = [
+  (title: string, order: number) => `🎧 Nghe truyện audio "${title}" – Chương ${order}.`,
+  (title: string, order: number) => `🌙 Chương ${order} của "${title}" đã sẵn sàng – đeo tai nghe vào và nghe tiếp thôi!`,
+  (title: string, order: number) => `🎙️ "${title}" – Chương ${order}: càng nghe càng cuốn.`,
+  (title: string, order: number) => `🔥 "${title}" – Chương ${order}: đã nghe là khó dừng.`,
+  (title: string, order: number) => `✨ Cùng nghe tiếp "${title}" – Chương ${order}, diễn biến ngày càng hấp dẫn.`,
+];
+
+const CHANNEL_CALLS = [
+  (channel: string) => `🔔 Đăng ký kênh ${channel} và bấm chuông để không bỏ lỡ chương mới.`,
+  (channel: string) => `❤️ Thích câu chuyện này? Theo dõi kênh ${channel} để nghe những chương tiếp theo ngay khi lên sóng.`,
+  (channel: string) => `📲 Bấm đăng ký kênh ${channel} – mỗi chương mới sẽ đến với bạn đúng giờ.`,
+  (channel: string) => `💬 Nghe xong, để lại cảm nghĩ của bạn dưới phần bình luận và đăng ký kênh ${channel} nhé!`,
+];
+
+export function chapterOpening(storyTitle: string, order: number): string {
+  return pickVariant(`${storyTitle}#${order}`, CHAPTER_OPENINGS)(storyTitle, order);
+}
+
+export function channelCall(seed: string, channel: string): string {
+  return pickVariant(seed, CHANNEL_CALLS)(channel);
+}
+
 export interface DescriptionInput {
   storyTitle: string;
   order: number;
@@ -37,7 +69,7 @@ export interface DescriptionInput {
 }
 
 export function descriptionFor(input: DescriptionInput): string {
-  const lines = [`🎧 Nghe truyện audio "${input.storyTitle}" – Chương ${input.order}.`, ""];
+  const lines = [chapterOpening(input.storyTitle, input.order), ""];
   const summary = input.summary?.trim();
   if (summary) lines.push(`📖 ${summary}`, "");
   const author = input.author?.trim();
@@ -49,9 +81,7 @@ export function descriptionFor(input: DescriptionInput): string {
   if (author || translator || schedule) lines.push("");
   const channelHashtag = hashtagFromTitle(input.channel);
   lines.push(
-    `🔔 Đăng ký kênh ${input.channel} và bấm chuông để không bỏ lỡ chương mới.`,
-    "",
-    "⚠️ Nội dung chỉ nhằm mục đích giải trí.",
+    channelCall(`${input.storyTitle}#${input.order}`, input.channel),
     "",
     [channelHashtag && `#${channelHashtag}`, `#${hashtagFromTitle(input.storyTitle)}`, "#TruyệnAudio", "#NgheTruyện"]
       .filter(Boolean)

@@ -94,7 +94,8 @@ describe("compilation metadata", () => {
     expect(meta.description).toContain("📖 Một câu giới thiệu.");
     expect(meta.description).toContain("⏱️ Mục lục:\n0:00 Chương 1\n1:00 Chương 2");
     expect(meta.description).toContain("✍️ Tác giả: Tác giả");
-    expect(meta.description).toContain("🔔 Đăng ký kênh Kênh Khác");
+    expect(meta.description).toContain("kênh Kênh Khác");
+    expect(meta.description).not.toContain("giải trí");
     expect(meta.description).toContain("#KênhKhác #Truyện #TruyệnAudio #NgheTruyện");
     expect(meta.tags).toContain("Truyện trọn bộ");
     expect(meta.tags).toContain("nghe truyện ngủ");

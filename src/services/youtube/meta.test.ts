@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { descriptionFor, hashtagFromTitle, playlistTitle, tagsFor, videoTitle } from "./meta";
+import { chapterOpening, descriptionFor, hashtagFromTitle, playlistTitle, tagsFor, videoTitle } from "./meta";
 
 describe("YouTube metadata", () => {
   it("names the playlist the way the upload skill does", () => {
@@ -26,7 +26,8 @@ describe("YouTube metadata", () => {
       author: "Tác giả",
       scheduleTime: "18:00",
     });
-    expect(full).toContain('🎧 Nghe truyện audio "A" – Chương 2.');
+    expect(full).toContain(chapterOpening("A", 2));
+    expect(full).not.toContain("giải trí");
     expect(full).toContain("📖 Tóm tắt.");
     expect(full).toContain("✍️ Tác giả: Tác giả");
     expect(full).not.toContain("🌐 Dịch:");
@@ -53,7 +54,7 @@ describe("YouTube metadata", () => {
 
   it("takes the channel hashtag from the configured channel, not a hard-coded one", () => {
     const other = descriptionFor({ storyTitle: "A", order: 1, channel: "Kênh Khác" });
-    expect(other).toContain("Đăng ký kênh Kênh Khác");
+    expect(other).toContain("kênh Kênh Khác");
     expect(other).toContain("#KênhKhác #A #TruyệnAudio #NgheTruyện");
     expect(other).not.toContain("#TruyệnFM");
     // An empty channel leaves the other hashtags alone.
@@ -62,5 +63,14 @@ describe("YouTube metadata", () => {
 
   it("turns the story title into a hashtag", () => {
     expect(hashtagFromTitle("nữ phụ hằng ngày cầu ly hôn")).toBe("NữPhụHằngNgàyCầuLyHôn");
+  });
+});
+
+describe("description variety", () => {
+  it("does not repeat the same opening and call to action across chapters, but is stable per chapter", () => {
+    const texts = Array.from({ length: 12 }, (_, i) => descriptionFor({ storyTitle: "A", order: i + 1, channel: "K" }));
+    expect(new Set(texts.map((text) => text.split("\n")[0])).size).toBeGreaterThan(1);
+    expect(new Set(texts.map((text) => text.split("\n").find((line) => line.includes("kênh K")))).size).toBeGreaterThan(1);
+    expect(descriptionFor({ storyTitle: "A", order: 3, channel: "K" })).toBe(texts[2]);
   });
 });

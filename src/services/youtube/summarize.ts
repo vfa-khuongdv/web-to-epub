@@ -10,7 +10,8 @@ export function summaryPrompt(storyTitle: string, order: number, text: string): 
   return [
     "Bạn tóm tắt một chương truyện để làm mô tả video YouTube.",
     "Viết 2–3 câu tiếng Việt, chỉ nêu những sự việc thực sự xảy ra trong chương, đúng tên nhân vật;",
-    "không bịa, không thêm bình luận, không suy đoán, không mở đầu bằng \"Chương này\".",
+    "không bịa, không suy đoán, không mở đầu bằng \"Chương này\"; giọng văn cuốn hút, khơi gợi tò mò để người đọc muốn nghe ngay,",
+    "mỗi chương mở đầu và diễn đạt khác nhau, nhưng không tiết lộ cái kết của chương.",
     "viết liền một đoạn văn, không xuống dòng, không dùng markdown.",
     "Trả về DUY NHẤT một JSON đúng định dạng, không giải thích thêm:",
     '{"summary": "..."}',

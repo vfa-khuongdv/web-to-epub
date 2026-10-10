@@ -2,7 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { encodeArgs, findFfmpeg, frameArgs, renderVideo } from "./video";
+import { encodeArgs, findFfmpeg, frameArgs, loopClipArgs, renderVideo } from "./video";
 
 describe("ffmpeg arguments", () => {
   it("builds the cover frame filter from the video recipe", () => {
@@ -35,6 +35,19 @@ describe("ffmpeg arguments", () => {
     const joined = encodeArgs({ framePath: "/f.png", audioPath: "/a.mp3", outPath: "/o.mp4", seconds: 5 }).join(" ");
     expect(joined).toContain("-map 0:v -map 1:a");
     expect(joined).not.toContain("-filter_complex");
+  });
+});
+
+describe("moving cover", () => {
+  it("draws one seamless clip and loops it without re-encoding the video", () => {
+    const clip = loopClipArgs("/cover.jpg", "/loop.mp4").join(" ");
+    expect(clip).toContain("sin(2*PI*t/12)");
+    expect(clip).toContain("-frames:v 288");
+    expect(clip).toContain("open-gop=0");
+    const encode = encodeArgs({ framePath: "/loop.mp4", moving: true, audioPath: "/a.mp3", outPath: "/o.mp4", seconds: 60 }).join(" ");
+    expect(encode).toContain("-stream_loop -1 -i /loop.mp4");
+    expect(encode).toContain("-c:v copy");
+    expect(encode).not.toContain("stillimage");
   });
 });
 

@@ -19,7 +19,7 @@ import {
   uploadVideo,
 } from "./api";
 import { YouTubeConfig } from "./config";
-import { hashtagFromTitle, sanitizeYouTubeText } from "./meta";
+import { channelCall, hashtagFromTitle, sanitizeYouTubeText } from "./meta";
 import { CompilationPlatform, YouTubeCompilationRecord } from "./types";
 import { findFfmpeg, renderVideo, runFfmpeg } from "./video";
 import { YouTubeEvent } from "./jobs";
@@ -123,9 +123,8 @@ export function compilationMeta(input: CompilationMetaInput): {
   if (author) lines.push(`✍️ Tác giả: ${author}`);
   if (translator) lines.push(`🌐 Dịch: ${translator}`);
   lines.push(
-    `🔔 Đăng ký kênh ${input.channel} và bấm chuông để không bỏ lỡ những câu chuyện tiếp theo.`,
     "",
-    "⚠️ Nội dung chỉ nhằm mục đích giải trí.",
+    channelCall(`${input.storyTitle}#${input.label}`, input.channel),
     "",
     [
       hashtagFromTitle(input.channel) && `#${hashtagFromTitle(input.channel)}`,
@@ -382,7 +381,7 @@ export async function renderCompilations(input: CompilationRenderInput): Promise
           const chapter = await library.stories.getChapter(story.id, order);
           const audioMeta = await readAudioMeta(library.dataDir, story.id, order);
           if (!chapter || !audioMeta) throw new Error(t("Chapter {order} has no audio yet — narrate it first", { order }));
-          chapters.push({ order, title: chapter.title, blocks: chapter.blocks ?? [], seconds: audioMeta.seconds, timings: audioMeta.timings });
+          chapters.push({ order, title: chapter.title, blocks: chapter.blocks ?? [], seconds: audioMeta.seconds, timings: audioMeta.timings, intro: audioMeta.intro });
         }
         await renderIllustratedCompilation({
           dataDir: library.dataDir,

@@ -202,6 +202,7 @@ const vi: Record<string, string> = {
   "This story's audio is already being joined": "Audio của truyện này đang được ghép",
   "Every chapter needs audio before the story can be joined into one file — {count} chapters have none yet": "Mọi chương cần có audio trước khi ghép thành một file — còn {count} chương chưa có",
   "Background music track not found": "Không tìm thấy bài nhạc nền",
+  "The render was interrupted — render it again": "Lần tạo video bị gián đoạn — hãy tạo lại",
   "Could not join the audio: {message}": "Không ghép được audio: {message}",
   "No narrated chapters to export": "Không có chương nào đã có giọng đọc để xuất",
   "Unsupported narration variant": "Kiểu giọng đọc không hợp lệ",

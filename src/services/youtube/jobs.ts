@@ -375,6 +375,7 @@ export async function renderYouTubeVideos(input: RenderInput): Promise<{ done: n
           audioPath: audio.filePath,
           outPath,
           seconds: meta.seconds,
+          motion: true,
           musicPath,
           musicVolume,
           signal,

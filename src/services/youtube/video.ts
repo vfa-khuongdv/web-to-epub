@@ -82,8 +82,56 @@ export function frameArgs(coverPath: string, framePath: string): string[] {
   ];
 }
 
+// The moving cover: one short seamless clip (every motion is a sine over exactly one period,
+// so its last frame leads back into its first) that the encode loops with `-c:v copy` — the
+// video is drawn once, not re-encoded for the whole chapter.
+export const LOOP_SECONDS = 12;
+const LOOP_FPS = 24;
+
+export function loopClipArgs(coverPath: string, clipPath: string): string[] {
+  const w = `2*PI*t/${LOOP_SECONDS}`;
+  return [
+    "-y",
+    "-loglevel",
+    "error",
+    "-loop",
+    "1",
+    "-framerate",
+    String(LOOP_FPS),
+    "-i",
+    coverPath,
+    "-filter_complex",
+    // Background: blurred, 10% larger than the frame, panning in a small ellipse.
+    "[0:v]split[a][b];" +
+      "[a]scale=2112:1188:force_original_aspect_ratio=increase,crop=2112:1188,boxblur=40:5,eq=brightness=-0.1," +
+      `crop=1920:1080:x='96+60*sin(${w})':y='54+34*cos(${w})'[bg];` +
+      `[b]scale=-2:${COVER_HEIGHT}:flags=lanczos[fg];` +
+      // Cover: floats a few pixels up and down, a quarter period behind the background.
+      `[bg][fg]overlay=x='(W-w)/2':y='(H-h)/2+16*sin(${w}-PI/2)':eval=frame,format=yuv420p`,
+    "-r",
+    String(LOOP_FPS),
+    "-frames:v",
+    String(LOOP_SECONDS * LOOP_FPS),
+    "-c:v",
+    "libx264",
+    "-preset",
+    "medium",
+    "-crf",
+    "18",
+    // A keyframe every 2 s in closed GOPs, and the first frame of the clip is one: the loop
+    // joins cleanly and the file already meets Facebook's video guidance.
+    "-g",
+    String(LOOP_FPS * 2),
+    "-x264-params",
+    "open-gop=0",
+    clipPath,
+  ];
+}
+
 export interface EncodeInput {
   framePath: string;
+  // `framePath` is a looping clip (see loopClipArgs) rather than a still frame.
+  moving?: boolean;
   audioPath: string;
   outPath: string;
   seconds: number;
@@ -99,10 +147,7 @@ export function encodeArgs(input: EncodeInput): string[] {
     "-progress",
     "pipe:1",
     "-nostats",
-    "-loop",
-    "1",
-    "-framerate",
-    "1",
+    ...(input.moving ? ["-stream_loop", "-1"] : ["-loop", "1", "-framerate", "1"]),
     "-i",
     input.framePath,
     "-i",
@@ -128,14 +173,7 @@ export function encodeArgs(input: EncodeInput): string[] {
     args.push("-map", "0:v", "-map", "1:a");
   }
   args.push(
-    "-c:v",
-    "libx264",
-    "-tune",
-    "stillimage",
-    "-crf",
-    "18",
-    "-r",
-    "1",
+    ...(input.moving ? ["-c:v", "copy"] : ["-c:v", "libx264", "-tune", "stillimage", "-crf", "18", "-r", "1"]),
     "-c:a",
     "aac",
     "-b:a",
@@ -209,6 +247,9 @@ export interface RenderVideoInput {
   seconds: number;
   musicPath?: string;
   musicVolume?: number;
+  // A cover that drifts gently in a loop instead of one still frame. Off for the hours-long
+  // compilations, where the encode below would have to run for the whole length.
+  motion?: boolean;
   signal?: AbortSignal;
   onProgress?: (fraction: number) => void;
   // Test seam: the two ffmpeg runs, replaced by a fake in tests.
@@ -219,14 +260,15 @@ export async function renderVideo(input: RenderVideoInput): Promise<void> {
   const run = input.run ?? runFfmpeg;
   await fsPromises.mkdir(path.dirname(input.outPath), { recursive: true });
   const workDir = await fsPromises.mkdtemp(path.join(os.tmpdir(), "yt-frame-"));
-  const framePath = path.join(workDir, "frame.png");
+  const framePath = path.join(workDir, input.motion ? "loop.mp4" : "frame.png");
   const partPath = `${input.outPath}.part.mp4`;
   try {
-    await run(input.command, frameArgs(input.coverPath, framePath), {});
+    await run(input.command, input.motion ? loopClipArgs(input.coverPath, framePath) : frameArgs(input.coverPath, framePath), {});
     await run(
       input.command,
       encodeArgs({
         framePath,
+        moving: input.motion,
         audioPath: input.audioPath,
         outPath: partPath,
         seconds: input.seconds,
