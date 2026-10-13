@@ -16,6 +16,7 @@ import {
   epubFileName,
   fileStem,
   packMedia,
+  trimWhiteBorder,
   type BuildProgress,
 } from "./epubBuilder";
 
@@ -392,6 +393,48 @@ describe("embedImages", () => {
       { phase: "images", done: 1, total: 2 },
       { phase: "images", done: 2, total: 2 },
     ]);
+  });
+});
+
+describe("trimWhiteBorder", () => {
+  // A white page with a dark panel inside, like a scanned comic page.
+  const page = (format: "png" | "jpeg") =>
+    sharp({ create: { width: 200, height: 300, channels: 3, background: "#ffffff" } })
+      .composite([{ input: { create: { width: 120, height: 200, channels: 3, background: "#202020" } }, left: 40, top: 50 }])
+      .toFormat(format)
+      .toBuffer();
+
+  it("cuts the white margin around the content, keeping the format", async () => {
+    const trimmed = await trimWhiteBorder(await page("png"), "png");
+    const meta = await sharp(trimmed).metadata();
+    expect([meta.width, meta.height, meta.format]).toEqual([120, 200, "png"]);
+  });
+
+  it("works on JPEG pages too (their white is not exactly white)", async () => {
+    const meta = await sharp(await trimWhiteBorder(await page("jpeg"), "jpg")).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(meta.width).toBeLessThanOrEqual(124);
+    expect(meta.height).toBeLessThanOrEqual(204);
+  });
+
+  it("keeps the original bytes when there is nothing to cut", async () => {
+    const full = await sharp({ create: { width: 50, height: 80, channels: 3, background: "#336699" } }).png().toBuffer();
+    expect(await trimWhiteBorder(full, "png")).toBe(full);
+  });
+
+  it("keeps a nearly blank page whole instead of shrinking it to a speck", async () => {
+    const blank = await sharp({ create: { width: 200, height: 300, channels: 3, background: "#ffffff" } })
+      .composite([{ input: { create: { width: 10, height: 10, channels: 3, background: "#000000" } }, left: 95, top: 145 }])
+      .png()
+      .toBuffer();
+    expect(await trimWhiteBorder(blank, "png")).toBe(blank);
+  });
+
+  it("leaves GIFs and undecodable bytes alone", async () => {
+    const gif = Buffer.from("GIF89a-not-really");
+    expect(await trimWhiteBorder(gif, "gif")).toBe(gif);
+    const junk = Buffer.from("not an image");
+    expect(await trimWhiteBorder(junk, "png")).toBe(junk);
   });
 });
 
