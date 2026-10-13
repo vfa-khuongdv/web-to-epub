@@ -37,7 +37,7 @@ const Row = ({ label, hint, control }: { label: string; hint?: ReactNode; contro
 );
 
 const settingsOf = (over: Partial<AppSettings> = {}) =>
-  ({ ttsVariant: "turbo", ttsVoice: "", ...over }) as AppSettings;
+  ({ ttsVariant: "turbo", ttsVoice: "", narrationIntro: true, narrationIntroText: "", ...over }) as AppSettings;
 
 const statusOf = (over: Partial<TtsStatus> = {}): TtsStatus => ({
   engine: "vieneu",
@@ -279,5 +279,32 @@ describe("NarrationSettings voices", () => {
     m.status.mockResolvedValue(statusOf({ engine: "omnivoice" }));
     setup(settingsOf({ ttsVariant: "omnivoice" }));
     expect(await screen.findByTestId("hint-Voice")).toHaveTextContent("OmniVoice has no default voice");
+  });
+
+  it("turns the channel introduction off and on", async () => {
+    const onSave = setup(settingsOf({ narrationIntro: true }));
+    const box = await screen.findByRole("checkbox", { name: "Read a channel introduction before chapter 1" });
+    expect(box).toBeChecked();
+    await userEvent.click(box);
+    expect(onSave).toHaveBeenCalledWith({ narrationIntro: false });
+  });
+
+  it("saves the introduction sentence when the field loses focus, only if it changed", async () => {
+    const onSave = setup(settingsOf({ narrationIntroText: "Cũ" }));
+    const field = await screen.findByRole("textbox", { name: "Introduction sentence" });
+    expect(field).toHaveValue("Cũ");
+    await userEvent.click(field);
+    await userEvent.tab();
+    expect(onSave).not.toHaveBeenCalledWith(expect.objectContaining({ narrationIntroText: expect.anything() }));
+    await userEvent.clear(field);
+    await userEvent.type(field, "  Kênh {{channel} mời nghe {{title}.  ");
+    await userEvent.tab();
+    expect(onSave).toHaveBeenCalledWith({ narrationIntroText: "Kênh {channel} mời nghe {title}." });
+  });
+
+  it("hides the sentence field while the introduction is off", async () => {
+    setup(settingsOf({ narrationIntro: false }));
+    await screen.findByRole("checkbox", { name: "Read a channel introduction before chapter 1" });
+    expect(screen.queryByRole("textbox", { name: "Introduction sentence" })).not.toBeInTheDocument();
   });
 });

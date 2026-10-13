@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { NarrationCancelled, TtsWorker, startTtsWorker } from "./workerClient";
+import { LEAD_SECONDS, NarrationCancelled, TtsWorker, startTtsWorker } from "./workerClient";
 
 const FAKE = path.join(__dirname, "__fixtures__", "fakeWorker.js");
 
@@ -33,7 +33,8 @@ describe("TTS worker client", () => {
     const out = path.join(dir, "1.mp3");
     const progress: [number, number][] = [];
     const result = await worker!.synth({ parts: ["a", "b"], voice: "A", out, onProgress: (p, n) => progress.push([p, n]) });
-    expect(result).toEqual({ seconds: 2, timings: [[0, 1], [1, 2]] });
+    // The fake worker honours the lead silence the client asks for: every part starts after it.
+    expect(result).toEqual({ seconds: LEAD_SECONDS + 2, timings: [[LEAD_SECONDS, LEAD_SECONDS + 1], [LEAD_SECONDS + 1, LEAD_SECONDS + 2]] });
     expect(progress).toEqual([[1, 2], [2, 2]]);
     expect(await fs.readFile(out, "utf8")).toBe("turbo:A:a|b");
   });
@@ -44,8 +45,8 @@ describe("TTS worker client", () => {
       worker!.synth({ parts: ["SLOW"], voice: "A", out: path.join(dir, "a.mp3") }),
       worker!.synth({ parts: ["x", "y", "z"], voice: "A", out: path.join(dir, "b.mp3") }),
     ]);
-    expect(a.seconds).toBe(1);
-    expect(b.seconds).toBe(3);
+    expect(a.seconds).toBe(LEAD_SECONDS + 1);
+    expect(b.seconds).toBe(LEAD_SECONDS + 3);
   });
 
   it("cancels through an AbortSignal and keeps serving afterwards", async () => {
@@ -62,7 +63,7 @@ describe("TTS worker client", () => {
     await expect(fs.access(path.join(dir, "c.mp3"))).rejects.toThrow();
 
     const next = await worker!.synth({ parts: ["ok"], voice: "A", out: path.join(dir, "d.mp3") });
-    expect(next.seconds).toBe(1);
+    expect(next.seconds).toBe(LEAD_SECONDS + 1);
   });
 
   it("rejects an already-aborted request without sending it", async () => {
@@ -76,7 +77,7 @@ describe("TTS worker client", () => {
   it("turns a worker error into a rejection and keeps serving", async () => {
     await worker!.load("turbo");
     await expect(worker!.synth({ parts: ["FAIL"], voice: "A", out: path.join(dir, "f.mp3") })).rejects.toThrow("bad part");
-    await expect(worker!.synth({ parts: ["ok"], voice: "A", out: path.join(dir, "g.mp3") })).resolves.toEqual({ seconds: 1, timings: [[0, 1]] });
+    await expect(worker!.synth({ parts: ["ok"], voice: "A", out: path.join(dir, "g.mp3") })).resolves.toEqual({ seconds: LEAD_SECONDS + 1, timings: [[LEAD_SECONDS, LEAD_SECONDS + 1]] });
   });
 
   it("rejects the current and later requests when the process dies, with its last stderr", async () => {

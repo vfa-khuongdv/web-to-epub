@@ -14,6 +14,8 @@ export default function PendingChapterRow({
   onSaveTitle,
   onDelete,
   deleteDisabled,
+  selected,
+  onSelectChange,
 }: {
   order: number;
   title: string;
@@ -26,6 +28,9 @@ export default function PendingChapterRow({
   // Missing when the chapter cannot be deleted from this context (e.g. no library yet).
   onDelete?: () => Promise<void>;
   deleteDisabled?: boolean;
+  // Ticked for the story page's batch delete; missing when the row cannot be selected.
+  selected?: boolean;
+  onSelectChange?: (selected: boolean) => void;
 }) {
   const { t } = useLang();
   const [editing, setEditing] = useState(false);
@@ -71,6 +76,17 @@ export default function PendingChapterRow({
 
   return (
     <tr>
+      <td className="w-8">
+        {onSelectChange && (
+          <input
+            type="checkbox"
+            className="size-3.5 accent-select"
+            aria-label={t("Select chapter {order}", { order })}
+            checked={!!selected}
+            onChange={(event) => onSelectChange(event.target.checked)}
+          />
+        )}
+      </td>
       <td className="num w-11">
         <b>{order}</b>
       </td>

@@ -32,6 +32,8 @@
     "epub-gen": "^0.1.0",
     "express": "^4.19.2",
     "fflate": "^0.8.3",
+    "gsap": "^3.15.0",
+    "hyperframes": "^0.8.143",
     "jsdom": "^24.1.0",
     "multer": "^1.4.5-lts.1",
     "playwright": "^1.47.0",

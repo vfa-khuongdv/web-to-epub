@@ -65,6 +65,8 @@ describe("settings routes", () => {
     [{ defaultAuthor: 5 }, /too long/],
     [{ ttsVariant: "huge" }, /narration variant/],
     [{ ttsVoice: "v".repeat(101) }, /too long/],
+    [{ narrationIntro: "yes" }, /true or false/],
+    [{ narrationIntroText: "x".repeat(401) }, /too long/],
   ])("rejects %j with 400", async (body, message) => {
     const res = await patch(body);
     expect(res.status).toBe(400);

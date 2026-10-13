@@ -27,6 +27,10 @@ export interface AppSettings {
   // its preset voices; "" means the model's own default voice.
   ttsVariant: TtsVariant;
   ttsVoice: string;
+  // A sentence introducing the channel is read before a story's first chapter. The text may
+  // use {channel} and {title}; empty means the built-in wording (services/tts/intro.ts).
+  narrationIntro: boolean;
+  narrationIntroText: string;
 }
 
 export const MAX_TTS_VOICE = 100;
@@ -43,6 +47,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   defaultAuthor: "",
   ttsVariant: "turbo",
   ttsVoice: "",
+  narrationIntro: true,
+  narrationIntroText: "",
 };
 
 export interface SettingsStore {
@@ -88,6 +94,8 @@ export function createSettingsStore(baseDir: string): SettingsStore {
         ? (saved.get("ttsVariant") as TtsVariant)
         : DEFAULT_SETTINGS.ttsVariant,
       ttsVoice: saved.get("ttsVoice") ?? DEFAULT_SETTINGS.ttsVoice,
+      narrationIntro: saved.get("narrationIntro") === undefined ? DEFAULT_SETTINGS.narrationIntro : saved.get("narrationIntro") === "1",
+      narrationIntroText: saved.get("narrationIntroText") ?? DEFAULT_SETTINGS.narrationIntroText,
     };
   }
 
@@ -108,6 +116,8 @@ export function createSettingsStore(baseDir: string): SettingsStore {
       if (patch.defaultAuthor !== undefined) upsert.run("defaultAuthor", patch.defaultAuthor);
       if (patch.ttsVariant !== undefined) upsert.run("ttsVariant", patch.ttsVariant);
       if (patch.ttsVoice !== undefined) upsert.run("ttsVoice", patch.ttsVoice);
+      if (patch.narrationIntro !== undefined) upsert.run("narrationIntro", patch.narrationIntro ? "1" : "0");
+      if (patch.narrationIntroText !== undefined) upsert.run("narrationIntroText", patch.narrationIntroText);
       return get();
     },
   };

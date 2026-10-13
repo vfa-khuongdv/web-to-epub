@@ -122,6 +122,31 @@ function srcOf(tag: string): string | undefined {
   return m ? (m[2] ?? m[3]) : undefined;
 }
 
+// Comic pages are often scans with a wide white margin around the panels; on a Kindle that
+// margin is screen the page cannot use. It is cut off (pixels close to white, on all four
+// sides) before the image goes into the book. Left as they are: an image with nothing to cut
+// (the original bytes, not a re-encoded copy), one that would lose almost all of itself (a
+// blank page), an animated GIF, and anything sharp cannot decode.
+const TRIM_THRESHOLD = 30;
+const MIN_TRIMMED_AREA = 0.1;
+
+export async function trimWhiteBorder(bytes: Buffer, extension: string): Promise<Buffer> {
+  if (extension === "gif") return bytes;
+  try {
+    const { width = 0, height = 0 } = await sharp(bytes).metadata();
+    const trimmed = sharp(bytes)
+      .rotate() // bake in EXIF orientation, which re-encoding drops
+      .trim({ background: "#ffffff", threshold: TRIM_THRESHOLD });
+    const encoded = extension === "png" ? trimmed.png() : extension === "webp" ? trimmed.webp() : trimmed.jpeg({ quality: 90 });
+    const { data, info } = await encoded.toBuffer({ resolveWithObject: true });
+    const area = info.width * info.height;
+    if (area === width * height || area < width * height * MIN_TRIMMED_AREA) return bytes;
+    return data;
+  } catch {
+    return bytes;
+  }
+}
+
 // Resize to the e-reader-friendly dimension cap and re-encode as JPEG, stepping down
 // quality until it fits MAX_IMAGE_BYTES. Returns undefined if the source isn't decodable
 // or (extremely rare, after the resize) still doesn't fit at the lowest quality step.
@@ -176,6 +201,7 @@ async function saveImage(src: string, dir: string, index: number, localRoots: st
 
   if (bytes.length === 0 || bytes.length > MAX_IMAGE_DOWNLOAD_BYTES) return undefined;
   let extension = sniffImageExtension(bytes) ?? EXTENSION_BY_TYPE.get(contentType);
+  if (extension) bytes = await trimWhiteBorder(bytes, extension);
 
   if (bytes.length > MAX_IMAGE_BYTES) {
     const compressed = await compressImage(bytes);

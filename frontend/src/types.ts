@@ -108,6 +108,10 @@ export interface AppSettings {
   // other engine, which only reads with a custom voice). Preset voice; "" = model default.
   ttsVariant: TtsVariant;
   ttsVoice: string;
+  // A sentence introducing the channel is read before a story's first chapter; the text may
+  // use {channel} and {title}, empty = the built-in wording.
+  narrationIntro: boolean;
+  narrationIntroText: string;
 }
 
 export type TtsVariant = "turbo" | "nano" | "omnivoice";
@@ -179,4 +183,196 @@ export interface AppUpdateInfo {
   zipUrl: string | null;
   // The release's own notes (markdown) from GitHub; null when it has none.
   notes: string | null;
+}
+
+// ---- Chapter rewrite for narration (routes/rewrite.ts) ----------------------
+
+export interface RewriteChapterState {
+  rewritten: boolean;
+  at?: string;
+  agent?: string;
+}
+
+export interface RewriteRun {
+  done: number;
+  total: number;
+  etaMs?: number;
+  order?: number;
+  chunk?: number;
+  chunks?: number;
+}
+
+export interface RewriteState {
+  narratable: boolean;
+  // The agent is on and installed.
+  ready: boolean;
+  chapters: Record<number, RewriteChapterState>;
+  remaining: number;
+  running: RewriteRun | null;
+}
+
+// ---- YouTube publishing (routes/youtube.ts) ---------------------------------
+
+export type YouTubeChapterStatus = "draft" | "rendering" | "rendered" | "uploading" | "uploaded" | "error";
+export type YouTubePhase = "prepare" | "render" | "upload" | "compilation" | "facebook";
+
+export interface YouTubeVideoRecord {
+  order: number;
+  status: YouTubeChapterStatus;
+  title?: string;
+  description?: string;
+  tags?: string;
+  publishAt?: string;
+  summary?: string;
+  musicId?: string;
+  musicVolume?: number;
+  videoPath?: string;
+  videoSeconds?: number;
+  videoId?: string;
+  videoUrl?: string;
+  privacy?: string;
+  audioKey?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YouTubeChapterState {
+  order: number;
+  title: string;
+  hasAudio: boolean;
+  // Audio length in seconds, for the compilation plan.
+  seconds?: number;
+  // The video was rendered from audio that has been regenerated since.
+  audioChanged: boolean;
+  record?: YouTubeVideoRecord;
+}
+
+export interface YouTubeRun {
+  phase: YouTubePhase;
+  done: number;
+  total: number;
+  etaMs?: number;
+  order?: number;
+  percent?: number;
+}
+
+export interface YouTubeState {
+  connected: boolean;
+  channel?: string;
+  // The agent setting is on: the panel offers the AI actions.
+  agentReady: boolean;
+  cover: boolean;
+  ffmpeg: boolean;
+  config: {
+    channel: string;
+    scheduleTime: string;
+    genreTags: string;
+    musicId?: string;
+    musicVolume: number;
+  };
+  story: { title: string; author?: string; language?: string };
+  playlist: { title: string; id?: string; url?: string; checkedAt?: string; exists: boolean };
+  credits: { author?: string; translator?: string; genreTags: string };
+  chapters: YouTubeChapterState[];
+  // The playlist compilations are uploaded to, and the parts made so far.
+  compilationPlaylist: string;
+  compilations: YouTubeCompilation[];
+  // Parts cut to Facebook's 4 h limit (the ones above are cut to YouTube's 11 h).
+  facebookCompilations: YouTubeCompilation[];
+  running: YouTubeRun | null;
+}
+
+export type YouTubeCompilationStatus = "rendering" | "rendered" | "uploading" | "uploaded" | "error";
+
+// One part of the story's compilation (several chapters in one long video).
+export interface YouTubeCompilation {
+  id: string;
+  part: number;
+  parts: number;
+  label: string;
+  fromOrder: number;
+  toOrder: number;
+  status: YouTubeCompilationStatus;
+  platform?: "youtube" | "facebook";
+  title?: string;
+  description?: string;
+  tags?: string;
+  publishAt?: string;
+  videoPath?: string;
+  videoSeconds?: number;
+  videoId?: string;
+  videoUrl?: string;
+  privacy?: string;
+  error?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface YouTubeCompilationPlan {
+  totalHours: number;
+  missing: number[];
+  parts: { part: number; from: number; to: number; hours: number }[];
+}
+
+export interface YouTubeConfig {
+  channel: string;
+  clientSecretPath: string;
+  ffmpegPath: string;
+  genreTags: string;
+  scheduleTime: string;
+  musicId?: string;
+  musicVolume: number;
+  syntheticMedia: boolean;
+}
+
+export interface YouTubeStatus {
+  connected: boolean;
+  channel?: string;
+  clientSecretPath: string;
+  hasClientSecret: boolean;
+  ffmpeg: string | null;
+  config: YouTubeConfig;
+}
+
+export interface FacebookStatus {
+  connected: boolean;
+  pageName?: string;
+  pageUrl?: string;
+  pageId?: string;
+}
+
+export interface FacebookVideoRecord {
+  order: number;
+  status: "uploading" | "uploaded" | "error";
+  videoId?: string;
+  videoUrl?: string;
+  scheduledAt?: string;
+  error?: string;
+}
+
+export interface FacebookStoryState {
+  connected: boolean;
+  pageName?: string;
+  videos: FacebookVideoRecord[];
+  // Chapters with a rendered video that are not on the Page yet.
+  ready: number[];
+  // The joined "full" video(s) of the story, posted as a whole.
+  compilations: { id: string; status: "uploading" | "uploaded" | "error"; videoUrl?: string; error?: string }[];
+  readyCompilations: { id: string; label: string }[];
+}
+
+export interface IllustratedCharacter {
+  id: string;
+  name: string;
+  description: string;
+  // Sanitized SVG written by the server's allowlist, drawn around the character's feet at (0,0).
+  body: string;
+  headY: number;
+  faces: Record<"neutral" | "smile" | "sad" | "surprised" | "laugh", string>;
+}
+
+export interface IllustratedState {
+  bible: { style: string; characters: IllustratedCharacter[] } | null;
+  agentAvailable: boolean;
 }

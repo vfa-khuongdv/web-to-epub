@@ -43,6 +43,8 @@ export default function NarrationSettings({
   const engine = engineOf(settings.ttsVariant);
   const [status, setStatus] = useState<TtsStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // Saved when the field loses focus, not on every key.
+  const [introText, setIntroText] = useState(settings.narrationIntroText);
 
   const refresh = useCallback(
     async (disk = false) => {
@@ -216,6 +218,39 @@ export default function NarrationSettings({
                 </button>
               ))}
             </div>
+          }
+        />
+      )}
+
+      <Row
+        label={t("Channel introduction")}
+        hint={t("Before a story's first chapter, one sentence introduces the channel. It is read only the first time that chapter is narrated; chapters already narrated are not changed.")}
+        control={
+          <input
+            type="checkbox"
+            className="size-4 accent-select"
+            aria-label={t("Read a channel introduction before chapter 1")}
+            checked={settings.narrationIntro}
+            onChange={(event) => void onSave({ narrationIntro: event.target.checked })}
+          />
+        }
+      />
+      {settings.narrationIntro && (
+        <Row
+          label={t("Introduction sentence")}
+          hint={t("Use {channel} for the channel name (Settings → YouTube) and {title} for the story. Empty uses the default wording.")}
+          control={
+            <textarea
+              className="input min-h-16 w-96 max-w-full"
+              aria-label={t("Introduction sentence")}
+              placeholder={t("Welcome to the {channel} channel. Now, let's listen to the story {title}.")}
+              value={introText}
+              maxLength={400}
+              onChange={(event) => setIntroText(event.target.value)}
+              onBlur={() => {
+                if (introText.trim() !== settings.narrationIntroText) void onSave({ narrationIntroText: introText.trim() });
+              }}
+            />
           }
         />
       )}

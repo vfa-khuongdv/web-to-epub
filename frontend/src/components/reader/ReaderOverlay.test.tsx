@@ -142,6 +142,12 @@ describe("ReaderOverlay navigation", () => {
     expect(savedPosition()).toEqual({ order: 1, scroll: 0 });
   });
 
+  it("shows the word count of the chapter on screen", async () => {
+    loadChapterHtml.mockImplementation(async () => "<p>one two three</p>\n<p>four  five</p>");
+    mount();
+    expect(await screen.findByText("5 words")).toBeInTheDocument();
+  });
+
   it("disables Next on the last chapter", async () => {
     localStorage.setItem("reader-position:s1", JSON.stringify({ order: 3, scroll: 0 }));
     mount();

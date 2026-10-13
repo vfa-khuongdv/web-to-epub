@@ -8,6 +8,7 @@ import {
   recolorHighlight,
 } from "../../lib/api";
 import * as hl from "../../lib/reader/highlightDom";
+import { countWords } from "../../lib/reader/wordCount";
 import { CONTENT_ID } from "../../lib/reader/highlightDom";
 import { useLang } from "../../i18n";
 import {
@@ -89,7 +90,7 @@ export default function ReaderOverlay({
   // Play (or pause) a chapter of this story in that player.
   onListen?: (order: number) => void;
 }) {
-  const { t } = useLang();
+  const { t, lang } = useLang();
   const [resume] = useState(() => {
     const started = startOrder !== undefined ? chapters.findIndex((c) => c.order === startOrder) : -1;
     if (started >= 0) return { index: started, scroll: 0 };
@@ -141,6 +142,7 @@ export default function ReaderOverlay({
 
   const chapter = chapters[index];
   const html = loaded && loaded.order === chapter?.order ? loaded.html : null;
+  const words = useMemo(() => (html === null ? null : countWords(html)), [html]);
   highlightsRef.current = highlights;
   chapterRef.current = chapter?.order ?? 0;
 
@@ -672,6 +674,11 @@ export default function ReaderOverlay({
         </button>
         <span className="reader-now">
           <span className="truncate">{chapter?.title}</span>
+          {words !== null && (
+            <span className="reader-progress-label">
+              {t("{count} words", { count: words.toLocaleString(lang === "vi" ? "vi-VN" : "en-US") })}
+            </span>
+          )}
           <span className="reader-progress-label" ref={progressLabel} />
         </span>
         <button

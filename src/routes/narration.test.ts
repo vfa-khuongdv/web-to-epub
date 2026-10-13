@@ -93,6 +93,8 @@ describe("narration routes", () => {
   });
 
   beforeEach(async () => {
+    // The channel introduction has its own test below; the others read the chapter text only.
+    (await import("../services/settingsStore")).settingsStore.update({ narrationIntro: false });
     fake.installed = true;
     fake.gate = undefined;
     await fs.rm(path.join(DATA_DIR, "audio"), { recursive: true, force: true });
@@ -217,12 +219,12 @@ describe("narration routes", () => {
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("audio/mpeg");
     expect(res.headers.get("content-disposition")).toBeNull();
-    expect(await res.text()).toBe("Chương 1|Một.");
+    expect(await res.text()).toBe("Một.");
 
     // The player seeks with Range requests.
     const range = await fetch(`${base}/stories/${viId}/chapters/1/audio`, { headers: { Range: "bytes=0-4" } });
     expect(range.status).toBe(206);
-    expect(Buffer.from(await range.arrayBuffer()).toString()).toBe(Buffer.from("Chương 1|Một.").subarray(0, 5).toString());
+    expect(Buffer.from(await range.arrayBuffer()).toString()).toBe(Buffer.from("Một.").subarray(0, 5).toString());
 
     const download = await fetch(`${base}/stories/${viId}/chapters/1/audio?download=1`);
     expect(decodeURIComponent(download.headers.get("content-disposition") ?? "")).toContain("Truyện - 001 - Chương 1.mp3");
@@ -235,7 +237,7 @@ describe("narration routes", () => {
     // Regenerate reads the edited text into the same file.
     await post(`/stories/${viId}/narrate`, { orders: [1], regenerate: true });
     await waitIdle(viId);
-    expect(await (await fetch(`${base}/stories/${viId}/chapters/1/audio`)).text()).toBe("Chương 1|Đã sửa.");
+    expect(await (await fetch(`${base}/stories/${viId}/chapters/1/audio`)).text()).toBe("Đã sửa.");
   });
 
   it("zips the narrated chapters, lists the missing ones, and serves the zip once", async () => {
@@ -281,7 +283,7 @@ describe("narration routes", () => {
     const narrated = await exportBook(true);
     const mp3s = Object.keys(narrated).filter((name) => name.endsWith(".mp3"));
     expect(mp3s).toHaveLength(1);
-    expect(Buffer.from(narrated[mp3s[0]]).toString()).toBe("Chương 1|Một.");
+    expect(Buffer.from(narrated[mp3s[0]]).toString()).toBe("Một.");
     const opf = Buffer.from(narrated["OEBPS/content.opf"]).toString();
     expect(opf).toContain('media-type="audio/mpeg"');
     const withAudio = Object.entries(narrated).filter(
@@ -301,9 +303,19 @@ describe("narration routes", () => {
     await post(`/stories/${viId}/narrate`, { orders: [1] });
     await waitIdle(viId);
     const { parts } = await (await fetch(`${base}/stories/${viId}/chapters/1/narration`)).json();
-    // Title, then the one paragraph (block 0); the fake gives 3 s of audio and no timings.
+    // The title is not read; the one paragraph (block 0); the fake gives 3 s and no timings.
+    expect(parts.map((p: { block: number }) => p.block)).toEqual([0]);
+    expect(parts[0].end).toBeLessThanOrEqual(3);
+  });
+
+  it("reads the channel introduction ahead of the first chapter when it is on, and puts it in the timeline", async () => {
+    const { settingsStore } = await import("../services/settingsStore");
+    settingsStore.update({ narrationIntro: true, narrationIntroText: "Kênh {channel} mời nghe {title}." });
+    await post(`/stories/${viId}/narrate`, { orders: [1] });
+    await waitIdle(viId);
+    const { parts } = await (await fetch(`${base}/stories/${viId}/chapters/1/narration`)).json();
     expect(parts.map((p: { block: number }) => p.block)).toEqual([-1, 0]);
-    expect(parts[1].end).toBeLessThanOrEqual(3);
+    settingsStore.update({ narrationIntro: false, narrationIntroText: "" });
   });
 
   it("deletes a story's audio, but not while it is being narrated", async () => {
@@ -355,7 +367,7 @@ describe("narration routes", () => {
     expect(job).toMatchObject({ state: "done", done: 2, total: 2, fileName: "Truyện (audio).mp3", musicName: "Mưa" });
     const file = await fetch(`${base}/exports/audio/${job.exportId}`);
     expect(file.headers.get("content-type")).toBe("audio/mpeg");
-    expect(await file.text()).toBe("Chương 1|Một.+Chương 2|Hai.~music@0.25");
+    expect(await file.text()).toBe("Một.+Hai.~music@0.25");
     // Served once, like the zip.
     expect((await fetch(`${base}/exports/audio/${job.exportId}`)).status).toBe(404);
   });
@@ -365,7 +377,7 @@ describe("narration routes", () => {
     await waitIdle(viId);
     const job = await waitMix((await (await post(`/stories/${viId}/export-audio-mix`)).json()).jobId);
     expect(job.musicName).toBeUndefined();
-    expect(await (await fetch(`${base}/exports/audio/${job.exportId}`)).text()).toBe("Chương 1|Một.+Chương 2|Hai.");
+    expect(await (await fetch(`${base}/exports/audio/${job.exportId}`)).text()).toBe("Một.+Hai.");
 
     fake.installed = false;
     expect((await post(`/stories/${viId}/export-audio-mix`)).status).toBe(409);
@@ -386,7 +398,7 @@ describe("narration routes", () => {
     const { unzipSync, strFromU8 } = await import("fflate");
     const entries = unzipSync(new Uint8Array(await zip.arrayBuffer()));
     expect(Object.keys(entries)).toEqual(["Truyện - 002 - Chương 2.mp3"]);
-    expect(strFromU8(entries["Truyện - 002 - Chương 2.mp3"])).toBe("Chương 2|Hai.~music@0.5");
+    expect(strFromU8(entries["Truyện - 002 - Chương 2.mp3"])).toBe("Hai.~music@0.5");
   });
 
   it("mixes the music into a chapter's download link, not into what the player streams", async () => {
@@ -399,10 +411,10 @@ describe("narration routes", () => {
     const download = await fetch(`${url}?download=1&music=${track.id}&musicVolume=0.4`);
     expect(download.status).toBe(200);
     expect(decodeURIComponent(download.headers.get("content-disposition") ?? "")).toContain("Truyện - 001 - Chương 1.mp3");
-    expect(await download.text()).toBe("Chương 1|Một.~music@0.4");
+    expect(await download.text()).toBe("Một.~music@0.4");
 
-    expect(await (await fetch(`${url}?music=${track.id}`)).text()).toBe("Chương 1|Một.");
-    expect(await (await fetch(`${url}?download=1`)).text()).toBe("Chương 1|Một.");
+    expect(await (await fetch(`${url}?music=${track.id}`)).text()).toBe("Một.");
+    expect(await (await fetch(`${url}?download=1`)).text()).toBe("Một.");
     expect((await fetch(`${url}?download=1&music=nope`)).status).toBe(400);
   });
 });

@@ -1,0 +1,640 @@
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { renderEn } from "../../test/renderEn";
+import { FacebookStoryState, YouTubeState } from "../../types";
+
+const api = vi.hoisted(() => ({
+  fetchMusicTracks: vi.fn(async () => ({
+    tracks: [
+      { id: "m1", name: "Endless Love" },
+      { id: "m2", name: "Mưa tháng sáu" },
+    ],
+    defaultId: null,
+  })),
+  // The story has no drawn characters unless a test says so.
+  fetchIllustrated: vi.fn(async () => ({ bible: null as unknown, agentAvailable: true })),
+  drawCharacters: vi.fn(),
+  removeCharacters: vi.fn(),
+  prepareYouTube: vi.fn(async () => ({ total: 1 })),
+  renderYouTube: vi.fn(async () => ({ total: 1 })),
+  uploadYouTube: vi.fn(async () => ({ total: 1 })),
+  // The Page is not connected unless a test says so.
+  fetchFacebookStory: vi.fn(
+    async (): Promise<FacebookStoryState> => ({
+      connected: false,
+      videos: [],
+      ready: [],
+      compilations: [],
+      readyCompilations: [],
+    })
+  ),
+  uploadFacebook: vi.fn(async () => ({ total: 1 })),
+  uploadFacebookCompilation: vi.fn(async () => ({ total: 1 })),
+  stopYouTube: vi.fn(async () => {}),
+  saveYouTubeChapter: vi.fn(async () => ({})),
+  saveYouTubeCompilation: vi.fn(async () => {}),
+  saveYouTubeCredits: vi.fn(async () => {}),
+  syncYouTube: vi.fn(async () => ({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true })),
+  planYouTubeCompilation: vi.fn(async () => ({ totalHours: 2, missing: [], parts: [{ part: 1, from: 1, to: 1, hours: 2 }] })),
+  renderYouTubeCompilation: vi.fn(async () => ({ total: 1 })),
+  uploadYouTubeCompilation: vi.fn(async () => ({ total: 1 })),
+  deleteYouTubeCompilation: vi.fn(async () => {}),
+  youTubeCompilationVideoUrl: (storyId: string, id: string) => `/api/stories/${storyId}/youtube/compilation/${id}/video`,
+  describeYouTubeVideo: vi.fn(async () => "📖 Mô tả do AI viết."),
+  openYouTubeFolder: vi.fn(async () => {}),
+  deleteYouTubeVideoFile: vi.fn(async () => {}),
+  deleteYouTubeChapter: vi.fn(async () => {}),
+  youTubeVideoUrl: (storyId: string, order: number) => `/api/stories/${storyId}/youtube/${order}/video`,
+}));
+vi.mock("../../lib/api", () => api);
+
+const hook = vi.hoisted(() => ({ value: null as unknown }));
+vi.mock("../../hooks/useYouTube", () => ({
+  useYouTube: () => hook.value,
+}));
+
+import YouTubePanel from "./YouTubePanel";
+
+const story = {
+  id: "s1",
+  storyUrl: "https://x.test/truyen",
+  site: "x.test",
+  title: "Truyện",
+  watching: false,
+  newChapterCount: 0,
+  chapters: [],
+  createdAt: "2026-10-01T00:00:00.000Z",
+  updatedAt: "2026-10-01T00:00:00.000Z",
+};
+
+const state: YouTubeState = {
+  connected: true,
+  channel: "Truyện FM",
+  agentReady: true,
+  cover: true,
+  ffmpeg: true,
+  config: { channel: "Truyện FM", scheduleTime: "18:00", genreTags: "truyện ngôn tình", musicVolume: 0.15 },
+  story: { title: "Truyện" },
+  playlist: { title: "Truyện – Truyện Audio Full | Truyện FM", exists: false },
+  credits: { genreTags: "truyện ngôn tình" },
+  chapters: [
+    {
+      order: 1,
+      title: "Chương 1",
+      hasAudio: true,
+      audioChanged: false,
+      record: { order: 1, status: "rendered", title: "Truyện – Chương 1 | Truyện FM", createdAt: "", updatedAt: "" },
+    },
+  ],
+  compilationPlaylist: "Truyện – Trọn bộ | Truyện FM",
+  compilations: [],
+  facebookCompilations: [],
+  running: null,
+};
+
+function hookValue(over: Partial<Record<string, unknown>> = {}) {
+  return {
+    state,
+    outcome: null,
+    error: null,
+    setError: vi.fn(),
+    refresh: vi.fn(),
+    dismissOutcome: vi.fn(),
+    ...over,
+  };
+}
+
+afterEach(cleanup);
+
+beforeEach(() => {
+  hook.value = hookValue();
+  api.uploadYouTube.mockClear();
+  api.uploadYouTubeCompilation.mockClear();
+  api.openYouTubeFolder.mockClear();
+  api.describeYouTubeVideo.mockClear();
+  api.deleteYouTubeVideoFile.mockClear();
+  api.fetchMusicTracks.mockClear();
+  api.saveYouTubeCompilation.mockClear();
+  api.syncYouTube.mockReset().mockResolvedValue({ imported: 0, updated: 0, playlistTitle: "", playlistExists: true });
+});
+
+describe("YouTubePanel", () => {
+  it("says the playlist does not exist yet and that it is created only after confirmation", () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(screen.getByText(/does not exist yet — it will be created only after you confirm it at upload/)).toBeInTheDocument();
+  });
+
+  it("does not warn about the chapter playlist when no chapter upload is pending", () => {
+    hook.value = hookValue({
+      state: { ...state, chapters: [{ order: 1, title: "Chương 1", hasAudio: true, audioChanged: false }] },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // A story whose only upload is a compilation that skipped the playlist has nothing for
+    // this playlist to hold: the warning would read as a still-pending upload.
+    expect(
+      screen.queryByText(/does not exist yet — it will be created only after you confirm it at upload/)
+    ).toBeNull();
+  });
+
+  it("shows an uploaded compilation's link beside the connected channel", () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        chapters: [{ order: 1, title: "Chương 1", hasAudio: true, audioChanged: false }],
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "uploaded",
+            videoId: "v1",
+            videoUrl: "https://youtu.be/v1",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // Like the chapter playlist's line: the story's video link, right under the channel.
+    expect(
+      screen.getByText((_content, element) => element?.tagName === "P" && (element.textContent ?? "") === "Video: youtu.be/v1")
+    ).toBeInTheDocument();
+  });
+
+  it("asks for the playlist confirmation before uploading", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    const upload = screen.getByRole("button", { name: "Publish (1)" });
+    await waitFor(() => expect(upload).toBeEnabled());
+    await userEvent.click(upload);
+    const confirm = screen.getByRole("button", { name: "Publish now" });
+    expect(confirm).toBeDisabled();
+    await userEvent.click(screen.getByRole("checkbox", { name: /Create the playlist/ }));
+    expect(confirm).toBeEnabled();
+    await userEvent.click(confirm);
+    await waitFor(() => expect(api.uploadYouTube).toHaveBeenCalledWith("s1", [1], true, undefined));
+  });
+
+  it("marks chapters already on YouTube when the panel opens", async () => {
+    api.syncYouTube.mockResolvedValue({ imported: 3, updated: 0, playlistTitle: "T", playlistExists: true });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(await screen.findByText("Synced 3 chapters already on YouTube.")).toBeInTheDocument();
+  });
+
+  it("reports the description and tags filled in from YouTube", async () => {
+    api.syncYouTube.mockResolvedValue({ imported: 0, updated: 4, playlistTitle: "T", playlistExists: true });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(await screen.findByText("Filled in the description and tags from YouTube for 4 chapters.")).toBeInTheDocument();
+  });
+
+  it("offers removing the local record of an uploaded chapter", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        chapters: [
+          {
+            order: 1,
+            title: "Chương 1",
+            hasAudio: true,
+            audioChanged: false,
+            record: {
+              order: 1,
+              status: "uploaded",
+              videoId: "v1",
+              videoUrl: "https://youtu.be/v1",
+              createdAt: "",
+              updatedAt: "",
+            },
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(screen.getByRole("link", { name: "Open on YouTube" })).toBeInTheDocument();
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    await userEvent.click(screen.getByRole("button", { name: "Remove" }));
+    expect(api.deleteYouTubeChapter).toHaveBeenCalledWith("s1", 1);
+    vi.unstubAllGlobals();
+  });
+
+  it("saves the general info when genre tags change", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    const save = screen.getByRole("button", { name: "Save general info" });
+    expect(save).toBeDisabled();
+    const tags = screen.getByLabelText("Genre tags");
+    await userEvent.clear(tags);
+    await userEvent.type(tags, "xuyên sách");
+    await waitFor(() => expect(save).toBeEnabled());
+    await userEvent.click(save);
+    await waitFor(() =>
+      expect(api.saveYouTubeCredits).toHaveBeenCalledWith("s1", { author: "", translator: "", genreTags: "xuyên sách" })
+    );
+    expect(await screen.findByText("General info saved.")).toBeInTheDocument();
+  });
+
+  it("uses the Settings → YouTube default track for new renders", async () => {
+    hook.value = hookValue({ state: { ...state, config: { ...state.config, musicId: "m2", musicVolume: 0.2 } } });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Background music" })).toHaveValue("m2"));
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Make videos (1)" }));
+    await waitFor(() => expect(api.renderYouTube).toHaveBeenCalledWith("s1", [1], { musicId: "m2", musicVolume: 0.2 }));
+    vi.unstubAllGlobals();
+  });
+
+  it("falls back to the player's background music when no default is set", async () => {
+    renderEn(
+      <YouTubePanel
+        story={story}
+        onClose={vi.fn()}
+        onOpenSettings={vi.fn()}
+        playerMusic={{ track: "m1", enabled: true }}
+      />
+    );
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Background music" })).toHaveValue("m1"));
+  });
+
+  it("leaves no stale making-videos line once the job was started", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Make videos (1)" }));
+    await waitFor(() => expect(api.renderYouTube).toHaveBeenCalledWith("s1", [1], { musicId: "", musicVolume: 0.15 }));
+    // The progress bar and the outcome line carry this; a "Making…" line used to stay
+    // on screen after the render finished.
+    expect(screen.queryByText(/Making 1 videos/)).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("plans the full-story compilation for the selected chapters", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    await waitFor(() => expect(api.planYouTubeCompilation).toHaveBeenCalledWith("s1", [1]));
+    expect(await screen.findByText("Plan: 1 chapters · 2.0 hours · 1 parts")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Make compilation (1 parts)" })).toBeEnabled();
+  });
+
+  it("cuts the compilation for Facebook when that target is chosen", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Compilation for" }), "facebook");
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    await waitFor(() => expect(api.planYouTubeCompilation).toHaveBeenLastCalledWith("s1", [1], "facebook"));
+    await userEvent.click(await screen.findByRole("button", { name: "Make compilation (1 parts)" }));
+    await waitFor(() =>
+      expect(api.renderYouTubeCompilation).toHaveBeenLastCalledWith("s1", expect.objectContaining({ orders: [1], platform: "facebook" }))
+    );
+    expect((api.renderYouTubeCompilation.mock.calls.at(-1) as unknown[] | undefined)?.[1]).not.toHaveProperty("style");
+    vi.unstubAllGlobals();
+  });
+
+  it("makes the compilation from illustrated slides only once the characters are drawn", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Video style" }), "illustrated");
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    const make = await screen.findByRole("button", { name: "Make compilation (1 parts)" });
+    expect(make).toBeDisabled();
+    cleanup();
+
+    api.fetchIllustrated.mockResolvedValueOnce({
+      bible: { style: "flat", characters: [] },
+      agentAvailable: true,
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Video style" }), "illustrated");
+    await userEvent.click(screen.getByRole("button", { name: "View plan" }));
+    const ready = await screen.findByRole("button", { name: "Make compilation (1 parts)" });
+    await waitFor(() => expect(ready).toBeEnabled());
+    await userEvent.click(ready);
+    await waitFor(() =>
+      expect(api.renderYouTubeCompilation).toHaveBeenLastCalledWith("s1", expect.objectContaining({ style: "illustrated" }))
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it("fills the progress bar with the running part's own progress", () => {
+    hook.value = hookValue({
+      state: { ...state, running: { phase: "compilation", done: 1, total: 2, order: 2, percent: 40 } },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // One finished part plus 40% of the second: the bar moves while the part renders.
+    expect(screen.getByRole("progressbar", { name: "YouTube job progress" })).toHaveAttribute("aria-valuenow", "70");
+    expect(screen.getByText(/Part 2\/2 · 40%/)).toBeInTheDocument();
+  });
+
+  it("opens the video folder", async () => {
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Open video folder" }));
+    await waitFor(() => expect(api.openYouTubeFolder).toHaveBeenCalledWith("s1"));
+  });
+
+  it("has the agent write a rendered part's description in its info dialog", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            description: "cũ",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Part info" }));
+    await userEvent.click(screen.getByRole("button", { name: "Write description with AI" }));
+    await waitFor(() => expect(api.describeYouTubeVideo).toHaveBeenCalledWith("s1", { compilationId: "c1" }, "cũ"));
+    expect(await screen.findByDisplayValue("📖 Mô tả do AI viết.")).toBeInTheDocument();
+  });
+
+  it("offers to delete the file of a published compilation part only", async () => {
+    const part = {
+      part: 1,
+      parts: 1,
+      label: "Truyện – Trọn bộ (Chương 1-1)",
+      fromOrder: 1,
+      toOrder: 1,
+      videoPath: "youtube/s1/compilation-1-1.mp4",
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    };
+    hook.value = hookValue({ state: { ...state, compilations: [{ ...part, id: "c1", status: "rendered" }] } });
+    const view = renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(screen.queryByRole("button", { name: "Delete video file" })).toBeNull();
+    view.unmount();
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    hook.value = hookValue({ state: { ...state, compilations: [{ ...part, id: "c1", status: "uploaded", videoUrl: "https://youtu.be/x" }] } });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Delete video file" }));
+    await waitFor(() => expect(api.deleteYouTubeVideoFile).toHaveBeenCalledWith("s1", { compilationId: "c1" }));
+    vi.unstubAllGlobals();
+  });
+
+  it("applies the schedule to rendered compilation parts too", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // No chapter selected: the rendered parts are what the button reschedules.
+    await userEvent.click(screen.getByRole("button", { name: "Apply schedule" }));
+    await waitFor(() =>
+      expect(api.saveYouTubeCompilation).toHaveBeenCalledWith("s1", "c1", { publishAt: expect.any(String) })
+    );
+    expect(await screen.findByText("Schedule applied to 1 parts.")).toBeInTheDocument();
+  });
+
+  it("shows and saves a rendered part's description and tags", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            description: "🎧 Nghe truyện audio \"Truyện\".\n\n📖 Mở đầu.\n\n#TruyệnFM #TruyệnAudio",
+            tags: "truyện audio, nghe truyện",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Part info" }));
+    const dialog = screen.getByRole("dialog", { name: "Part info" });
+    // The description the video gets is already assembled: intro, credits and hashtags.
+    expect((dialog.querySelector("textarea") as HTMLTextAreaElement).value).toContain("#TruyệnFM #TruyệnAudio");
+    await userEvent.click(screen.getByRole("button", { name: "Save this part's info" }));
+    await waitFor(() =>
+      expect(api.saveYouTubeCompilation).toHaveBeenCalledWith(
+        "s1",
+        "c1",
+        expect.objectContaining({ tags: "truyện audio, nghe truyện" })
+      )
+    );
+  });
+
+  it("can upload a part without using the playlist", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Publish compilation (1)" }));
+    const dialog = screen.getByRole("dialog", { name: "Publish compilation" });
+    // Off means: no playlist created, nothing added — the upload button stays usable.
+    await userEvent.click(within(dialog).getByRole("checkbox", { name: /Add the videos to the playlist/ }));
+    await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+    await waitFor(() =>
+      expect(api.uploadYouTubeCompilation).toHaveBeenCalledWith("s1", {
+        ids: ["c1"],
+        createPlaylist: undefined,
+        withPlaylist: false,
+      })
+    );
+  });
+
+  it("copies a video's link from the part list", async () => {
+    const writeText = vi.fn(async () => {});
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "uploaded",
+            videoId: "v1",
+            videoUrl: "https://youtu.be/v1",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    // The link itself is shown, like the playlist link in the connected line (and again
+    // in the part list row).
+    const links = screen.getAllByRole("link", { name: "youtu.be/v1" });
+    expect(links.length).toBeGreaterThanOrEqual(1);
+    expect(links[0]).toHaveAttribute("href", "https://youtu.be/v1");
+    await userEvent.click(screen.getByRole("button", { name: "Copy the video link" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith("https://youtu.be/v1"));
+    expect(await screen.findByText("Video link copied.")).toBeInTheDocument();
+    delete (navigator as { clipboard?: unknown }).clipboard;
+  });
+
+  it("plays a rendered part in the app instead of opening a link", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        compilations: [
+          {
+            id: "c1",
+            part: 1,
+            parts: 1,
+            label: "Truyện – Trọn bộ (Chương 1-1)",
+            fromOrder: 1,
+            toOrder: 1,
+            status: "rendered",
+            videoPath: "youtube/s1/compilation-1-1.mp4",
+            createdAt: "2026-10-01T00:00:00.000Z",
+            updatedAt: "2026-10-01T00:00:00.000Z",
+          },
+        ],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    await userEvent.click(screen.getByRole("button", { name: "Watch the rendered part" }));
+    const dialog = screen.getByRole("dialog", { name: "Watch the rendered part" });
+    expect(dialog.querySelector("video")).toHaveAttribute(
+      "src",
+      "/api/stories/s1/youtube/compilation/c1/video"
+    );
+  });
+
+  it("points at Settings when not connected", () => {
+    hook.value = hookValue({ state: { ...state, connected: false } });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(screen.getByText("Not connected to YouTube yet.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Connect YouTube" })).toBeInTheDocument();
+  });
+
+  it("keeps the upload button disabled when a chapter has no audio", async () => {
+    hook.value = hookValue({
+      state: {
+        ...state,
+        chapters: [{ order: 1, title: "Chương 1", hasAudio: false, audioChanged: false, record: state.chapters[0].record }],
+      },
+    });
+    renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+    expect(screen.getByRole("checkbox", { name: "Choose chapter 1" })).toBeDisabled();
+  });
+
+  describe("with a Facebook Page connected", () => {
+    const connected: FacebookStoryState = {
+      connected: true,
+      pageName: "Truyện FM",
+      videos: [],
+      ready: [1],
+      compilations: [],
+      readyCompilations: [],
+    };
+
+    it("shows both destinations and lets one publish run go to both", async () => {
+      api.fetchFacebookStory.mockResolvedValue(connected);
+      hook.value = hookValue({ state: { ...state, playlist: { ...state.playlist, exists: true } } });
+      renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+      const publish = await screen.findByRole("button", { name: "Publish (1)" });
+      await userEvent.click(publish);
+      const dialog = screen.getByRole("dialog", { name: "Publish videos" });
+      expect(within(dialog).getByRole("checkbox", { name: "Publish to YouTube" })).toBeChecked();
+      expect(within(dialog).getByRole("checkbox", { name: "Publish to Facebook" })).toBeChecked();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(api.uploadYouTube).toHaveBeenCalledWith("s1", [1], undefined, [1]));
+      expect(api.uploadFacebook).not.toHaveBeenCalled();
+    });
+
+    it("posts to Facebook alone when YouTube is unticked", async () => {
+      api.fetchFacebookStory.mockResolvedValue(connected);
+      hook.value = hookValue({ state: { ...state, playlist: { ...state.playlist, exists: true } } });
+      renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(screen.getByRole("checkbox", { name: "Choose chapter 1" }));
+      await userEvent.click(await screen.findByRole("button", { name: "Publish (1)" }));
+      const dialog = screen.getByRole("dialog", { name: "Publish videos" });
+      await userEvent.click(within(dialog).getByRole("checkbox", { name: "Publish to YouTube" }));
+      await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(api.uploadFacebook).toHaveBeenCalledWith("s1", [1]));
+      expect(api.uploadYouTube).not.toHaveBeenCalled();
+    });
+
+    it("publishes a rendered chapter that is already on YouTube to Facebook only", async () => {
+      api.fetchFacebookStory.mockResolvedValue(connected);
+      hook.value = hookValue({
+        state: {
+          ...state,
+          chapters: [
+            {
+              order: 1,
+              title: "Chương 1",
+              hasAudio: true,
+              audioChanged: false,
+              record: { order: 1, status: "uploaded", videoId: "v", videoUrl: "https://youtu.be/v", createdAt: "", updatedAt: "" },
+            },
+          ],
+        },
+      });
+      renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(await screen.findByRole("button", { name: "Publish (1)" }));
+      const dialog = screen.getByRole("dialog", { name: "Publish videos" });
+      expect(within(dialog).queryByRole("checkbox", { name: "Publish to YouTube" })).not.toBeInTheDocument();
+      await userEvent.click(within(dialog).getByRole("button", { name: "Publish now" }));
+      await waitFor(() => expect(api.uploadFacebook).toHaveBeenCalledWith("s1", [1]));
+    });
+  });
+});

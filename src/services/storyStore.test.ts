@@ -744,4 +744,39 @@ describe("createStoryStore", () => {
     await legacy.save(story);
     expect((await legacy.get(story.id))?.language).toBe("vi");
   });
+
+  it("keeps YouTube and Facebook compilation parts apart, and reads old rows as YouTube", async () => {
+    const story = makeStory();
+    await store.save(story);
+    const part = (id: string, platform?: "youtube" | "facebook") => ({
+      id,
+      storyId: story.id,
+      part: 1,
+      parts: 1,
+      label: id,
+      fromOrder: 1,
+      toOrder: 2,
+      status: "rendered" as const,
+      platform,
+      createdAt: "2026-10-01T00:00:00.000Z",
+      updatedAt: "2026-10-01T00:00:00.000Z",
+    });
+    await store.saveCompilation(part("yt"));
+    await store.saveCompilation(part("fb", "facebook"));
+    expect((await store.listCompilations(story.id, "youtube")).map((record) => record.id)).toEqual(["yt"]);
+    expect((await store.listCompilations(story.id, "facebook")).map((record) => [record.id, record.platform])).toEqual([["fb", "facebook"]]);
+    expect((await store.getCompilation(story.id, "yt"))?.platform).toBe("youtube");
+  });
+
+  it("adds the platform column to a database made before Facebook parts existed", async () => {
+    const legacyDir = await mkdtemp(path.join(os.tmpdir(), "story-store-legacy-"));
+    legacyDirs.push(legacyDir);
+    const { DatabaseSync } = await import("node:sqlite");
+    const db = new DatabaseSync(path.join(legacyDir, "stories.db"));
+    db.exec("CREATE TABLE stories (id TEXT PRIMARY KEY, story_url TEXT NOT NULL, site TEXT NOT NULL, title TEXT NOT NULL, author TEXT, cover_url TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)");
+    db.exec(`CREATE TABLE youtube_compilations (id TEXT PRIMARY KEY, story_id TEXT NOT NULL, part INTEGER NOT NULL, parts INTEGER NOT NULL, label TEXT NOT NULL, from_order INTEGER NOT NULL, to_order INTEGER NOT NULL, status TEXT NOT NULL, title TEXT, description TEXT, tags TEXT, publish_at TEXT, video_path TEXT, video_seconds REAL, video_id TEXT, video_url TEXT, privacy TEXT, error TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`);
+    db.close();
+    const legacy = createStoryStore(legacyDir);
+    expect(await legacy.listCompilations("a".repeat(16), "youtube")).toEqual([]);
+  });
 });
