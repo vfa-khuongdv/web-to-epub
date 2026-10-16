@@ -639,7 +639,7 @@ export const vi: Record<string, string> = {
   "Could not start the plot twist chapter": "Không bắt đầu được chương plot twist",
   "Could not stop the plot twist chapter": "Không dừng được chương plot twist",
   "Plot twist chapter": "Chương plot twist",
-  "The agent finds the plot twists this story has and writes one chapter that retells them, placed first so the audio opens with it.": "Agent tìm các plot twist có trong truyện và viết một chương kể lại chúng, đặt ở đầu để bản audio mở đầu bằng chương này.",
+  "The agent finds the plot twists this story has and quotes one or two sentences of each, word for word, in one chapter placed first so the audio opens with it.": "Agent tìm các plot twist có trong truyện và trích nguyên văn một, hai câu của mỗi twist vào một chương, đặt ở đầu để bản audio mở đầu bằng chương này.",
   "Writing the chapter…": "Đang viết chương…",
   "Looking for plot twists… {done}/{total}": "Đang tìm plot twist… {done}/{total}",
   "Write the plot twist chapter again": "Viết lại chương plot twist",

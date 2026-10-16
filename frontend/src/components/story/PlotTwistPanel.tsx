@@ -58,7 +58,7 @@ export default function PlotTwistPanel({ storyId, onWritten }: { storyId: string
     <div className="field">
       <span className="label">{t("Plot twist chapter")}</span>
       <p className="text-[12px] leading-snug text-ink-3">
-        {t("The agent finds the plot twists this story has and writes one chapter that retells them, placed first so the audio opens with it.")}
+        {t("The agent finds the plot twists this story has and quotes one or two sentences of each, word for word, in one chapter placed first so the audio opens with it.")}
       </p>
       {state.ready ? (
         <div className="flex flex-wrap items-center gap-2">

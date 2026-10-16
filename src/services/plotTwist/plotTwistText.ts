@@ -1,19 +1,19 @@
-import { ARABIC_DIGITS, countWords, FORBIDDEN_SYMBOLS } from "../rewrite/rewriteText";
+import { countWords } from "../rewrite/rewriteText";
 
 /**
  * Prompts, reply parsing and checks for the plot-twist chapter. Pure, so they are tested
- * without an agent. Two passes: every window of the story is scanned for twists (the whole
- * story never fits in one prompt), then the candidates are written up as one narration-ready
- * chapter.
+ * without an agent. Every window of the story is scanned for twists (the whole story never
+ * fits in one prompt); the agent only points at them by quoting one or two sentences of the
+ * text word for word, and the chapter is those quotes, so nothing in it is invented.
  */
 export const WINDOW_WORDS = 6000;
 export const MAX_TWISTS = 5;
-export const MIN_CHAPTER_WORDS = 120;
+export const MAX_QUOTE_WORDS = 80;
 
 export interface TwistCandidate {
   order: number;
   title: string;
-  what: string;
+  quote: string;
   importance: number;
 }
 
@@ -33,11 +33,11 @@ export function scanPrompt(text: string, previous?: Problem): string {
     "Bạn đọc một đoạn truyện tiếng Việt và tìm các PLOT TWIST: tình tiết đảo ngược điều người đọc tưởng đã biết, bí mật được tiết lộ, thân phận thật, phản bội, kết quả bất ngờ.",
     "Chỉ nêu twist THẬT SỰ CÓ trong đoạn dưới đây. Không bịa, không suy đoán thêm. Nếu đoạn không có twist, trả về danh sách rỗng.",
     'Mỗi đoạn được đánh dấu bằng dòng [Chương N]. Trường "order" là N của chương chứa twist.',
-    '"what" viết 2-4 câu nêu rõ: người đọc tưởng gì, sự thật hoá ra là gì, ai liên quan (giữ nguyên tên riêng).',
+    `"quote" là 1-2 câu liền nhau CHÉP NGUYÊN VĂN từ văn bản dưới đây (từng chữ, không sửa, không tóm tắt, không bỏ dấu), câu thể hiện rõ nhất twist đó, tối đa ${MAX_QUOTE_WORDS} từ.`,
     '"importance" từ 1 (nhỏ) đến 5 (twist thay đổi cả câu chuyện).',
     "",
     "Trả về DUY NHẤT một JSON, không giải thích thêm:",
-    '{"twists": [{"order": 12, "title": "tên ngắn", "what": "mô tả", "importance": 4}]}',
+    '{"twists": [{"order": 12, "title": "tên ngắn", "quote": "câu chép nguyên văn", "importance": 4}]}',
     "",
     "Văn bản:",
     text,
@@ -56,56 +56,33 @@ function parseJson(reply: string): unknown {
   }
 }
 
+const squash = (text: string) => text.replace(/\s+/g, " ").trim();
+
 // `orders` are the chapters of the window the reply answers: a twist pointing anywhere
-// else is invented.
-export function parseScanReply(reply: string, orders: number[]): TwistCandidate[] {
+// else is invented. `text` is what the agent read: a quote that is not in it is invented too.
+export function parseScanReply(reply: string, orders: number[], text: string): TwistCandidate[] {
   const twists = (parseJson(reply) as { twists?: unknown }).twists;
   if (!Array.isArray(twists)) throw new Error('the JSON has no "twists" array');
   const allowed = new Set(orders);
+  const source = squash(text);
   const result: TwistCandidate[] = [];
   for (const item of twists as Record<string, unknown>[]) {
     const order = Number(item?.order);
-    const what = typeof item?.what === "string" ? item.what.replace(/\s+/g, " ").trim() : "";
+    const quote = typeof item?.quote === "string" ? squash(item.quote) : "";
     if (!allowed.has(order)) throw new Error(`"order" ${String(item?.order)} is not one of the chapters shown (${orders.join(", ")})`);
-    if (!what) throw new Error('a twist has no "what"');
+    if (!quote) throw new Error('a twist has no "quote"');
+    if (countWords(quote) > MAX_QUOTE_WORDS) throw new Error(`a "quote" is longer than ${MAX_QUOTE_WORDS} words; quote one or two sentences`);
+    if (!source.includes(quote)) throw new Error(`the "quote" is not word for word in the text: ${quote.slice(0, 120)}`);
     const importance = Math.min(5, Math.max(1, Math.round(Number(item.importance)) || 1));
-    result.push({ order, title: typeof item.title === "string" ? item.title.trim() : "", what, importance });
+    result.push({ order, title: typeof item.title === "string" ? item.title.trim() : "", quote, importance });
   }
   return result;
 }
 
-export function writePrompt(storyTitle: string, twists: TwistCandidate[], previous?: Problem): string {
-  return [
-    `Bạn viết MỘT chương đặc biệt tên "Plot twist" cho bản audio của truyện "${storyTitle}", đặt ở ĐẦU truyện để gây tò mò.`,
-    "Chương này kể lại các plot twist có thật trong truyện, theo ghi chú dưới đây. Chỉ dùng thông tin trong ghi chú, không bịa thêm tình tiết, giữ nguyên tên riêng.",
-    `Chọn tối đa ${MAX_TWISTS} twist đáng nhớ nhất (ưu tiên importance cao), sắp theo thứ tự xuất hiện trong truyện, mỗi twist một vài đoạn văn, giọng người dẫn truyện, mở đầu bằng lời dẫn ngắn, kết bằng lời mời nghe truyện.`,
-    "Viết để máy đọc (TTS): số viết thành chữ, không markdown, không emoji, không dùng các ký tự * # > [ ] ( ) _ | { } và không có chữ số Ả Rập. Mỗi đoạn một phần tử.",
-    "",
-    "Trả về DUY NHẤT một JSON, không giải thích thêm:",
-    '{"paragraphs": ["đoạn một", "đoạn hai"]}',
-    "",
-    "Ghi chú các twist:",
-    ...twists.map((twist) => `- [Chương ${twist.order}] (importance ${twist.importance}) ${twist.title ? twist.title + ": " : ""}${twist.what}`),
-    ...retryNote(previous),
-  ].join("\n");
-}
-
-export function parseWriteReply(reply: string): string[] {
-  const paragraphs = (parseJson(reply) as { paragraphs?: unknown }).paragraphs;
-  if (!Array.isArray(paragraphs)) throw new Error('the JSON has no "paragraphs" array');
-  return paragraphs
-    .filter((paragraph): paragraph is string => typeof paragraph === "string")
-    .map((paragraph) => paragraph.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-}
-
-export function validateWrite(paragraphs: string[]): string | null {
-  const text = paragraphs.join(" ");
-  if (countWords(text) < MIN_CHAPTER_WORDS) return `too short (${countWords(text)} words, at least ${MIN_CHAPTER_WORDS})`;
-  const symbol = text.match(FORBIDDEN_SYMBOLS);
-  if (symbol) return `it still has the symbol "${symbol[0]}"`;
-  if (ARABIC_DIGITS.test(text)) return "it still has digits; numbers must be written as words";
-  return null;
+// The strongest twists, back in story order, as the chapter's paragraphs.
+export function chapterFromTwists(twists: TwistCandidate[]): string[] {
+  const top = [...twists].sort((a, b) => b.importance - a.importance).slice(0, MAX_TWISTS).sort((a, b) => a.order - b.order);
+  return [...new Set(top.map((twist) => twist.quote))];
 }
 
 export interface Segment {
