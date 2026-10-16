@@ -108,8 +108,8 @@ export function parseRewriteReply(reply: string): string[] {
     .filter(Boolean);
 }
 
-const FORBIDDEN_SYMBOLS = /[*#>|_\[\]{}()]/;
-const ARABIC_DIGITS = /[0-9]/;
+export const FORBIDDEN_SYMBOLS = /[*#>|_\[\]{}()]/;
+export const ARABIC_DIGITS = /[0-9]/;
 
 // Capitalized words (names) from the source; sentence-start words survive a rewrite too,
 // so a missing one is a real sign of dropped or invented content.

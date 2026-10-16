@@ -36,6 +36,9 @@ export interface Library {
   runningRewrites: Map<string, RewriteRun>;
   rewriteSubscribers: Set<ExpressResponse>;
   runningYouTube: Map<string, YouTubeRun>;
+  // Plot twist chapter jobs (routes/plotTwist.ts). The page polls them, so a finished run
+  // stays in the map (status "done"/"error") until the next one replaces it.
+  plotTwistRuns: Map<string, PlotTwistRun>;
   youtubeSubscribers: Set<ExpressResponse>;
 }
 
@@ -60,6 +63,15 @@ export interface RewriteRun {
   order?: number;
   chunk?: number;
   chunks?: number;
+  abort: AbortController;
+}
+
+export interface PlotTwistRun {
+  status: "running" | "done" | "error";
+  step?: "scan" | "write";
+  done: number;
+  total: number;
+  error?: string;
   abort: AbortController;
 }
 
@@ -90,6 +102,7 @@ function createLibrary(dataDir: string, stories: StoryStore): Library {
     runningRewrites: new Map(),
     rewriteSubscribers: new Set(),
     runningYouTube: new Map(),
+    plotTwistRuns: new Map(),
     youtubeSubscribers: new Set(),
   };
 }

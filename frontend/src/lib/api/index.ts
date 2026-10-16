@@ -47,3 +47,5 @@ export {
 export type { PrepareYouTubeInput, RenderCompilationInput } from "./youtube";
 export type { YouTubeChapterPatch, YouTubeSyncResult } from "./youtube";
 export { fetchFacebookStatus, connectFacebook, disconnectFacebook, fetchFacebookStory, uploadFacebook, uploadFacebookCompilation } from "./facebook";
+export { fetchPlotTwistState, startPlotTwist, stopPlotTwist } from "./plotTwist";
+export type { PlotTwistState } from "./plotTwist";

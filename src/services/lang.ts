@@ -310,6 +310,12 @@ const vi: Record<string, string> = {
 
   // Chapter rewrite for narration
   "The agent could not rewrite this chapter: {reason}": "Agent không viết lại được chương này: {reason}",
+  "The agent could not write the plot twist chapter: {reason}": "Agent không viết được chương plot twist: {reason}",
+  "This story has no chapter text to look for a plot twist in": "Truyện chưa có nội dung chương để tìm plot twist",
+  "The agent found no plot twist in this story": "Agent không tìm thấy plot twist nào trong truyện này",
+  "Only Vietnamese stories can have a plot twist chapter": "Chỉ truyện tiếng Việt mới tạo được chương plot twist",
+  "The agent is already working on this story": "Agent đang làm việc với truyện này",
+  "No plot twist chapter is being written for this story": "Không có chương plot twist nào đang được viết cho truyện này",
   "Only Vietnamese stories can be rewritten for narration": "Chỉ truyện tiếng Việt mới viết lại để đọc thành tiếng",
   "This story's chapters are already being rewritten": "Các chương của truyện này đang được viết lại",
   "No chapters to rewrite": "Không có chương nào để viết lại",
