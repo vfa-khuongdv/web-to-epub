@@ -170,7 +170,8 @@ export default function YouTubePanel({
   const byOrder = useMemo(() => new Map((state?.chapters ?? []).map((chapter) => [chapter.order, chapter])), [state]);
   const running = state?.running ?? null;
   const facebook = useFacebookStory(story.id, running !== null);
-  const facebookReady = facebook?.connected ? facebook.ready : [];
+  // Only chapters the person ticked go to Facebook; an unticked list publishes nothing.
+  const facebookReady = facebook?.connected ? facebook.ready.filter((order) => selected.has(order)) : [];
   const facebookParts = facebook?.connected ? facebook.readyCompilations : [];
   const facebookByOrder = useMemo(
     () => new Map((facebook?.videos ?? []).map((video) => [video.order, video])),
@@ -831,6 +832,7 @@ export default function YouTubePanel({
                         storyId={story.id}
                         chapter={chapter}
                         facebook={facebookByOrder.get(chapter.order)}
+                        facebookPending={facebook?.connected === true && facebook.ready.includes(chapter.order)}
                         agentReady={state.agentReady}
                         selected={selected.has(chapter.order)}
                         onToggle={() => toggle(chapter.order)}
@@ -1229,6 +1231,7 @@ function ChapterRow({
   storyId,
   chapter,
   facebook,
+  facebookPending,
   agentReady,
   selected,
   onToggle,
@@ -1238,6 +1241,8 @@ function ChapterRow({
   storyId: string;
   chapter: YouTubeChapterState;
   facebook?: FacebookVideoRecord;
+  // Rendered and waiting for the Page: a chapter already on YouTube can still be ticked for it.
+  facebookPending: boolean;
   agentReady: boolean;
   selected: boolean;
   onToggle: () => void;
@@ -1339,7 +1344,7 @@ function ChapterRow({
             className="size-3.5 accent-select"
             aria-label={t("Choose chapter {order}", { order: chapter.order })}
             checked={selected}
-            disabled={disabled || !chapter.hasAudio || uploaded}
+            disabled={disabled || !chapter.hasAudio || (uploaded && !facebookPending)}
             onChange={onToggle}
           />
         </td>

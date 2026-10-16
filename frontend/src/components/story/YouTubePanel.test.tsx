@@ -630,6 +630,7 @@ describe("YouTubePanel", () => {
         },
       });
       renderEn(<YouTubePanel story={story} onClose={vi.fn()} onOpenSettings={vi.fn()} />);
+      await userEvent.click(await screen.findByRole("checkbox", { name: "Choose chapter 1" }));
       await userEvent.click(await screen.findByRole("button", { name: "Publish (1)" }));
       const dialog = screen.getByRole("dialog", { name: "Publish videos" });
       expect(within(dialog).queryByRole("checkbox", { name: "Publish to YouTube" })).not.toBeInTheDocument();

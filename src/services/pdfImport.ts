@@ -3,6 +3,8 @@ import { getDocumentProxy, getResolvedPDFJS } from "unpdf";
 import { ContentBlock } from "../types";
 import { ImportedBook, ImportedChapter, StoredImage, StoreImage } from "./epubImport";
 import { t } from "./lang";
+import { glyphFixes, ItemFix } from "./pdfGlyphRepair";
+import { applySymbolLetters, looksBroken, symbolLetters } from "./pdfTextRepair";
 
 // Past any real novel; a PDF claiming more is a mistake or built to exhaust the parser.
 export const MAX_PAGES = 5000;
@@ -79,10 +81,15 @@ function clean(text: string): string {
   return text.replace(/\s+/g, " ").trim();
 }
 
-async function readLines(pdf: PdfDocument, pageNumber: number): Promise<{ width: number; lines: Line[] }> {
+async function readLines(
+  pdf: PdfDocument,
+  pageNumber: number,
+  fix?: ItemFix,
+): Promise<{ width: number; lines: Line[] }> {
   const page = await pdf.getPage(pageNumber);
   const [left, , right] = page.view;
   const content = await page.getTextContent();
+  fix?.(content.items as { str: string }[]);
   const lines: Line[] = [];
   // Characters per font size on each line: the line's size is its text's, not that of a
   // drop cap opening it.
@@ -349,7 +356,8 @@ export async function parsePdf(bytes: Buffer, options: ParsePdfOptions = {}): Pr
   if (!isPdf(bytes)) throw new NotPdfError();
   let pdf: PdfDocument;
   try {
-    pdf = await getDocumentProxy(new Uint8Array(bytes));
+    // Font data is kept so a glyph can be matched by its outline when the text layer is wrong.
+    pdf = await getDocumentProxy(new Uint8Array(bytes), { fontExtraProperties: true });
   } catch (err) {
     if ((err as { name?: string }).name === "PasswordException") throw new PdfLockedError();
     throw new NotPdfError();
@@ -378,8 +386,19 @@ export async function parsePdf(bytes: Buffer, options: ParsePdfOptions = {}): Pr
       else if (images.length) pages.push({ page, images: images.map((bytes) => storeImage(bytes, "jpg")) });
     }
 
-    const allLines = pages.flatMap((content) => ("lines" in content ? content.lines : []));
+    let allLines = pages.flatMap((content) => ("lines" in content ? content.lines : []));
     if (!allLines.length && !pages.length) throw new NotPdfError();
+    if (looksBroken(allLines.map((line) => line.text))) {
+      const fixes = await glyphFixes(pdf);
+      if (fixes.size) {
+        for (const content of pages) {
+          if ("lines" in content) content.lines = (await readLines(pdf, content.page, fixes.get(content.page))).lines;
+        }
+        allLines = pages.flatMap((content) => ("lines" in content ? content.lines : []));
+      }
+    }
+    const letters = symbolLetters(allLines.map((line) => line.text));
+    for (const line of allLines) line.text = applySymbolLetters(line.text, letters);
     const bodySize = mostCommonSize(allLines);
     const lineGap = lineGapOf(allLines, bodySize);
     const margins: Margins = new Map();
