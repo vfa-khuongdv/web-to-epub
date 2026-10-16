@@ -832,6 +832,7 @@ export default function YouTubePanel({
                         storyId={story.id}
                         chapter={chapter}
                         facebook={facebookByOrder.get(chapter.order)}
+                        facebookPending={facebook?.connected === true && facebook.ready.includes(chapter.order)}
                         agentReady={state.agentReady}
                         selected={selected.has(chapter.order)}
                         onToggle={() => toggle(chapter.order)}
@@ -1230,6 +1231,7 @@ function ChapterRow({
   storyId,
   chapter,
   facebook,
+  facebookPending,
   agentReady,
   selected,
   onToggle,
@@ -1239,6 +1241,8 @@ function ChapterRow({
   storyId: string;
   chapter: YouTubeChapterState;
   facebook?: FacebookVideoRecord;
+  // Rendered and waiting for the Page: a chapter already on YouTube can still be ticked for it.
+  facebookPending: boolean;
   agentReady: boolean;
   selected: boolean;
   onToggle: () => void;
@@ -1340,7 +1344,7 @@ function ChapterRow({
             className="size-3.5 accent-select"
             aria-label={t("Choose chapter {order}", { order: chapter.order })}
             checked={selected}
-            disabled={disabled || !chapter.hasAudio || uploaded}
+            disabled={disabled || !chapter.hasAudio || (uploaded && !facebookPending)}
             onChange={onToggle}
           />
         </td>
