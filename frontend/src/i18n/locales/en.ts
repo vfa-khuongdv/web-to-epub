@@ -637,7 +637,7 @@ export const en: Record<string, string> = {
   "Could not start the plot twist chapter": "Could not start the plot twist chapter",
   "Could not stop the plot twist chapter": "Could not stop the plot twist chapter",
   "Plot twist chapter": "Plot twist chapter",
-  "The agent finds the plot twists this story has and writes one chapter that retells them, placed first so the audio opens with it.": "The agent finds the plot twists this story has and writes one chapter that retells them, placed first so the audio opens with it.",
+  "The agent finds the plot twists this story has and quotes one or two sentences of each, word for word, in one chapter placed first so the audio opens with it.": "The agent finds the plot twists this story has and quotes one or two sentences of each, word for word, in one chapter placed first so the audio opens with it.",
   "Writing the chapter…": "Writing the chapter…",
   "Looking for plot twists… {done}/{total}": "Looking for plot twists… {done}/{total}",
   "Write the plot twist chapter again": "Write the plot twist chapter again",

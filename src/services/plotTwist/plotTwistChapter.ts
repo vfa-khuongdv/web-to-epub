@@ -3,22 +3,19 @@ import { AgentModel } from "../agent/agentConfig";
 import { t } from "../lang";
 import { blockText, chunkParagraphs, countWords } from "../rewrite/rewriteText";
 import {
-  MAX_TWISTS,
   Problem,
   Segment,
   TwistCandidate,
   WINDOW_WORDS,
+  chapterFromTwists,
   parseScanReply,
-  parseWriteReply,
   scanPrompt,
-  validateWrite,
   windowSegments,
-  writePrompt,
 } from "./plotTwistText";
 
 /**
  * "Plot twist" chapter for a narrated story: the agent scans the story for the twists it
- * really contains and writes one chapter that retells them. It is stored as chapter 0, so
+ * really contains and the chapter quotes one or two sentences of each, word for word. It is stored as chapter 0, so
  * it plays first and no real chapter is renumbered (audio, highlights and uploads key on
  * the chapter order). Running it again replaces that chapter.
  */
@@ -29,7 +26,7 @@ const ATTEMPTS = 3;
 export class PlotTwistCancelledError extends Error {}
 
 export interface PlotTwistProgress {
-  step: "scan" | "write";
+  step: "scan";
   done: number;
   total: number;
 }
@@ -90,29 +87,13 @@ export async function createPlotTwistChapter(job: {
         job.agent,
         job.signal,
         (previous) => scanPrompt(window.text, previous),
-        (reply) => parseScanReply(reply, window.orders)
+        (reply) => parseScanReply(reply, window.orders, window.text)
       ))
     );
   }
   if (found.length === 0) throw new Error(t("The agent found no plot twist in this story"));
 
-  // The writer sees the strongest candidates only; the prompt asks it to order them by chapter.
-  const top = [...found]
-    .sort((a, b) => b.importance - a.importance)
-    .slice(0, MAX_TWISTS * 2)
-    .sort((a, b) => a.order - b.order);
-  job.onProgress?.({ step: "write", done: windows.length, total: windows.length });
-  const paragraphs = await ask(
-    job.agent,
-    job.signal,
-    (previous) => writePrompt(story.title, top, previous),
-    (reply) => {
-      const lines = parseWriteReply(reply);
-      const problem = validateWrite(lines);
-      if (problem) throw new Error(problem);
-      return lines;
-    }
-  );
+  const paragraphs = chapterFromTwists(found);
 
   await job.stories.saveChapter(job.storyId, {
     order: PLOT_TWIST_ORDER,

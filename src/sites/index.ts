@@ -7,6 +7,7 @@ import { heyzine } from "./heyzine";
 import { mangadex } from "./mangadex";
 import { royalroad } from "./royalroad";
 import { scribd } from "./scribd";
+import { truyendecu } from "./truyendecu";
 import { truyenfullok } from "./truyenfullok";
 import { truyenfull } from "./truyenfull";
 import type { SiteModule, SupportedSite } from "./types";
@@ -34,6 +35,7 @@ export const SITES: SiteModule[] = [
   royalroad,
   docln,
   truyenfullok,
+  truyendecu,
 ];
 
 export const SUPPORTED_SITES: SupportedSite[] = SITES.flatMap((site) => site.supported ?? []);
