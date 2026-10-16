@@ -14,5 +14,20 @@
     "slug": "dong-thoai",
     "name": "Đồng Thoại",
     "file": "dong-thoai.mp3"
+  },
+  {
+    "slug": "aloha",
+    "name": "Aloha – Cool",
+    "file": "aloha.mp3"
+  },
+  {
+    "slug": "boys-over-flower",
+    "name": "Boys Over Flower OST – SS501",
+    "file": "boys-over-flower.mp3"
+  },
+  {
+    "slug": "dung-nhu-thoi-quen",
+    "name": "Đừng Như Thói Quen – JayKii, Ngọc Duyên Sara",
+    "file": "dung-nhu-thoi-quen.mp3"
   }
 ]
