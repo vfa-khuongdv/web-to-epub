@@ -131,6 +131,9 @@ const vi: Record<string, string> = {
   "Wattpad's chapter list API did not return JSON ({url})":
     "API danh sách chương của Wattpad trả về không phải JSON ({url})",
   "xtruyen's chapter list API did not return JSON": "API danh sách chương của xtruyen trả về không phải JSON",
+  "truyendecu's chapter list API returned the wrong format":
+    "API danh sách chương của truyendecu trả về sai định dạng",
+  "Chapter content not found at {url}": "Không tìm thấy nội dung chương tại {url}",
   "xtruyen's chapter list API returned the wrong format":
     "API danh sách chương của xtruyen trả về sai định dạng",
   "This is not a Viet Messenger book page: {url} — paste a URL like https://vietmessenger.com/books/?title=<name>":
