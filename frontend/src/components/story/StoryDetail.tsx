@@ -23,6 +23,7 @@ import PendingChapterRow from "./PendingChapterRow";
 import { Icon } from "../ui/Icon";
 import ReaderOverlay from "../reader/ReaderOverlay";
 import AgentCrawlerPanel from "./AgentCrawlerPanel";
+import PlotTwistPanel from "./PlotTwistPanel";
 import StoryMetaFields from "./StoryMetaFields";
 
 // Long stories with thousands of chapters: rendering all at once creates tens of
@@ -567,6 +568,8 @@ export default function StoryDetail({
                 await onStoryChanged();
               }}
             />}
+
+          {narratable && <PlotTwistPanel storyId={story.id} onWritten={onStoryChanged} />}
 
           {story.newChapterCount > 0 && (
             <div className="banner banner-new">
