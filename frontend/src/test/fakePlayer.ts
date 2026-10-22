@@ -23,6 +23,7 @@ export function fakePlayer(over: Partial<NarrationPlayer> = {}): NarrationPlayer
     updateQueue: vi.fn(),
     jumpTo: vi.fn(),
     toggle: vi.fn(),
+    pause: vi.fn(),
     seek: vi.fn(),
     skip: vi.fn(),
     next: vi.fn(),

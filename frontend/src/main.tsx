@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import { LangProvider } from "./i18n";
 import { VaultProvider, useVault } from "./vault";
+import { SkinProvider } from "./skins/SkinProvider";
 import "./styles.css";
 
 // Switching libraries remounts the whole app: every list, selection, open chapter and
@@ -16,9 +17,11 @@ function Workspace() {
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <LangProvider>
-      <VaultProvider>
-        <Workspace />
-      </VaultProvider>
+      <SkinProvider>
+        <VaultProvider>
+          <Workspace />
+        </VaultProvider>
+      </SkinProvider>
     </LangProvider>
   </React.StrictMode>
 );

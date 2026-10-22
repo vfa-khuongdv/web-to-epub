@@ -1,4 +1,4 @@
-import { CSSProperties, useEffect, useRef, useState } from "react";
+import { CSSProperties, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import LibraryView from "./components/library/LibraryView";
 import PlayerBar from "./components/narration/PlayerBar";
 import { NarrationPlayerProvider, useNarrationPlayer } from "./hooks/narrationPlayer";
@@ -17,6 +17,13 @@ import { AppSettings, AppUpdateInfo, SupportedSite } from "./types";
 import { useAgentActivity } from "./hooks/useAgentActivity";
 import { useCrawlJob } from "./hooks/useCrawlJob";
 import { useVault } from "./vault";
+import { DocumentHead } from "./lib/ui/skin";
+import { SKINS } from "./skins/registry";
+import { useSkin } from "./skins/SkinProvider";
+import StealthLayer from "./skins/StealthLayer";
+import { AppMenu, MenuEntry } from "./skins/AppMenu";
+import { useLookEntries, useMenuState } from "./skins/useAppMenu";
+import { SkinAppContext } from "./skins/types";
 
 export default function App() {
   const [supportedSites, setSupportedSites] = useState<SupportedSite[]>([]);
@@ -37,6 +44,52 @@ export default function App() {
   const { lang, setLang, t } = useLang();
   const vault = useVault();
   const { job, live, attach, subscribe, clearChapters, notices, dismissNotice, pushNotice } = useCrawlJob();
+  const { skin, prefs } = useSkin();
+  const definition = SKINS[skin];
+  // With a disguise skin chosen, "open in the normal view" shows the app as it always was
+  // (to add stories, export, narrate) until the reader goes back; the skin stays chosen.
+  const [normalView, setNormalView] = useState<{ storyId: string; order?: number } | true | null>(null);
+  // What the skin's tab should say (the open file, the open sheet), set by its shell.
+  const [shellHead, setShellHead] = useState<DocumentHead | null>(null);
+  // The launch check for new chapters runs once per app open, not on every return to the
+  // normal view from a skin (LibraryView forgets that it ran when it unmounts).
+  const [launchChecked, setLaunchChecked] = useState(false);
+  const Shell = definition.Shell;
+  const showShell = !!Shell && normalView === null;
+  // The header's look switch: the looks one click away, plus the disguise settings.
+  const lookMenu = useMenuState<"look">();
+  const looks = useLookEntries();
+  const lookEntries: MenuEntry[] = [
+    ...looks,
+    { kind: "separator", id: "look-sep" },
+    { kind: "item", id: "look-settings", label: t("Disguise settings…"), run: () => setSettingsOpen(true) },
+  ];
+
+  useEffect(() => {
+    setNormalView(null);
+    setShellHead(null);
+  }, [skin]);
+
+  // Opened in a skin: the launch check for new chapters is skipped (skins show no
+  // new-chapter counts), rather than firing the first time the normal view opens.
+  useEffect(() => {
+    if (showShell) setLaunchChecked(true);
+  }, [showShell]);
+
+  const skinApp = useMemo<SkinAppContext>(
+    () => ({
+      job,
+      live,
+      attach,
+      clearChapters,
+      openSettings: () => setSettingsOpen(true),
+      openInDefault: (target) => setNormalView(target ?? true),
+      neutralNames: prefs.neutralNames,
+      isPrivate: vault.active,
+      setHead: setShellHead,
+    }),
+    [job, live, attach, clearChapters, prefs.neutralNames, vault.active]
+  );
   const nextTheme = THEME_CYCLE[(THEME_CYCLE.indexOf(theme) + 1) % THEME_CYCLE.length];
   // Only two languages, so the button swaps between them rather than opening a menu.
   const nextLang: Lang = lang === "vi" ? "en" : "vi";
@@ -97,7 +150,15 @@ export default function App() {
     t("Click to switch to {theme}", { theme: t(THEME_LABEL[nextTheme]) });
 
   return (
-    <NarrationPlayerProvider>
+    // One provider for the skin and the normal view alike: going from one to the other
+    // keeps the narration playing.
+    <NarrationPlayerProvider keys={!showShell}>
+    <StealthLayer definition={definition} head={shellHead} />
+    {showShell ? (
+      <Suspense fallback={<div className="h-full bg-content" />}>
+        <Shell app={skinApp} />
+      </Suspense>
+    ) : (
     <div className="app">
       <header className="cmdbar">
         <span className="flex items-baseline gap-1.5 whitespace-nowrap">
@@ -108,6 +169,14 @@ export default function App() {
         </span>
 
         <div className="ml-auto flex items-center gap-3 text-xs text-ink-2">
+          {/* Back to the disguise this view was opened from. */}
+          {Shell && normalView !== null && (
+            <button type="button" className="chip" onClick={() => setNormalView(null)}>
+              <Icon name="chevron" size={12} className="rotate-180" />
+              {t("Back to {skin}", { skin: t(definition.label) })}
+            </button>
+          )}
+
           {/* The only trace of private mode in the UI, and only while it is open — it
               doubles as the way out for anyone who did not use the shortcut. */}
           {vault.active && (
@@ -151,6 +220,17 @@ export default function App() {
             onClick={() => setTheme(nextTheme)}
           >
             <Icon name={THEME_ICON[theme]} size={14} />
+          </button>
+
+          <button
+            type="button"
+            className="btn btn-quiet btn-tiny"
+            title={t("Change look")}
+            aria-label={t("Change look")}
+            aria-haspopup="menu"
+            onClick={(event) => lookMenu.open("look", event.currentTarget)}
+          >
+            <Icon name="disguise" size={14} />
           </button>
 
           <button
@@ -267,7 +347,9 @@ export default function App() {
           clearChapters={clearChapters}
           supportedSites={supportedSites}
           pushNotice={pushNotice}
-          autoScan={autoScan}
+          autoScan={launchChecked ? false : autoScan}
+          onLaunchCheck={() => setLaunchChecked(true)}
+          initialStory={normalView !== null && normalView !== true ? normalView : undefined}
           onOpenSettings={() => setSettingsOpen(true)}
         />
         <SplitHandle container={workbench} split={split} onSplit={setSplit} onCommit={saveSplit} />
@@ -279,15 +361,26 @@ export default function App() {
       {agentLogOpen && <AgentActivityDialog events={agent.events} busy={agent.busy} onClear={agent.clear} onClose={() => setAgentLogOpen(false)} />}
       <NoticeStack notices={notices} onDismiss={dismissNotice} />
 
-      {settingsOpen && (
-        <SettingsOverlay
-          theme={theme}
-          onTheme={setTheme}
-          onSaved={(settings: AppSettings) => setAutoScan(settings.autoScanOnOpen)}
-          onClose={() => setSettingsOpen(false)}
-        />
-      )}
     </div>
+    )}
+
+    <AppMenu
+      anchor={lookMenu.menu?.anchor ?? null}
+      entries={lookEntries}
+      onClose={lookMenu.close}
+      tone="app"
+      label={t("Change look")}
+    />
+
+    {/* Fixed over everything, so the same page serves a skin and the normal view. */}
+    {settingsOpen && (
+      <SettingsOverlay
+        theme={theme}
+        onTheme={setTheme}
+        onSaved={(settings: AppSettings) => setAutoScan(settings.autoScanOnOpen)}
+        onClose={() => setSettingsOpen(false)}
+      />
+    )}
     </NarrationPlayerProvider>
   );
 }

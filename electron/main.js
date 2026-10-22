@@ -1,8 +1,7 @@
 // Bọc server Express sẵn có thành app macOS: main process chạy thẳng
 // dist/server.js rồi mở cửa sổ trỏ vào localhost.
-const { app, BrowserWindow, shell, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, shell, dialog, ipcMain, globalShortcut } = require("electron");
 const path = require("path");
-const net = require("net");
 const http = require("http");
 const fs = require("fs");
 const os = require("os");
@@ -10,6 +9,7 @@ const fsp = require("fs/promises");
 const { spawn } = require("child_process");
 const { Readable, Transform } = require("stream");
 const { pipeline } = require("stream/promises");
+const { choosePort } = require(path.join(__dirname, "port.js"));
 const { UPDATE_REPO } = require(path.join(__dirname, "..", "dist", "config", "update.js"));
 const {
   cleanupUpdateLeftovers,
@@ -36,35 +36,6 @@ if (isPackaged) {
 // blocks user namespaces, so Electron exits at startup. This window only shows the
 // app's own localhost UI (chapter HTML is rendered in a sandboxed iframe).
 if (process.platform === "linux") app.commandLine.appendSwitch("no-sandbox");
-
-function findFreePort() {
-  return new Promise((resolve, reject) => {
-    const srv = net.createServer();
-    srv.once("error", reject);
-    srv.listen(0, "127.0.0.1", () => {
-      const { port } = srv.address();
-      srv.close(() => resolve(port));
-    });
-  });
-}
-
-// UI phải được mở ở cùng một origin giữa các lần chạy: localStorage (vị trí đang nghe/đọc,
-// theme, ngôn ngữ, vị trí phát) gắn với origin http://127.0.0.1:<port>, nên một cổng ngẫu
-// nhiên mỗi lần mở làm mọi thứ đã lưu coi như mất — nút "Continue listening" vì thế không
-// bao giờ xuất hiện. Cổng cố định chỉ dùng khi còn trống; bận thì quay lại cổng ngẫu nhiên.
-const PREFERRED_PORT = 45813;
-
-function portAvailable(port) {
-  return new Promise((resolve) => {
-    const srv = net.createServer();
-    srv.once("error", () => resolve(false));
-    srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
-  });
-}
-
-async function uiPort() {
-  return (await portAvailable(PREFERRED_PORT)) ? PREFERRED_PORT : findFreePort();
-}
 
 function waitForServer(port, timeoutMs = 30000) {
   const deadline = Date.now() + timeoutMs;
@@ -206,23 +177,49 @@ ipcMain.handle("update:install", async (event, assetUrl) => {
   }
 });
 
+// ---- Disguise: system-wide boss key (opt-in, Settings → Disguise) ---------------
+// A global shortcut takes the key from every other app while it is registered, so it is
+// only registered while the page asks for it, and it is a combination nothing else uses.
+const BOSS_ACCELERATOR = "CommandOrControl+Alt+Shift+B";
+
+ipcMain.on("stealth:global-key", (event, enabled) => {
+  const win = BrowserWindow.fromWebContents(event.sender);
+  globalShortcut.unregister(BOSS_ACCELERATOR);
+  if (!enabled || !win) {
+    event.returnValue = false;
+    return;
+  }
+  // The page swaps itself for its decoy; the window stays where it is, so nothing on
+  // screen jumps or disappears in a way that draws the eye.
+  event.returnValue = globalShortcut.register(BOSS_ACCELERATOR, () => {
+    if (!win.isDestroyed()) win.webContents.send("stealth:boss");
+  });
+});
+
+app.on("will-quit", () => globalShortcut.unregisterAll());
+
+let mainWindow = null;
+
 async function start() {
-  const port = await uiPort();
+  const port = await choosePort(path.join(app.getPath("userData"), "port.json"));
   process.env.PORT = String(port);
   require(path.join(__dirname, "..", "dist", "server.js"));
   await waitForServer(port);
 
-  const win = new BrowserWindow({
+  const win = (mainWindow = new BrowserWindow({
     width: 1280,
     height: 860,
     minWidth: 900,
     title: "Web to EPUB",
+    // Shown once the page has painted: its title (and a disguise skin, if one is on) is in
+    // place by then, instead of the window flashing the app's own name first.
+    show: false,
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
-  });
+  }));
 
   // Link ra ngoài (trang nguồn của truyện) mở bằng trình duyệt mặc định,
   // không nuốt vào trong cửa sổ app.
@@ -231,6 +228,15 @@ async function start() {
     return { action: "deny" };
   });
 
+  // A page that never paints (failed load, crashed renderer) must not leave the app
+  // running with no window; the timeout is the last resort.
+  const reveal = () => {
+    if (!win.isDestroyed() && !win.isVisible()) win.show();
+  };
+  win.once("ready-to-show", reveal);
+  win.webContents.once("did-fail-load", reveal);
+  win.webContents.once("render-process-gone", reveal);
+  setTimeout(reveal, 5000);
   await win.loadURL(`http://127.0.0.1:${port}/`);
 }
 
@@ -241,10 +247,10 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    const win = BrowserWindow.getAllWindows()[0];
-    if (!win) return;
-    if (win.isMinimized()) win.restore();
-    win.focus();
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
 
   app.whenReady().then(() => {

@@ -62,6 +62,7 @@
       "dist/**",
       "public/**",
       "electron/**",
+      "!electron/**/*.test.ts",
       "tts/**",
       "agent/**",
       "package.json"

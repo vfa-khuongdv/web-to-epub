@@ -40,6 +40,7 @@ import {
   MonitorPlay,
   Ellipsis,
   Upload,
+  VenetianMask,
   Volume2,
   X,
 } from "lucide-react";
@@ -84,6 +85,7 @@ export type IconName =
   | "spellcheck"
   | "regenerate"
   | "sparkles"
+  | "disguise"
   | "youtube"
   | "share"
   | "more";
@@ -130,6 +132,7 @@ const icons: Record<IconName, LucideIcon> = {
   spellcheck: SpellCheck,
   regenerate: AudioLines,
   sparkles: Sparkles,
+  disguise: VenetianMask,
   youtube: MonitorPlay,
   share: Share2,
   more: Ellipsis,

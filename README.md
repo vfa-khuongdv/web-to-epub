@@ -66,6 +66,15 @@ Dark theme (click the icon in the header to change, or set to "auto" to follow O
   that won't extract.
 - **Light/dark theme** — one button in the header, cycles auto → light → dark; auto follows
   OS preferences.
+- **Disguise skins + boss key** — Settings → Disguise draws the whole app as a code editor
+  (each story a folder, each chapter a file open in the editor), a spreadsheet (stories
+  and chapters as sheets, one paragraph per cell), a team chat (each chapter a thread of
+  messages), a terminal (`ls`, `cd`, read in a `less`-style pager) or a code-hosting site
+  (each story a repository, chapters as files, with pull requests you can actually review). The key under Esc (`` ` ``) covers the screen
+  with fake work (meeting minutes, a TypeScript file, a budget sheet), changes the tab title
+  and icon, and silences the narration; press it again to come back. Optional: hide when the
+  window loses focus, neutral file names, and a system-wide shortcut in the desktop app.
+  Lookalikes only — no other product's logo or name.
 - **Standard EPUB** — TOC (NCX + nav), metadata, cover image, and chapter images downloaded and
   embedded directly in the file.
 - **Audio/video in chapters** — `<audio>`/`<video>` tags from source pages are downloaded and
@@ -276,8 +285,10 @@ Backend serves both the built frontend and a REST API under `/api`.
 │       ├── hooks/                # useCrawlJob, useEpubExport
 │       ├── lib/                  # API client + pure helpers
 │       ├── vault/                # Private-mode provider + token
+│       ├── skins/                # Disguise skins (code editor, spreadsheet, chat, terminal, repository) + boss key
 │       └── i18n/                 # One locale file per language
 ├── electron/main.js              # Main process for macOS app
+├── electron/port.js              # Same localhost port every launch (keeps localStorage)
 ├── scripts/                      # Icon generation, ad-hoc signing
 ├── public/                       # Frontend build output (auto-generated)
 ├── data/                         # Library: stories.db + covers/ (not committed)
