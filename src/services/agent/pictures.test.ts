@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("../toc/http", () => ({ fetchWithRetry: vi.fn() }));
+vi.mock("../toc/http", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../toc/http")>();
+  return { ...actual, fetchWithRetry: vi.fn() };
+});
 
 import type { ContentBlock } from "../../types";
 import type { ChapterFetchContext } from "../chapters/types";

@@ -4,6 +4,7 @@ import { docln } from "./docln";
 import { dtvebook } from "./dtvebook";
 import { fanfiction } from "./fanfiction";
 import { heyzine } from "./heyzine";
+import { mangadex } from "./mangadex";
 import { royalroad } from "./royalroad";
 import { scribd } from "./scribd";
 import { truyenfullok } from "./truyenfullok";
@@ -26,6 +27,7 @@ export const SITES: SiteModule[] = [
   fanfiction,
   vietmessenger,
   scribd,
+  mangadex,
   archive,
   dtvebook,
   heyzine,

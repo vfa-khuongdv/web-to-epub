@@ -1,4 +1,5 @@
 import { ImportedBook, parseEpub, StoreImage } from "./epubImport";
+import { CloudflareBlockedError, isCloudflareResponse } from "./cloudflare";
 import { t } from "./lang";
 
 export const DTV_EBOOK_DOMAIN = "dtv-ebook.com.vn";
@@ -102,18 +103,22 @@ export async function importDtvEbook(id: string, options: ImportDtvEbookOptions 
   let html: string;
   try {
     const res = await fetchImpl(readerUrl(id), { headers: { "User-Agent": epubUserAgent } });
+    if (isCloudflareResponse(res)) throw new CloudflareBlockedError(page);
     if (!res.ok) throw new DtvEbookNotFoundError(page);
     html = await res.text();
   } catch (err) {
-    if (err instanceof DtvEbookNotFoundError) throw err;
+    if (err instanceof DtvEbookNotFoundError || err instanceof CloudflareBlockedError) throw err;
     throw new DtvEbookNotFoundError(page);
   }
 
   const path = epubPathFromReader(html);
   if (!path) throw new DtvEbookNoEpubError(page);
-  // The path is relative to the site root in every page seen ("images/files/…").
-  const fileUrl = new URL(path.replace(/^\/+/, ""), `https://${DTV_EBOOK_DOMAIN}/`).toString();
-  const bytes = await fetchBytes(fetchImpl, fileUrl, cap);
+  // The path is relative to the site root in every page seen ("images/files/…"). Resolve it and
+  // keep the site's own host: a page (or a compromised response) must not send the server
+  // anywhere else — an absolute or protocol-relative path would otherwise win over the base.
+  const fileUrl = new URL(path, `https://${DTV_EBOOK_DOMAIN}/`);
+  if (fileUrl.hostname.toLowerCase().replace(/^www\./, "") !== DTV_EBOOK_DOMAIN) throw new DtvEbookNotFoundError(page);
+  const bytes = await fetchBytes(fetchImpl, fileUrl.toString(), cap);
   if (!bytes) throw new DtvEbookNotFoundError(page);
 
   return parseEpub(bytes, { storeImage: options.storeImage ?? (() => "") });

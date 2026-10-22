@@ -143,3 +143,30 @@ export async function fetchText(url: string, init: RequestInit = {}, options: Fe
   }
   return res.text();
 }
+
+// Reads a response body as a Buffer without ever buffering more than `maxBytes`: the Content-Length
+// header when it is there, and a streaming cap when it is not (a server may omit or lie about it).
+// Returns undefined instead of throwing when the answer is over the cap.
+export async function readBodyCapped(res: Response, maxBytes: number): Promise<Buffer | undefined> {
+  const declared = Number(res.headers.get("content-length"));
+  if (Number.isFinite(declared) && declared > maxBytes) return undefined;
+  if (!res.body) return Buffer.alloc(0);
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        return undefined;
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  return Buffer.concat(chunks);
+}

@@ -95,6 +95,7 @@ describe("registry", () => {
       "fanfiction.net",
       "vietmessenger.com",
       "scribd.com",
+      "mangadex.org",
       "royalroad.com",
       "docln.net",
       "truyenfullok.com",

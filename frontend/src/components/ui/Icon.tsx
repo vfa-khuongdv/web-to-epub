@@ -7,7 +7,9 @@ import {
   ChevronRight,
   Circle,
   Clock,
+  Copy,
   Download,
+  FolderOpen,
   ExternalLink,
   FileText,
   Headphones,
@@ -29,11 +31,14 @@ import {
   Play,
   RotateCw,
   Settings,
+  Share2,
   SpellCheck,
   Square,
   Sun,
   TriangleAlert,
   Trash2,
+  MonitorPlay,
+  Ellipsis,
   Upload,
   VenetianMask,
   Volume2,
@@ -53,11 +58,13 @@ export type IconName =
   | "clock"
   | "x"
   | "trash"
+  | "folder"
   | "edit"
   | "chapter"
   | "dot"
   | "info"
   | "open"
+  | "copy"
   | "sun"
   | "moon"
   | "display"
@@ -78,7 +85,10 @@ export type IconName =
   | "spellcheck"
   | "regenerate"
   | "sparkles"
-  | "disguise";
+  | "disguise"
+  | "youtube"
+  | "share"
+  | "more";
 
 // Names stay the app's own vocabulary rather than the library's, so call sites read
 // as intent ("retry", "open") and swapping a glyph is a one-line change here.
@@ -95,11 +105,13 @@ const icons: Record<IconName, LucideIcon> = {
   clock: Clock,
   x: X,
   trash: Trash2,
+  folder: FolderOpen,
   edit: Pencil,
   chapter: FileText,
   dot: Circle,
   info: Info,
   open: ExternalLink,
+  copy: Copy,
   sun: Sun,
   moon: Moon,
   display: Monitor,
@@ -121,6 +133,9 @@ const icons: Record<IconName, LucideIcon> = {
   regenerate: AudioLines,
   sparkles: Sparkles,
   disguise: VenetianMask,
+  youtube: MonitorPlay,
+  share: Share2,
+  more: Ellipsis,
 };
 
 // The dot is a state light (crawling, live), not an outline: it reads as a dot only

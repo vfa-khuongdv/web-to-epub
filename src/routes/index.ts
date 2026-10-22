@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { IMPORT_SOURCES, SUPPORTED_SITES } from "../config/supportedSites";
 import { setLang } from "../services/lang";
 import { agentCrawlerRouter } from "./agentCrawler";
@@ -11,13 +11,18 @@ import { highlightsRouter } from "./highlights";
 import { liveRouter } from "./live";
 import { musicRouter } from "./music";
 import { narrationRouter } from "./narration";
+import { plotTwistRouter } from "./plotTwist";
+import { rewriteRouter } from "./rewrite";
 import { settingsRouter } from "./settings";
 import { siteSessionsRouter } from "./siteSessions";
 import { storiesRouter } from "./stories";
 import { ttsRouter } from "./tts";
 import { vaultRouter } from "./vault";
+import { facebookRouter } from "./facebook";
+import { illustratedRouter } from "./illustrated";
+import { youtubeRouter } from "./youtube";
 
-const router = Router();
+const router = createRouter();
 
 // The frontend states the reader's language on every request; the server phrases its
 // errors in it (see services/lang.ts for why this is module state, not per-request).
@@ -51,6 +56,11 @@ router.use(exportsRouter);
 router.use(liveRouter);
 router.use(narrationRouter);
 router.use(audioExportsRouter);
+router.use(rewriteRouter);
+router.use(plotTwistRouter);
+router.use(youtubeRouter);
+router.use(facebookRouter);
+router.use(illustratedRouter);
 router.use(storiesRouter);
 router.use(chaptersRouter);
 router.use(highlightsRouter);

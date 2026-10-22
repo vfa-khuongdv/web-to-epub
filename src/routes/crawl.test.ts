@@ -24,6 +24,7 @@ const extract = vi.hoisted(() => {
   return {
     calls: [] as string[],
     contexts: [] as unknown[],
+    fail: new Set<string>(),
     started: new Promise<void>((resolve) => {
       startedCall = resolve;
     }),
@@ -35,6 +36,7 @@ const extract = vi.hoisted(() => {
     reset() {
       this.calls = [];
       this.contexts = [];
+      this.fail = new Set<string>();
       this.started = new Promise<void>((resolve) => {
         startedCall = resolve;
       });
@@ -54,6 +56,7 @@ vi.mock("../services/crawl", async (importOriginal) => {
       extract.contexts.push(context);
       extract.resolveStarted();
       await extract.release;
+      if (extract.fail.has(url)) return { sourceUrl: url, title: "T", blocks: [], error: "boom", errorKind: "other" };
       return { sourceUrl: url, title: "T", blocks: [{ type: "paragraph", text: "ok" }] };
     }),
   };
@@ -153,6 +156,34 @@ describe("POST /stories/:id/crawl/stop", () => {
     const chapter3 = await stories.getChapter(id, 3);
     expect(chapter2?.status).toBe("pending");
     expect(chapter3?.status).toBe("pending");
+  });
+
+  it("keeps a done chapter's content when a re-crawl fails", async () => {
+    const chapterUrl = "https://www.fanfiction.net/s/14575449/1/Reluctant-Cultivator-in-Konoha";
+    await stories.saveChapter(id, {
+      order: 1,
+      url: chapterUrl,
+      title: "Chapter 1",
+      status: "done",
+      blocks: [{ type: "paragraph", text: "old content" }],
+    });
+    extract.fail.add(chapterUrl);
+
+    const startRes = await fetch(`${base}/api/stories/${id}/crawl`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ orders: [1] }),
+    });
+    expect(startRes.status).toBe(202);
+    await extract.started;
+    extract.resolveRelease();
+
+    await waitFor(async () => !!(await stories.getChapter(id, 1)));
+    await new Promise((r) => setTimeout(r, 150));
+    const chapter = await stories.getChapter(id, 1);
+    // A transient failure must not turn the stored chapter into an empty error.
+    expect(chapter?.status).toBe("done");
+    expect(chapter?.blocks).toEqual([{ type: "paragraph", text: "old content" }]);
   });
 
   it("refuses to crawl a story imported from an EPUB file", async () => {

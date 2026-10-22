@@ -14,7 +14,9 @@ import {
   embedImages,
   embedMedia,
   epubFileName,
+  fileStem,
   packMedia,
+  trimWhiteBorder,
   type BuildProgress,
 } from "./epubBuilder";
 
@@ -94,9 +96,10 @@ describe("epubFileName", () => {
     expect(epubFileName("a".repeat(121))).toBe(`${"a".repeat(120)}.epub`);
   });
 
-  it("can split a surrogate pair when an astral character straddles the limit", () => {
-    // slice() counts UTF-16 units, so the emoji (2 units) starting at index 119 is cut in half.
-    expect(epubFileName(`${"a".repeat(119)}😀`)).toBe(`${"a".repeat(119)}\uD83D.epub`);
+  it("keeps an astral character whole when it straddles the unit limit", () => {
+    // The cap counts code points, so the emoji ending at the 120th character is not cut into
+    // a lone surrogate (which contentDisposition's encodeURIComponent would refuse).
+    expect(epubFileName(`${"a".repeat(119)}😀`)).toBe(`${"a".repeat(119)}😀.epub`);
   });
 });
 
@@ -119,6 +122,18 @@ describe("contentDisposition", () => {
     expect(contentDisposition('a"b(c)*d.epub')).toBe(
       "attachment; filename=\"a_b(c)*d.epub\"; filename*=UTF-8''a%22b%28c%29%2Ad.epub"
     );
+  });
+
+  it("replaces a lone surrogate instead of throwing URIError", () => {
+    const header = contentDisposition("a\uD83Db.epub");
+    expect(header).toContain("%EF%BF%BD"); // U+FFFD
+    expect(header).not.toContain("\uD83D");
+  });
+
+  it("truncates long titles at code-point boundaries, so no lone surrogate is made", () => {
+    const stem = fileStem("a".repeat(119) + "😀" + "b", "book");
+    expect(stem).toBe("a".repeat(119) + "😀");
+    expect(contentDisposition(`${stem}.epub`)).not.toContain("%EF%BF%BD");
   });
 });
 
@@ -378,6 +393,48 @@ describe("embedImages", () => {
       { phase: "images", done: 1, total: 2 },
       { phase: "images", done: 2, total: 2 },
     ]);
+  });
+});
+
+describe("trimWhiteBorder", () => {
+  // A white page with a dark panel inside, like a scanned comic page.
+  const page = (format: "png" | "jpeg") =>
+    sharp({ create: { width: 200, height: 300, channels: 3, background: "#ffffff" } })
+      .composite([{ input: { create: { width: 120, height: 200, channels: 3, background: "#202020" } }, left: 40, top: 50 }])
+      .toFormat(format)
+      .toBuffer();
+
+  it("cuts the white margin around the content, keeping the format", async () => {
+    const trimmed = await trimWhiteBorder(await page("png"), "png");
+    const meta = await sharp(trimmed).metadata();
+    expect([meta.width, meta.height, meta.format]).toEqual([120, 200, "png"]);
+  });
+
+  it("works on JPEG pages too (their white is not exactly white)", async () => {
+    const meta = await sharp(await trimWhiteBorder(await page("jpeg"), "jpg")).metadata();
+    expect(meta.format).toBe("jpeg");
+    expect(meta.width).toBeLessThanOrEqual(124);
+    expect(meta.height).toBeLessThanOrEqual(204);
+  });
+
+  it("keeps the original bytes when there is nothing to cut", async () => {
+    const full = await sharp({ create: { width: 50, height: 80, channels: 3, background: "#336699" } }).png().toBuffer();
+    expect(await trimWhiteBorder(full, "png")).toBe(full);
+  });
+
+  it("keeps a nearly blank page whole instead of shrinking it to a speck", async () => {
+    const blank = await sharp({ create: { width: 200, height: 300, channels: 3, background: "#ffffff" } })
+      .composite([{ input: { create: { width: 10, height: 10, channels: 3, background: "#000000" } }, left: 95, top: 145 }])
+      .png()
+      .toBuffer();
+    expect(await trimWhiteBorder(blank, "png")).toBe(blank);
+  });
+
+  it("leaves GIFs and undecodable bytes alone", async () => {
+    const gif = Buffer.from("GIF89a-not-really");
+    expect(await trimWhiteBorder(gif, "gif")).toBe(gif);
+    const junk = Buffer.from("not an image");
+    expect(await trimWhiteBorder(junk, "png")).toBe(junk);
   });
 });
 

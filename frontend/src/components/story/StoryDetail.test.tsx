@@ -4,7 +4,7 @@ import { act, cleanup, render, screen, waitFor, within } from "@testing-library/
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LangProvider } from "../../i18n";
-import type { StoredChapter, StoredStory } from "../../types";
+import type { RewriteState, StoredChapter, StoredStory } from "../../types";
 import type { CrawlJobState } from "../../hooks/useCrawlJob";
 import StoryDetail from "./StoryDetail";
 
@@ -49,7 +49,26 @@ vi.mock("../reader/ReaderOverlay", () => ({
   ),
 }));
 vi.mock("../../vault", () => ({ useVault: () => ({ active: false }) }));
+const rewrite = vi.hoisted(() => ({
+  value: {
+    state: null as RewriteState | null,
+    outcome: null,
+    error: null,
+    start: vi.fn(),
+    stop: vi.fn(),
+    refresh: vi.fn(),
+    dismissOutcome: vi.fn(),
+  },
+}));
+vi.mock("../../hooks/useRewrite", () => ({ useRewrite: () => rewrite.value }));
 vi.mock("./AgentCrawlerPanel", () => ({ default: () => <div data-testid="agent-crawler-panel" /> }));
+vi.mock("./YouTubePanel", () => ({
+  default: (p: { onClose: () => void }) => (
+    <div data-testid="youtube-panel">
+      <button onClick={p.onClose}>close-youtube</button>
+    </div>
+  ),
+}));
 
 function ch(order: number, over: Partial<StoredChapter> = {}): StoredChapter {
   return {
@@ -78,6 +97,9 @@ function makeStory(over: Partial<StoredStory> = {}): StoredStory {
     ...over,
   };
 }
+
+const openRowMenu = (order: number) =>
+  userEvent.click(screen.getByRole("button", { name: `Actions for chapter ${order}` }));
 
 const idleJob: CrawlJobState = { label: "", running: false, pct: 0, cursor: 0, total: 0, errors: 0, log: [], chapters: {} };
 
@@ -123,6 +145,15 @@ beforeEach(() => {
   exporter.progress = null;
   exporter.exportStoryBook.mockReset();
   narr.value = makeNarration();
+  rewrite.value = {
+    state: null,
+    outcome: null,
+    error: null,
+    start: vi.fn(),
+    stop: vi.fn(),
+    refresh: vi.fn(),
+    dismissOutcome: vi.fn(),
+  };
 });
 afterEach(cleanup);
 
@@ -351,6 +382,211 @@ describe("StoryDetail export and reader", () => {
   });
 });
 
+describe("StoryDetail rewrite", () => {
+  it("shows a Rewrite button on a done chapter and starts the rewrite for it", async () => {
+    const start = vi.fn();
+    rewrite.value = {
+      state: { narratable: true, ready: true, chapters: { 1: { rewritten: false } }, remaining: 1, running: null },
+      outcome: null,
+      error: null,
+      start,
+      stop: vi.fn(),
+      refresh: vi.fn(),
+      dismissOutcome: vi.fn(),
+    };
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    setup();
+    await userEvent.click(screen.getByRole("button", { name: "Actions for chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Rewrite chapter 1 for narration" }));
+    expect(start).toHaveBeenCalledWith([1]);
+    vi.unstubAllGlobals();
+  });
+
+  it("hides the rewrite actions when the agent setting is off", async () => {
+    rewrite.value = {
+      state: { narratable: true, ready: false, chapters: { 1: { rewritten: true } }, remaining: 1, running: null },
+      outcome: null,
+      error: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      refresh: vi.fn(),
+      dismissOutcome: vi.fn(),
+    };
+    setup();
+    // No AI action in the row menu, but the original text can still be restored.
+    await openRowMenu(1);
+    expect(screen.queryByRole("button", { name: "Rewrite chapter 1 for narration" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Restore original text of chapter 1" })).toBeInTheDocument();
+    await userEvent.keyboard("{Escape}");
+    // And no batch rewrite button either.
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 1" }));
+    expect(screen.getByText("1 chapters selected")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Rewrite 1 chapters" })).toBeNull();
+  });
+
+  it("shows the restore button on a rewritten chapter", async () => {
+    rewrite.value = {
+      state: { narratable: true, ready: true, chapters: { 1: { rewritten: true } }, remaining: 0, running: null },
+      outcome: null,
+      error: null,
+      start: vi.fn(),
+      stop: vi.fn(),
+      refresh: vi.fn(),
+      dismissOutcome: vi.fn(),
+    };
+    setup();
+    expect(screen.getByText("Rewritten")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Actions for chapter 1" }));
+    expect(screen.getByRole("button", { name: "Restore original text of chapter 1" })).toBeInTheDocument();
+  });
+});
+
+describe("StoryDetail batch actions", () => {
+  function readyRewrite() {
+    narr.value = makeNarration({ narratable: true });
+    const start = vi.fn();
+    rewrite.value = {
+      state: { narratable: true, ready: true, chapters: {}, remaining: 3, running: null },
+      outcome: null,
+      error: null,
+      start,
+      stop: vi.fn(),
+      refresh: vi.fn(),
+      dismissOutcome: vi.fn(),
+    };
+    return start;
+  }
+
+  it("selects chapters and rewrites them in one run", async () => {
+    const start = readyRewrite();
+    setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 1" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 3" }));
+    expect(screen.getByText("2 chapters selected")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Rewrite 2 chapters" }));
+    expect(start).toHaveBeenCalledWith([1, 3]);
+  });
+
+  it("selects every chapter on the page from the header box, pending rows included", async () => {
+    setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select all chapters" }));
+    // Chapters 1 and 3 are cards; chapter 2 is a pending row.
+    expect(screen.getByText("3 chapters selected")).toBeInTheDocument();
+  });
+
+  it("deletes a selected pending chapter, the only batch action it takes", async () => {
+    readyRewrite();
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    api.deleteChapter.mockResolvedValue(undefined);
+    setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 2" }));
+    expect(screen.queryByRole("button", { name: /^Rewrite/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Re-crawl/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /^Mark/ })).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Delete 1 chapters" }));
+    expect(api.deleteChapter).toHaveBeenCalledWith("s1", 2);
+    vi.unstubAllGlobals();
+  });
+
+  it("counts only crawled chapters for the actions a pending row cannot take", async () => {
+    const start = readyRewrite();
+    setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 1" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 2" }));
+    expect(screen.getByRole("button", { name: "Delete 2 chapters" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Rewrite 1 chapters" }));
+    expect(start).toHaveBeenCalledWith([1]);
+  });
+
+  it("forgets a deleted pending chapter's edited title, as a single delete does", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    api.saveChapterTitle.mockResolvedValue(undefined);
+    api.deleteChapter.mockResolvedValue(undefined);
+    api.fetchStory.mockResolvedValue(makeStory({ chapters: [ch(1), ch(3, { status: "error", error: "boom" })] }));
+    const { props, rerender } = setup();
+    await userEvent.click(screen.getByRole("button", { name: "Edit title for chapter 2" }));
+    const input = screen.getByLabelText("Title for chapter 2");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Fixed");
+    await userEvent.click(screen.getByRole("button", { name: "Save title" }));
+    expect(await screen.findByText("Fixed")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete 1 chapters" }));
+    await waitFor(() => expect(api.deleteChapter).toHaveBeenCalledWith("s1", 2));
+    // Reloading the chapter list brings the chapter back at the same order, with the site's title.
+    rerender(
+      <LangProvider>
+        <StoryDetail {...props} story={makeStory({ updatedAt: "2026-01-03" })} />
+      </LangProvider>,
+    );
+    expect(await screen.findByText("Chapter title 2")).toBeInTheDocument();
+    expect(screen.queryByText("Fixed")).not.toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps deleting after one chapter is refused, and leaves that one selected", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    api.deleteChapter.mockRejectedValueOnce(new Error("Chapter not found")).mockResolvedValue(undefined);
+    api.fetchStory.mockResolvedValue(makeStory({ chapters: [ch(1), ch(3, { status: "error", error: "boom" })] }));
+    setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 1" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 2" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete 2 chapters" }));
+    expect(api.deleteChapter).toHaveBeenCalledWith("s1", 1);
+    expect(api.deleteChapter).toHaveBeenCalledWith("s1", 2);
+    expect(await screen.findByText("Chapter not found")).toBeInTheDocument();
+    expect(screen.getByText("1 chapters selected")).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "Select chapter 1" })).toBeChecked();
+    vi.unstubAllGlobals();
+  });
+
+  it("stops counting a selected chapter once it is gone from the story", async () => {
+    const { props, rerender } = setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 1" }));
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 2" }));
+    expect(screen.getByText("2 chapters selected")).toBeInTheDocument();
+    // Chapter 1 was deleted elsewhere; the parent refetched the story without it.
+    rerender(
+      <LangProvider>
+        <StoryDetail {...props} story={makeStory({ chapters: [ch(2, { status: "pending", blocks: undefined }), ch(3)] })} />
+      </LangProvider>,
+    );
+    expect(screen.getByText("1 chapters selected")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Delete 1 chapters" })).toBeInTheDocument();
+  });
+
+  it("deletes the selected chapters after one confirmation", async () => {
+    vi.stubGlobal("confirm", vi.fn(() => true));
+    api.deleteChapter.mockResolvedValue(undefined);
+    setup();
+    await userEvent.click(screen.getByRole("checkbox", { name: "Select chapter 1" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete 1 chapters" }));
+    expect(api.deleteChapter).toHaveBeenCalledWith("s1", 1);
+    vi.unstubAllGlobals();
+  });
+});
+
+describe("StoryDetail YouTube", () => {
+  it("opens the YouTube panel from the action row and closes it again", async () => {
+    narr.value = makeNarration({
+      narratable: true,
+      narratedCount: 3,
+      narration: { state: { narratable: true, chapters: {}, bytes: 0, running: null }, start: vi.fn(), stop: vi.fn(), refresh: vi.fn(), dismissOutcome: vi.fn() },
+    });
+    setup();
+    expect(screen.queryByTestId("youtube-panel")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Publish" }));
+    expect(screen.getByTestId("youtube-panel")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "close-youtube" }));
+    expect(screen.queryByTestId("youtube-panel")).not.toBeInTheDocument();
+  });
+
+  it("hides the YouTube button for a story with no narration", () => {
+    setup();
+    expect(screen.queryByRole("button", { name: "Publish" })).not.toBeInTheDocument();
+  });
+});
+
 describe("StoryDetail narration", () => {
   const withNarration = () => {
     const start = vi.fn();
@@ -372,7 +608,10 @@ describe("StoryDetail narration", () => {
     const start = withNarration();
     setup({ story: { language: "vi", chapters: [ch(1), ch(2)] } });
     expect(screen.getByTestId("narration-panel")).toBeInTheDocument();
+    await openRowMenu(1);
     expect(screen.getByRole("link", { name: "Download narration of chapter 1" })).toHaveAttribute("href", "/audio/s1/1.mp3");
+    await userEvent.keyboard("{Escape}");
+    await openRowMenu(2);
     await userEvent.click(screen.getByRole("button", { name: "Create audio for chapter 2" }));
     expect(start).toHaveBeenCalledWith([2]);
   });
@@ -417,17 +656,21 @@ describe("StoryDetail chapter table", () => {
   it("deletes a chapter and tells the parent; failure shows a banner", async () => {
     api.deleteChapter.mockResolvedValueOnce(undefined).mockRejectedValueOnce(new Error("locked db"));
     const { props } = setup();
+    await openRowMenu(1);
     await userEvent.click(screen.getByRole("button", { name: "Delete chapter 1" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(api.deleteChapter).toHaveBeenCalledWith("s1", 1);
     await waitFor(() => expect(props.onStoryChanged).toHaveBeenCalled());
-    await userEvent.click(screen.getByRole("button", { name: "Delete chapter 2" }));
+    // Chapter 3 is an error row (a card, so it has the row menu), not a pending row.
+    await openRowMenu(3);
+    await userEvent.click(screen.getByRole("button", { name: "Delete chapter 3" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(await screen.findByText("locked db")).toBeInTheDocument();
   });
 
-  it("disables delete while a crawl runs", () => {
+  it("disables delete while a crawl runs", async () => {
     setup({ job: { running: true } });
+    await openRowMenu(1);
     expect(screen.getByRole("button", { name: "Delete chapter 1" })).toBeDisabled();
   });
 
@@ -468,8 +711,10 @@ describe("StoryDetail chapter table", () => {
   it("toggles the spelling mark via the API", async () => {
     api.saveChapterSpellChecked.mockResolvedValue({ spellChecked: true });
     setup();
-    await userEvent.click(screen.getAllByRole("button", { name: "Spelling fixed in chapter 1" })[0]);
+    await openRowMenu(1);
+    await userEvent.click(screen.getByRole("button", { name: "Spelling fixed in chapter 1" }));
     expect(api.saveChapterSpellChecked).toHaveBeenCalledWith("s1", 1, true);
+    await openRowMenu(1);
     await waitFor(() =>
       expect(screen.getByRole("button", { name: "Spelling fixed in chapter 1" })).toHaveAttribute("aria-pressed", "true"),
     );

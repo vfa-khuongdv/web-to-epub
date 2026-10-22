@@ -1,8 +1,9 @@
 import { randomUUID } from "crypto";
 import { pathToFileURL } from "url";
-import { Response as ExpressResponse, Router } from "express";
+import { Response as ExpressResponse } from "express";
+import { createRouter } from "./asyncRouter";
 import { BuildProgress, buildEpub, contentDisposition, epubFileName } from "../services/epubBuilder";
-import { coverPathForExport } from "../services/coverStore";
+import { coverFileForExport } from "../services/coverStore";
 import { blocksToHtml } from "../services/chapterHtml";
 import { exportMediaHtml, storyMediaDir } from "../services/epubMedia";
 import { t } from "../services/lang";
@@ -12,7 +13,7 @@ import { storyAudioDir } from "../services/tts/audioCache";
 import { freshChapterAudio, isNarratable } from "../services/tts/narrate";
 import { libraryFor } from "./library";
 
-export const exportsRouter = Router();
+export const exportsRouter = createRouter();
 
 // Exporting EPUB with many images takes tens of seconds. A single response that both
 // reports progress and returns binary data is not feasible, so we split it: POST streams
@@ -63,9 +64,10 @@ async function streamExport(
     send({ type: "progress", ...progress });
   };
 
+  const cover = await coverFileForExport(metadata.coverUrl, dataDir);
   try {
     const parts = await buildEpub(
-      { ...metadata, coverUrl: metadata.coverUrl ? coverPathForExport(metadata.coverUrl, dataDir) : undefined },
+      { ...metadata, coverUrl: cover.path },
       chapters,
       onProgress,
       undefined,
@@ -83,6 +85,8 @@ async function streamExport(
     send({ type: "done", exports });
   } catch (err) {
     send({ type: "error", message: err instanceof Error ? err.message : "EPUB export error" });
+  } finally {
+    await cover.cleanup();
   }
   res.end();
 }

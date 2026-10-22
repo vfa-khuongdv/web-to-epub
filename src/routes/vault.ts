@@ -1,8 +1,9 @@
-import { Response as ExpressResponse, Router } from "express";
+import { Response as ExpressResponse } from "express";
+import { createRouter } from "./asyncRouter";
 import { CODE_RE, vault } from "../services/vault";
 import { t } from "../services/lang";
 
-export const vaultRouter = Router();
+export const vaultRouter = createRouter();
 
 // ---- The lock on the private library (see services/vault.ts) ----------------
 

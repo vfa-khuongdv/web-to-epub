@@ -286,7 +286,7 @@ describe("the music the app ships", () => {
   it("lists tracks the player accepts, with the files they name", async () => {
     const manifest = JSON.parse(
       await fs.readFile(path.join(BUNDLED_MUSIC_DIR, "tracks.json"), "utf8")
-    ) as { slug: string; name: string; file: string }[];
+    ) as { slug: string; name: string; file: string; default?: boolean }[];
 
     expect(manifest.length).toBeGreaterThan(0);
     for (const track of manifest) {
@@ -298,5 +298,10 @@ describe("the music the app ships", () => {
       expect(bytes.length, `${track.file} is over the upload limit`).toBeLessThanOrEqual(MAX_MUSIC_BYTES);
     }
     expect(new Set(manifest.map((track) => track.slug)).size, "slugs must be unique").toBe(manifest.length);
+    expect(new Set(manifest.map((track) => track.file)).size, "files must be unique").toBe(manifest.length);
+    // defaultMusicId reads the seeded marker, so two marked entries would silently pick
+    // whichever the manifest lists first, and editing the list could change what the app
+    // plays out of the box without anyone meaning to.
+    expect(manifest.filter((track) => track.default), "exactly one track is the default").toHaveLength(1);
   });
 });

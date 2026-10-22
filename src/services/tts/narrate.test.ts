@@ -17,7 +17,7 @@ import {
   narrateChapters,
   narrationStates,
 } from "./narrate";
-import { NarrationCancelled, SynthRequest, TtsWorker } from "./workerClient";
+import { INTRO_PAUSE_SECONDS, NarrationCancelled, SynthRequest, TtsWorker } from "./workerClient";
 
 const STORY_ID = storyId("https://example.com/truyen/");
 
@@ -117,9 +117,9 @@ describe("narration job", () => {
     const result = await narrateChapters(job(runtime), [1, 3, 4, 5]);
 
     expect(result).toEqual({ done: 2, failed: 1 });
-    expect(runtime.calls.map((c) => c.request.parts)).toEqual([["Chương 1", "Một."], ["Chương 3", "FAIL"], ["Chương 5", "Năm."]]);
+    expect(runtime.calls.map((c) => c.request.parts)).toEqual([["Một."], ["FAIL"], ["Năm."]]);
     expect(runtime.calls.every((c) => c.variant === "turbo" && c.request.voice === "A")).toBe(true);
-    expect(await fs.readFile(chapterAudioPath(dir, STORY_ID, 1), "utf8")).toBe("Chương 1|Một.");
+    expect(await fs.readFile(chapterAudioPath(dir, STORY_ID, 1), "utf8")).toBe("Một.");
 
     expect(events.map((e) => [e.type, "order" in e ? e.order : undefined])).toEqual([
       ["narrate-progress", 1],
@@ -130,7 +130,7 @@ describe("narration job", () => {
       ["narrate-chapter-done", 5],
     ]);
     expect(events.find((e) => e.type === "narrate-error")).toMatchObject({ message: "model blew up" });
-    expect(events.at(-1)).toMatchObject({ seconds: 4, skipped: false, done: 2, total: 4 });
+    expect(events.at(-1)).toMatchObject({ seconds: 2, skipped: false, done: 2, total: 4 });
   });
 
   it("skips chapters that have audio, keeps it when the voice or the text changes, redoes it on regenerate", async () => {
@@ -166,23 +166,58 @@ describe("narration job", () => {
 
   it("records each part's timing and serves the chapter's timeline, estimating it for older audio", async () => {
     await narrateChapters(job(fakeRuntime()), [1]);
-    // The fake worker gives no timings, so this is the estimate: title first (block -1),
-    // then the paragraph (block 0), in order, within the audio's length.
+    // The fake worker gives no timings, so this is the estimate: the paragraph (block 0), within the audio's length.
     const estimated = await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings);
-    expect(estimated?.map((p) => p.block)).toEqual([-1, 0]);
+    expect(estimated?.map((p) => p.block)).toEqual([0]);
     expect(estimated![0].start).toBe(0);
-    expect(estimated![1].start).toBeGreaterThan(estimated![0].end);
-    expect(estimated![1].end).toBeLessThanOrEqual(4);
+    expect(estimated![0].end).toBeLessThanOrEqual(2);
 
     const timed = fakeRuntime();
-    timed.timings = [[0, 1.2], [1.6, 3.9]];
+    timed.timings = [[0, 1.2]];
     await fs.rm(path.join(dir, "audio"), { recursive: true });
     await narrateChapters(job(timed), [1]);
     expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings)).toEqual([
-      { block: -1, start: 0, end: 1.2 },
-      { block: 0, start: 1.6, end: 3.9 },
+      { block: 0, start: 0, end: 1.2 },
     ]);
     expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 3, settings)).toBeUndefined();
+  });
+
+  it("reads a channel introduction before the story's first chapter only, and records it with the audio", async () => {
+    const runtime = fakeRuntime();
+    runtime.timings = [[0, 1], [1.5, 3]];
+    const titles: string[] = [];
+    await narrateChapters(
+      {
+        ...job(runtime),
+        intro: (title) => {
+          titles.push(title);
+          return `Chào kênh, truyện ${title}.`;
+        },
+      },
+      [1, 5]
+    );
+    // Chapter 1 starts with the sentence, chapter 5 (not the first) is read as it is.
+    expect(runtime.calls.map((c) => c.request.parts)).toEqual([["Chào kênh, truyện Truyện.", "Một."], ["Năm."]]);
+    expect(titles).toEqual(["Truyện"]);
+    // Only the chapter with the introduction asks for the longer breath after it.
+    expect(runtime.calls.map((c) => c.request.afterFirst)).toEqual([INTRO_PAUSE_SECONDS, undefined]);
+    const { readAudioMeta } = await import("./audioCache");
+    expect((await readAudioMeta(dir, STORY_ID, 1))?.intro).toBe("Chào kênh, truyện Truyện.");
+    expect((await readAudioMeta(dir, STORY_ID, 5))?.intro).toBeUndefined();
+
+    // The reader's timeline gets a part for the sentence that highlights no block.
+    expect(await chapterNarrationTimeline(stories, dir, STORY_ID, 1, settings)).toEqual([
+      { block: -1, start: 0, end: 1 },
+      { block: 0, start: 1.5, end: 3 },
+    ]);
+  });
+
+  it("reads no introduction when it is off", async () => {
+    const runtime = fakeRuntime();
+    await narrateChapters({ ...job(runtime), intro: () => undefined }, [1]);
+    expect(runtime.calls[0].request.parts).toEqual(["Một."]);
+    const { readAudioMeta } = await import("./audioCache");
+    expect((await readAudioMeta(dir, STORY_ID, 1))?.intro).toBeUndefined();
   });
 
   it("reads the voice per chapter, so a change applies from the next chapter", async () => {

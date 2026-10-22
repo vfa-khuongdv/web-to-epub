@@ -1,6 +1,6 @@
 # Các trang đã kiểm thử
 
-Cập nhật: 2026-10-06. Chỉ liệt kê site đã thử và chạy được; không liệt kê site chuyên nội dung 18+. Danh sách sẽ được bổ sung dần.
+Cập nhật: 2026-10-12. Chỉ liệt kê site đã thử và chạy được; không liệt kê site chuyên nội dung 18+. Danh sách sẽ được bổ sung dần.
 
 - Site ở mục 1–2 có hỗ trợ riêng trong app.
 - Site ở mục 3 chạy qua **Agent crawler** (Settings → Agent crawler, mặc định tắt). Kết quả phụ thuộc agent đang dùng (đã thử với opencode) và có thể thay đổi khi site đổi giao diện.
@@ -19,6 +19,7 @@ Cập nhật: 2026-10-06. Chỉ liệt kê site đã thử và chạy được; 
 | Asianfanfics (`asianfanfics.com`) | Fanfic (EN) | Truyện rated-M / chỉ dành cho subscriber cần nhập phiên đăng nhập (token ~1 giờ) |
 | FanFiction.net (`fanfiction.net`) | Fanfic (EN) | |
 | Scribd (`scribd.com`) | Tài liệu | Tài liệu tài khoản không xem đầy đủ sẽ bị từ chối |
+| MangaDex (`mangadex.org`) | Truyện tranh | Mỗi bản dịch là một truyện riêng (mặc định tiếng Việt, không có thì tiếng Anh; thêm `?lang=en`… để chọn bản khác); chương đăng trên MangaPlus bị bỏ qua |
 
 ## 2. Nhập sách từ file hoặc link (không crawl chương)
 

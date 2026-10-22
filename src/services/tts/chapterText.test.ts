@@ -33,7 +33,7 @@ describe("splitLongText", () => {
 });
 
 describe("chapterParts", () => {
-  it("reads the title, headings and paragraphs as plain text; skips media", () => {
+  it("reads headings and paragraphs as plain text, not the title; skips media", () => {
     const parts = chapterParts("Chương 1: Khởi đầu", [
       { type: "heading", level: 2, text: "Phần một" },
       { type: "paragraph", text: "Anh <b>bước</b> vào &amp; ngồi xuống." },
@@ -41,7 +41,7 @@ describe("chapterParts", () => {
       { type: "audio", src: "https://x/a.mp3" },
       { type: "paragraph", text: "   " },
     ]);
-    expect(parts).toEqual(["Chương 1: Khởi đầu", "Phần một", "Anh bước vào & ngồi xuống."]);
+    expect(parts).toEqual(["Phần một", "Anh bước vào & ngồi xuống."]);
   });
 
   it("does not read a heading that repeats the title", () => {
@@ -49,7 +49,7 @@ describe("chapterParts", () => {
       { type: "heading", level: 1, text: "Chương 2" },
       { type: "paragraph", text: "Nội dung." },
     ]);
-    expect(parts).toEqual(["Chương 2", "Nội dung."]);
+    expect(parts).toEqual(["Nội dung."]);
   });
 
   it("splits long paragraphs", () => {
@@ -59,7 +59,7 @@ describe("chapterParts", () => {
     expect(parts.every((p) => p.length <= 250)).toBe(true);
   });
 
-  it("says which block each part reads: -1 for the title, the block index otherwise", () => {
+  it("says which block each part reads: the block index", () => {
     const long = "Một câu dài vừa phải để tách. ".repeat(12);
     const parts = chapterPartsWithBlocks("Chương 3", [
       { type: "heading", level: 1, text: "Chương 3" },
@@ -67,8 +67,7 @@ describe("chapterParts", () => {
       { type: "paragraph", text: long },
       { type: "paragraph", text: "Cuối." },
     ]);
-    expect(parts[0]).toEqual({ text: "Chương 3", block: -1 });
-    const blocks = parts.slice(1).map((p) => p.block);
+    const blocks = parts.map((p) => p.block);
     expect(new Set(blocks.slice(0, -1))).toEqual(new Set([2]));
     expect(blocks.length).toBeGreaterThan(2);
     expect(parts.at(-1)).toEqual({ text: "Cuối.", block: 3 });

@@ -46,6 +46,7 @@ function setup(over: Partial<Props> = {}) {
 }
 
 const open = () => userEvent.click(screen.getByRole("button", { name: /Chap three/ }));
+const openMenu = () => userEvent.click(screen.getByRole("button", { name: "Actions for chapter 3" }));
 
 describe("ChapterCard row", () => {
   it("shows order, title and Done chip; falls back to the URL as title", () => {
@@ -98,16 +99,35 @@ describe("ChapterCard row", () => {
   it("re-crawl asks for confirmation", async () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     const props = setup();
+    await openMenu();
     await userEvent.click(screen.getByRole("button", { name: "Re-crawl" }));
     expect(props.onRetry).not.toHaveBeenCalled();
+    await openMenu();
     await userEvent.click(screen.getByRole("button", { name: "Re-crawl" }));
     expect(props.onRetry).toHaveBeenCalledTimes(1);
     expect(confirm).toHaveBeenCalledTimes(2);
   });
 
-  it("hides Re-crawl for imported books", () => {
+  it("hides Re-crawl for imported books", async () => {
     setup({ imported: true });
+    // Nothing else to offer either: no menu button at all.
+    expect(screen.queryByRole("button", { name: "Actions for chapter 3" })).toBeNull();
+    cleanup();
+    setup({ imported: true, onDelete: vi.fn() });
+    await openMenu();
     expect(screen.queryByRole("button", { name: "Re-crawl" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Delete chapter 3" })).toBeInTheDocument();
+  });
+});
+
+describe("ChapterCard selection", () => {
+  it("ticks the row for the batch actions", async () => {
+    const onSelectChange = vi.fn();
+    setup({ onSelectChange, selected: true });
+    const box = screen.getByRole("checkbox", { name: "Select chapter 3" });
+    expect(box).toBeChecked();
+    await userEvent.click(box);
+    expect(onSelectChange).toHaveBeenCalledWith(false);
   });
 });
 
@@ -115,19 +135,23 @@ describe("ChapterCard delete", () => {
   it("confirms then deletes; cancel backs out", async () => {
     const onDelete = vi.fn().mockResolvedValue(undefined);
     setup({ onDelete });
+    await openMenu();
     await userEvent.click(screen.getByRole("button", { name: "Delete chapter 3" }));
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }));
     expect(onDelete).not.toHaveBeenCalled();
+    await openMenu();
     await userEvent.click(screen.getByRole("button", { name: "Delete chapter 3" }));
     await userEvent.click(screen.getByRole("button", { name: "Delete" }));
     expect(onDelete).toHaveBeenCalledTimes(1);
   });
 
-  it("is disabled while crawling and absent without a handler", () => {
+  it("is disabled while crawling and absent without a handler", async () => {
     setup({ onDelete: vi.fn(), deleteDisabled: true });
+    await openMenu();
     expect(screen.getByRole("button", { name: "Delete chapter 3" })).toBeDisabled();
     cleanup();
     setup();
+    await openMenu();
     expect(screen.queryByRole("button", { name: "Delete chapter 3" })).toBeNull();
   });
 });
@@ -138,7 +162,9 @@ describe("ChapterCard audio and spell check", () => {
     setup({ audioUrl: "/a.mp3", onPlayAudio });
     await userEvent.click(screen.getByRole("button", { name: "Listen to chapter 3" }));
     expect(onPlayAudio).toHaveBeenCalled();
+    await openMenu();
     expect(screen.getByRole("link", { name: "Download narration of chapter 3" })).toHaveAttribute("href", "/a.mp3");
+    await userEvent.keyboard("{Escape}");
     cleanup();
     setup({ audioUrl: "/a.mp3", onPlayAudio, audioPlaying: true });
     expect(screen.getByRole("button", { name: "Pause chapter 3" })).toBeInTheDocument();
@@ -148,29 +174,35 @@ describe("ChapterCard audio and spell check", () => {
     vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
     const onRegenerateAudio = vi.fn();
     setup({ audioUrl: "/a.mp3", onRegenerateAudio });
-    const btn = screen.getByRole("button", { name: "Regenerate audio of chapter 3" });
-    await userEvent.click(btn);
+    await openMenu();
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate audio of chapter 3" }));
     expect(onRegenerateAudio).not.toHaveBeenCalled();
-    await userEvent.click(btn);
+    await openMenu();
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate audio of chapter 3" }));
     expect(onRegenerateAudio).toHaveBeenCalledTimes(1);
   });
 
   it("offers Create audio only without audio, and respects regenerateDisabled", async () => {
     const onCreateAudio = vi.fn();
     setup({ onCreateAudio, regenerateDisabled: true });
+    await openMenu();
     expect(screen.getByRole("button", { name: "Create audio for chapter 3" })).toBeDisabled();
+    await userEvent.keyboard("{Escape}");
     cleanup();
     setup({ onCreateAudio });
+    await openMenu();
     await userEvent.click(screen.getByRole("button", { name: "Create audio for chapter 3" }));
     expect(onCreateAudio).toHaveBeenCalled();
     cleanup();
     setup({ onCreateAudio, audioUrl: "/a.mp3" });
+    await openMenu();
     expect(screen.queryByRole("button", { name: "Create audio for chapter 3" })).toBeNull();
   });
 
   it("toggles the spelling mark and reflects aria-pressed", async () => {
     const onToggleSpellChecked = vi.fn().mockResolvedValue(undefined);
     setup({ onToggleSpellChecked, spellChecked: true });
+    await openMenu();
     const btn = screen.getByRole("button", { name: "Spelling fixed in chapter 3" });
     expect(btn).toHaveAttribute("aria-pressed", "true");
     await userEvent.click(btn);

@@ -176,9 +176,11 @@ def synth(model, message, prompts):
     prompt = voice_prompt(model, message["refAudio"], message.get("refText"), message.get("refPrompt"), prompts)
     rate = model.sampling_rate
     pause = np.zeros(int(rate * PAUSE_SECONDS), dtype=np.float32)
-    chunks = []
+    # Silence before the first word, so a listener has a moment before the voice starts.
+    lead = np.zeros(int(rate * float(message.get("lead") or 0)), dtype=np.float32)
+    chunks = [lead] if len(lead) else []
     timings = []
-    position = 0
+    position = len(lead)
     for index, text in enumerate(parts):
         if job_id in cancelled:
             cancelled.discard(job_id)
@@ -190,6 +192,11 @@ def synth(model, message, prompts):
         position += len(audio) + len(pause)
         chunks.append(audio)
         chunks.append(pause)
+        if index == 0 and message.get("afterFirst"):
+            # The introduction: a longer breath before the chapter itself starts.
+            extra = np.zeros(int(rate * float(message["afterFirst"])), dtype=np.float32)
+            position += len(extra)
+            chunks.append(extra)
         send({"type": "progress", "id": job_id, "part": index + 1, "parts": len(parts)})
 
     samples = np.concatenate(chunks) if chunks else pause

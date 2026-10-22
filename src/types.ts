@@ -1,4 +1,4 @@
-export type BlockType = "heading" | "paragraph" | "image" | "audio" | "video";
+export type BlockType = "heading" | "paragraph" | "html" | "image" | "audio" | "video";
 
 // Why a crawl failed. "locked" means a retry cannot change the outcome until the site
 // grants access (missing/expired login); "subscribers" and "mature" are that same kind of
@@ -10,7 +10,7 @@ export type ChapterErrorKind = "locked" | "subscribers" | "mature" | "other";
 export interface ContentBlock {
   type: BlockType;
   level?: number; // for headings: 1-6
-  text?: string; // for heading/paragraph, HTML-safe text
+  text?: string; // for heading/paragraph, HTML-safe text; for html, ONE block-level element (table, pre) kept as is
   src?: string; // for image/audio/video
   alt?: string; // for image
 }

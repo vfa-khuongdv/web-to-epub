@@ -4,16 +4,18 @@
 // forgotten when the app restarted. The port is kept in userData and reused while it is
 // free. When something else holds it for a while, this launch runs on another port, but the
 // saved one is kept: the next launch goes back to it, and to everything stored under it.
+// Installs from main have no port.json and used 45813, so preserve that origin too.
 const fs = require("fs");
 const net = require("net");
 
-// Both tried the way src/server.ts listens (every interface, no host), so "free" here means
-// the server can really take it.
+const PREFERRED_PORT = 45813;
+
+// Probe the loopback interface used by the desktop server.
 function findFreePort() {
   return new Promise((resolve, reject) => {
     const srv = net.createServer();
     srv.once("error", reject);
-    srv.listen(0, () => {
+    srv.listen(0, "127.0.0.1", () => {
       const { port } = srv.address();
       srv.close(() => resolve(port));
     });
@@ -24,7 +26,7 @@ function isPortFree(port) {
   return new Promise((resolve) => {
     const srv = net.createServer();
     srv.once("error", () => resolve(false));
-    srv.listen(port, () => srv.close(() => resolve(true)));
+    srv.listen(port, "127.0.0.1", () => srv.close(() => resolve(true)));
   });
 }
 
@@ -40,15 +42,17 @@ function readSavedPort(file) {
 // `isFree`/`findFree` are injectable so the choice can be tested without opening sockets.
 async function choosePort(file, { isFree = isPortFree, findFree = findFreePort } = {}) {
   const saved = readSavedPort(file);
-  if (saved !== null && (await isFree(saved))) return saved;
-  const port = await findFree();
-  if (saved !== null) return port;
+  const preferred = saved ?? PREFERRED_PORT;
+  // A temporary fallback must not replace either an existing saved origin or main's
+  // default origin. Once the preferred port is free, the next launch returns to it.
+  if (!(await isFree(preferred))) return findFree();
+  if (saved !== null) return saved;
   try {
-    fs.writeFileSync(file, JSON.stringify({ port }));
+    fs.writeFileSync(file, JSON.stringify({ port: preferred }));
   } catch {
-    /* Not remembered: the next launch picks again, as it always did */
+    /* Not remembered: the next launch tries the same default port again. */
   }
-  return port;
+  return preferred;
 }
 
 module.exports = { choosePort, findFreePort, isPortFree, readSavedPort };

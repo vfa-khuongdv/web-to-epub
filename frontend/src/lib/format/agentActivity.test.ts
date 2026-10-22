@@ -23,7 +23,7 @@ describe("describeAgentEvent", () => {
     });
     expect(describeAgentEvent(ev({ kind: "classify", fn: "url", agent: "opencode" }), t).text).toBe("Asking opencode whether a.test is the home page of a story");
     expect(describeAgentEvent(ev({ kind: "verdict", fn: "url", verdict: "story", reason: "lists chapters" }), t)).toEqual({ text: "It is a story page: lists chapters", isError: false });
-    expect(describeAgentEvent(ev({ kind: "verdict", fn: "url", verdict: "chapter", reason: "one chapter" }), t)).toEqual({ text: "It is not a story page: one chapter", isError: true });
+    expect(describeAgentEvent(ev({ kind: "verdict", fn: "url", verdict: "chapter", reason: "one chapter" }), t)).toEqual({ text: "It is one page of text: one chapter", isError: false });
     expect(describeAgentEvent(ev({ kind: "verdict", fn: "url", verdict: undefined }), t).text).toBe("The answer could not be read — writing the code anyway");
     expect(describeAgentEvent(ev({ kind: "failed", reason: "x" }), t).isError).toBe(true);
     expect(describeAgentEvent(ev({ kind: "locked", reason: "https://a.test/c1" }), t).text).toBe("https://a.test/c1 asks for a login — the app does not bypass it");
@@ -35,8 +35,8 @@ describe("isAgentBusy", () => {
     expect(isAgentBusy([])).toBe(false);
     for (const kind of ["classify", "ask", "answer", "retry"] as const) expect(isAgentBusy([ev({ kind })])).toBe(true);
     for (const kind of ["saved", "reuse", "stale", "failed", "locked"] as const) expect(isAgentBusy([ev({ kind })])).toBe(false);
-    // A "story" verdict is followed by the code being written; a refusal is the end.
+    // Every verdict is followed by the code being written.
     expect(isAgentBusy([ev({ kind: "verdict", verdict: "story" })])).toBe(true);
-    expect(isAgentBusy([ev({ kind: "verdict", verdict: "chapter" })])).toBe(false);
+    expect(isAgentBusy([ev({ kind: "verdict", verdict: "chapter" })])).toBe(true);
   });
 });

@@ -3,7 +3,7 @@ import { createReadStream } from "fs";
 import fs from "fs/promises";
 import os from "os";
 import path from "path";
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { MIX_SCRIPT } from "../config/tts";
 import { backgroundMusic } from "../services/backgroundMusic";
 import { contentDisposition, fileStem } from "../services/epubBuilder";
@@ -16,7 +16,7 @@ import { mixStoryAudio } from "../services/tts/storyMix";
 import { TtsVariant } from "../services/tts/workerClient";
 import { libraryFor } from "./library";
 
-export const audioExportsRouter = Router();
+export const audioExportsRouter = createRouter();
 
 // A finished zip waits on disk (not in RAM like an EPUB: a story's narration runs to
 // gigabytes) until the browser fetches it, then is deleted.

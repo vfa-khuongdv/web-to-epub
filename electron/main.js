@@ -198,20 +198,7 @@ ipcMain.on("stealth:global-key", (event, enabled) => {
 
 app.on("will-quit", () => globalShortcut.unregisterAll());
 
-// One instance at a time: a second one would open the same library (SQLite) from another
-// server, and would have to run on another port, which is another origin with none of the
-// first one's settings. Opening the app again brings its window to the front instead.
 let mainWindow = null;
-if (!app.requestSingleInstanceLock()) {
-  app.quit();
-} else {
-  app.on("second-instance", () => {
-    if (!mainWindow || mainWindow.isDestroyed()) return;
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-  });
-}
 
 async function start() {
   const port = await choosePort(path.join(app.getPath("userData"), "port.json"));
@@ -253,32 +240,44 @@ async function start() {
   await win.loadURL(`http://127.0.0.1:${port}/`);
 }
 
-app.whenReady().then(() => {
-  // The losing instance of the lock above is already quitting.
-  if (!app.hasSingleInstanceLock()) return;
-  // A previous update can leave "<app>.old" or a work dir behind; clear them before
-  // anything else. Best-effort (see services/appInstaller.ts).
-  if (isPackaged && currentUpdateKind() === "mac") cleanupUpdateLeftovers(resolveAppBundlePath(process.execPath));
-  return start().catch((err) => {
-    dialog.showErrorBox("Không khởi động được Web to EPUB", String(err && err.stack ? err.stack : err));
-    app.exit(1);
+// Một bản chạy tại một thời điểm: hai cửa sổ dùng chung stories.db là không an toàn, và
+// bản thứ hai mở ở cổng ngẫu nhiên (cổng cố định đã bị bản đầu giữ) nên vị trí lưu lại
+// rơi vào một origin khác. Lần mở sau chỉ đưa cửa sổ đang có lên trước.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on("second-instance", () => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
   });
-});
 
-app.on("window-all-closed", () => app.quit());
+  app.whenReady().then(() => {
+    // A previous update can leave "<app>.old" or a work dir behind; clear them before
+    // anything else. Best-effort (see services/appInstaller.ts).
+    if (isPackaged && currentUpdateKind() === "mac") cleanupUpdateLeftovers(resolveAppBundlePath(process.execPath));
+    return start().catch((err) => {
+      dialog.showErrorBox("Không khởi động được Web to EPUB", String(err && err.stack ? err.stack : err));
+      app.exit(1);
+    });
+  });
 
-// Đóng Chromium của Playwright trước khi thoát; app đóng gói không nhận
-// SIGINT/SIGTERM nên handler trong server.ts không chạy.
-let closing = false;
-app.on("before-quit", (event) => {
-  if (closing) return;
-  const { closeBrowser } = require(path.join(__dirname, "..", "dist", "services", "renderer.js"));
-  // The narration worker is a child Python process holding the model in RAM; it must
-  // not outlive the app. ttsEngines, not a single runtime: there is one per engine
-  // (VieNeu and OmniVoice) since 044ec73, and this used to name a `ttsRuntime` that no
-  // longer exists, so closing the app threw here and left both workers running.
-  require(path.join(__dirname, "..", "dist", "services", "tts", "runtime.js")).ttsEngines.shutdown();
-  closing = true;
-  event.preventDefault();
-  closeBrowser().catch(() => {}).then(() => app.quit());
-});
+  app.on("window-all-closed", () => app.quit());
+
+  // Đóng Chromium của Playwright trước khi thoát; app đóng gói không nhận
+  // SIGINT/SIGTERM nên handler trong server.ts không chạy.
+  let closing = false;
+  app.on("before-quit", (event) => {
+    if (closing) return;
+    const { closeBrowser } = require(path.join(__dirname, "..", "dist", "services", "renderer.js"));
+    // The narration worker is a child Python process holding the model in RAM; it must
+    // not outlive the app. ttsEngines, not a single runtime: there is one per engine
+    // (VieNeu and OmniVoice) since 044ec73, and this used to name a `ttsRuntime` that no
+    // longer exists, so closing the app threw here and left both workers running.
+    require(path.join(__dirname, "..", "dist", "services", "tts", "runtime.js")).ttsEngines.shutdown();
+    closing = true;
+    event.preventDefault();
+    closeBrowser().catch(() => {}).then(() => app.quit());
+  });
+}

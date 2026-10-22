@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { clearAgentActivity, onAgentActivity, recentAgentActivity } from "../services/agent/agentActivity";
 import { hasAgentCrawler, rewriteCrawler } from "../services/agent/agentCrawler";
 import { activeAgent, AGENTS, installedAgents, loadAgentConfig, saveAgentConfig } from "../services/agent/agentConfig";
@@ -7,7 +7,7 @@ import { t } from "../services/lang";
 import { libraryFor } from "./library";
 import { writeSse } from "./live";
 
-export const agentCrawlerRouter = Router();
+export const agentCrawlerRouter = createRouter();
 
 // Which agents are installed is looked up on every read: the person may install one while Settings is open.
 agentCrawlerRouter.get("/agent-crawler/config", (_req, res) => {

@@ -13,7 +13,8 @@ import { ContentBlock } from "../../types";
 import type { ChapterFetchContext } from "../chapters/types";
 import { sniffImageExtension } from "../coverStore";
 import { t } from "../lang";
-import { fetchWithRetry } from "../toc/http";
+import { assertPublicUrl } from "../netPolicy";
+import { fetchWithRetry, readBodyCapped } from "../toc/http";
 
 const USER_AGENT =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0 Safari/537.36";
@@ -52,11 +53,11 @@ async function hostIsOpen(src: string, now = Date.now()): Promise<boolean> {
     const res = await fetchWithRetry(
       src,
       { headers: { "user-agent": USER_AGENT, accept: "image/*,*/*;q=0.8" } },
-      { maxAttempts: 1, timeoutMs: 15_000 }
+      { maxAttempts: 1, timeoutMs: 15_000, validateUrl: assertPublicUrl }
     );
     if (res.ok) {
-      const bytes = Buffer.from(await res.arrayBuffer());
-      open = bytes.length > 0 && bytes.length <= MAX_PICTURE_BYTES && sniffImageExtension(bytes) !== undefined;
+      const bytes = await readBodyCapped(res, MAX_PICTURE_BYTES);
+      open = bytes !== undefined && bytes.length > 0 && sniffImageExtension(bytes) !== undefined;
     }
   } catch {
     open = false;
@@ -83,16 +84,14 @@ async function fetchPicture(src: string, referer: string): Promise<Buffer> {
       const res = await fetchWithRetry(
         src,
         { headers: { "user-agent": USER_AGENT, accept: "image/*,*/*;q=0.8", referer } },
-        { maxAttempts: 2, timeoutMs: 30_000 }
+        { maxAttempts: 2, timeoutMs: 30_000, validateUrl: assertPublicUrl }
       );
       if (!res.ok) {
         last = `HTTP ${res.status}`;
         continue;
       }
-      const declared = Number(res.headers.get("content-length"));
-      if (Number.isFinite(declared) && declared > MAX_PICTURE_BYTES) throw new PictureDownloadError("too large");
-      const bytes = Buffer.from(await res.arrayBuffer());
-      if (bytes.length === 0 || bytes.length > MAX_PICTURE_BYTES) throw new PictureDownloadError("empty or too large");
+      const bytes = await readBodyCapped(res, MAX_PICTURE_BYTES);
+      if (!bytes || bytes.length === 0) throw new PictureDownloadError("empty or too large");
       return bytes;
     } catch (err) {
       if (err instanceof PictureDownloadError) throw err;

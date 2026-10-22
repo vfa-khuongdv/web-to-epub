@@ -27,12 +27,17 @@ async function handle(message) {
         process.exit(3);
       }
       if (part === "FAIL") return send({ type: "error", id: message.id, message: "bad part" });
+      if (part === "HANG") await new Promise(() => {});
       await new Promise((r) => setTimeout(r, part === "SLOW" ? 80 : 5));
       send({ type: "progress", id: message.id, part: i + 1, parts: message.parts.length });
     }
     fs.writeFileSync(message.out, `${variant}:${message.voice}:${message.parts.join("|")}`);
-    // One second per part, no pauses: part i spans [i, i + 1].
-    send({ type: "done", id: message.id, seconds: message.parts.length, timings: message.parts.map((_, i) => [i, i + 1]) });
+    // One second per part, no pauses, after the lead silence the request asks for (none when absent):
+    // part i spans [lead + i, lead + i + 1].
+    const lead = message.lead || 0;
+    const extra = message.afterFirst || 0;
+    const shift = (i) => lead + i + (i > 0 ? extra : 0);
+    send({ type: "done", id: message.id, seconds: lead + message.parts.length + extra, timings: message.parts.map((_, i) => [shift(i), shift(i) + 1]) });
     return;
   }
   send({ type: "error", id: message.id ?? null, message: `unknown command: ${message.cmd}` });

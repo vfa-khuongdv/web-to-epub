@@ -1,9 +1,9 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import { HIGHLIGHT_COLORS, HighlightColor } from "../services/storyStore";
 import { t } from "../services/lang";
 import { libraryFor } from "./library";
 
-export const highlightsRouter = Router();
+export const highlightsRouter = createRouter();
 
 // Highlights live server-side rather than in the browser: they are the reader's own
 // notes on the text, and losing them to a cleared browser cache — or not seeing them

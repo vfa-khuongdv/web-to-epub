@@ -6,7 +6,7 @@
  */
 export type AgentStepKind =
   | "classify" // the agent is asked whether the URL is the home page of a story
-  | "verdict" // its answer (`verdict`: story / chapter / other, `reason`)
+  | "verdict" // its answer (`verdict`: story / document / other, `reason`)
   | "ask" // the agent was asked to write code (attempt of `of`)
   | "answer" // it answered; the code is now tried on the page
   | "retry" // that code did not work
@@ -19,8 +19,9 @@ export type AgentStepKind =
 export interface AgentStep {
   kind: AgentStepKind;
   host: string;
-  // "url" = what kind of page the address is, "toc" = the story and its chapter list, "chapter" = one chapter's text.
-  fn: "url" | "toc" | "chapter" | "article";
+  // "url" = what kind of page the address is, "toc" = the story and its chapter list, "chapter" = one chapter's text,
+  // "rewrite" = a chapter rewritten for narration.
+  fn: "url" | "toc" | "chapter" | "article" | "rewrite";
   agent?: string;
   attempt?: number;
   of?: number;
@@ -28,6 +29,8 @@ export interface AgentStep {
   count?: number;
   reason?: string;
   verdict?: string;
+  // The chapter this step is about (rewrite only).
+  order?: number;
 }
 
 export interface AgentActivityEvent extends AgentStep {

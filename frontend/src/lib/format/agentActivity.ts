@@ -4,7 +4,7 @@ export interface AgentActivityEvent {
   at: number;
   kind: "classify" | "verdict" | "ask" | "answer" | "retry" | "saved" | "reuse" | "stale" | "failed" | "locked";
   host: string;
-  fn: "url" | "toc" | "chapter" | "article";
+  fn: "url" | "toc" | "chapter" | "article" | "rewrite";
   agent?: string;
   attempt?: number;
   of?: number;
@@ -12,6 +12,8 @@ export interface AgentActivityEvent {
   count?: number;
   reason?: string;
   verdict?: string;
+  // The chapter a rewrite step is about.
+  order?: number;
 }
 
 type Translate = (key: string, params?: Record<string, string | number>) => string;
@@ -20,6 +22,7 @@ type Translate = (key: string, params?: Record<string, string | number>) => stri
 export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text: string; isError: boolean } {
   const toc = e.fn === "toc";
   const article = e.fn === "article";
+  const rewrite = e.fn === "rewrite";
   const host = e.host;
   const reason = e.reason ?? "";
   switch (e.kind) {
@@ -30,16 +33,15 @@ export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text:
       };
     case "verdict": {
       if (e.verdict === "story") return { text: t("It is a story page: {reason}", { reason }), isError: false };
-      if (e.verdict === "document") return { text: t("It is one page of text: {reason}", { reason }), isError: false };
-      if (e.verdict === "chapter" || e.verdict === "other") {
-        return { text: t("It is not a story page: {reason}", { reason: reason || e.verdict }), isError: true };
-      }
+      if (e.verdict) return { text: t("It is one page of text: {reason}", { reason: reason || e.verdict }), isError: false };
       return { text: t("The answer could not be read — writing the code anyway"), isError: false };
     }
     case "ask": {
       const params = { agent: e.agent ?? t("the agent"), host, attempt: e.attempt ?? 1, of: e.of ?? 1 };
       return {
-        text: article
+        text: rewrite
+          ? t("Asking {agent} to rewrite chapter {order} of {host} for narration (try {attempt}/{of})", { ...params, order: e.order ?? 0 })
+          : article
           ? t("Asking {agent} to write the code that reads {host}'s pages of text (try {attempt}/{of})", params)
           : toc
           ? t("Asking {agent} to write the code that reads {host}'s chapter list (try {attempt}/{of})", params)
@@ -56,10 +58,15 @@ export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text:
         isError: false,
       };
     case "retry":
-      return { text: t("That code did not work: {reason}", { reason }), isError: true };
+      return {
+        text: rewrite ? t("That rewrite did not pass ({reason}) — trying again", { reason }) : t("That code did not work: {reason}", { reason }),
+        isError: true,
+      };
     case "saved":
       return {
-        text: article
+        text: rewrite
+          ? t("Chapter {order} of {host} rewritten — {count} paragraphs", { host, order: e.order ?? 0, count: e.count ?? 0 })
+          : article
           ? t("Saved the page-text code for {host} — it found {count} chapters", { host, count: e.count ?? 0 })
           : toc
           ? t("Saved the chapter-list code for {host} — it found {count} chapters", { host, count: e.count ?? 0 })
@@ -86,7 +93,9 @@ export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text:
       };
     case "failed":
       return {
-        text: article
+        text: rewrite
+          ? t("The agent could not rewrite chapter {order} of {host}: {reason}", { host, order: e.order ?? 0, reason })
+          : article
           ? t("The agent could not write the page-text code for {host}: {reason}", { host, reason })
           : toc
           ? t("The agent could not write the chapter-list code for {host}: {reason}", { host, reason })
@@ -101,6 +110,6 @@ export function describeAgentEvent(e: AgentActivityEvent, t: Translate): { text:
 // The agent is working while the last step is one that a next step follows.
 export const isAgentBusy = (events: AgentActivityEvent[]): boolean => {
   const last = events[events.length - 1];
-  if (last?.kind === "verdict") return last.verdict !== "chapter" && last.verdict !== "other";
+  if (last?.kind === "verdict") return true;
   return last?.kind === "classify" || last?.kind === "ask" || last?.kind === "answer" || last?.kind === "retry";
 };

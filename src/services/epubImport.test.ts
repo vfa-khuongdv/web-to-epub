@@ -169,6 +169,21 @@ describe("parseEpub", () => {
     expect(book.cover).toBeUndefined();
   });
 
+  it("reads a package whose elements use an explicit opf: prefix", async () => {
+    const opf =
+      `<?xml version="1.0"?><opf:package xmlns:opf="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="bookid">` +
+      `<opf:metadata xmlns:dc="http://purl.org/dc/elements/1.1/"><dc:title>Prefixed</dc:title><dc:creator>Tác giả</dc:creator></opf:metadata>` +
+      `<opf:manifest><opf:item id="ch1" href="ch1.xhtml" media-type="application/xhtml+xml"/><opf:item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/></opf:manifest>` +
+      `<opf:spine><opf:itemref idref="ch1"/></opf:spine></opf:package>`;
+    const book = await parseEpub(
+      buildEpubFixture({ extraEntries: { "OEBPS/content.opf": new Uint8Array(Buffer.from(opf)) } })
+    );
+
+    expect(book.title).toBe("Prefixed");
+    expect(book.author).toBe("Tác giả");
+    expect(book.chapters).toHaveLength(1);
+  });
+
   it("rejects an encrypted book but accepts obfuscated fonts", async () => {
     const drm = buildEpubFixture({
       encryptionXml:
@@ -179,6 +194,20 @@ describe("parseEpub", () => {
     const fonts = buildEpubFixture({
       encryptionXml:
         `<?xml version="1.0"?><encryption xmlns="urn:oasis:names:tc:opendocument:xmlns:container"><EncryptedData><EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/></EncryptedData></encryption>`,
+    });
+    await expect(parseEpub(fonts)).resolves.toBeTruthy();
+  });
+
+  it("sees a real enc:EncryptedData behind a namespace prefix", async () => {
+    const drm = buildEpubFixture({
+      encryptionXml:
+        `<?xml version="1.0"?><enc:encryption xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.w3.org/2001/04/xmlenc#aes128-cbc"/></enc:EncryptedData></enc:encryption>`,
+    });
+    await expect(parseEpub(drm)).rejects.toBeInstanceOf(DrmError);
+
+    const fonts = buildEpubFixture({
+      encryptionXml:
+        `<?xml version="1.0"?><enc:encryption xmlns:enc="http://www.w3.org/2001/04/xmlenc#"><enc:EncryptedData><enc:EncryptionMethod Algorithm="http://www.idpf.org/2008/embedding"/></enc:EncryptedData></enc:encryption>`,
     });
     await expect(parseEpub(fonts)).resolves.toBeTruthy();
   });

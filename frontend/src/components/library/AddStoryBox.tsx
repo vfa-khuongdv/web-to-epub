@@ -132,17 +132,17 @@ export default function AddStoryBox({
       </div>
     ) : (
       <p className="mt-1.5 text-xs text-ink-3">
-        {t("Paste a story page URL to load the full chapter list. Auto-loading sites:")}{" "}
+        {t("Paste a story page URL. Built-in sites:")}{" "}
         {[...new Set(crawlSites.map((s) => s.name))].join(", ") || t("loading…")}
         {/* The book-file sources are supported too, but they work the other way
             round, so they are named apart from the crawl sites. */}
         {importSites.length > 0 && (
           <span className="block">
-            {t("Book sites (imported, not crawled):")}{" "}
+            {t("Book sites (import only):")}{" "}
             {[...new Set(importSites.map((s) => s.name))].join(", ")}
           </span>
         )}
-        <span className="block">{t("Or drop an .epub or .pdf file here to import it.")}</span>
+        <span className="block">{t("Or drop an .epub / .pdf here.")}</span>
       </p>
     )}
   </div>

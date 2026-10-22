@@ -26,10 +26,17 @@ afterEach(() => {
 });
 
 describe("choosePort", () => {
-  it("takes a free port on first launch and remembers it", async () => {
+  it("preserves main's origin on first launch and remembers it", async () => {
     const port = await choosePort(file, { isFree: async () => true, findFree: async () => 51234 });
-    expect(port).toBe(51234);
-    expect(readSavedPort(file)).toBe(51234);
+    expect(port).toBe(45813);
+    expect(readSavedPort(file)).toBe(45813);
+  });
+
+  it("returns to main's origin after its default port was temporarily occupied", async () => {
+    expect(await choosePort(file, { isFree: async () => false, findFree: async () => 51234 })).toBe(51234);
+    expect(readSavedPort(file)).toBeNull();
+    expect(await choosePort(file, { isFree: async () => true, findFree: async () => 51235 })).toBe(45813);
+    expect(readSavedPort(file)).toBe(45813);
   });
 
   it("reuses the saved port while it is free, so the origin (and its localStorage) stays the same", async () => {
@@ -48,6 +55,7 @@ describe("choosePort", () => {
     const port = await choosePort(file, { isFree: async () => false, findFree: async () => 40002 });
     expect(port).toBe(40002);
     expect(readSavedPort(file)).toBe(40001);
+    expect(await choosePort(file, { isFree: async () => true, findFree: async () => 40003 })).toBe(40001);
   });
 
   it("ignores a damaged or out-of-range saved port", async () => {
@@ -55,7 +63,7 @@ describe("choosePort", () => {
       fs.writeFileSync(file, content);
       expect(readSavedPort(file)).toBeNull();
       const port = await choosePort(file, { isFree: async () => true, findFree: async () => 45678 });
-      expect(port).toBe(45678);
+      expect(port).toBe(45813);
     }
   });
 });

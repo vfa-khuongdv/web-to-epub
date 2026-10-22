@@ -1,4 +1,4 @@
-import { Router } from "express";
+import { createRouter } from "./asyncRouter";
 import type { Request } from "express";
 import { htmlToBlocks } from "../services/chapterHtml";
 import { mapBlockMedia, resolveMediaHtml, restoreMediaHtml } from "../services/epubMedia";
@@ -8,7 +8,7 @@ import { removeChapterAudio } from "../services/tts/audioCache";
 import { StoredChapter } from "../types";
 import { libraryFor } from "./library";
 
-export const chaptersRouter = Router();
+export const chaptersRouter = createRouter();
 
 function requestVaultToken(req: Request): string | undefined {
   return req.header("X-Vault-Token") ?? (typeof req.query.vault === "string" ? req.query.vault : undefined);
